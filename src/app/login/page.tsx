@@ -36,8 +36,8 @@ export default function LoginPage() {
     <div className="min-h-screen bg-[#F8FAFC] flex flex-col items-center justify-center px-4">
       <div className="flex flex-col items-center w-full">
 
-        {/* Logo — más grande que el cuadro de login (card max-w-sm = 384px) */}
-        <div className="mb-6 w-[min(420px,100%)]">
+        {/* Logo — más grande que el cuadro de login, cercano al formulario */}
+        <div className="mb-3 w-[min(420px,100%)]">
           <Image
             src="/neura-logo.svg"
             alt="Neura"
@@ -47,7 +47,7 @@ export default function LoginPage() {
           />
         </div>
 
-        <p className="text-sm text-[#475569] mb-6">Iniciá sesión para continuar</p>
+        <p className="text-sm text-[#475569] mb-4">Iniciá sesión para continuar</p>
 
         {/* Card */}
         <div className="w-full max-w-sm bg-white border border-slate-200 rounded-xl shadow-sm p-8">
