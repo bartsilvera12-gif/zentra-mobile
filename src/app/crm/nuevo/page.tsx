@@ -1,9 +1,12 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { saveProspecto } from "@/lib/crm/storage";
+import { getPlanes } from "@/lib/planes/storage";
 import type { EtapaFunnel } from "@/lib/crm/types";
+import type { Plan } from "@/lib/planes/types";
 
 // ── Estilos ────────────────────────────────────────────────────────────────────
 
@@ -45,6 +48,15 @@ export default function NuevoProspectoPage() {
   });
 
   const [error, setError] = useState<string | null>(null);
+  const [planes, setPlanes] = useState<Plan[]>([]);
+  const [cargandoPlanes, setCargandoPlanes] = useState(true);
+
+  useEffect(() => {
+    getPlanes()
+      .then(setPlanes)
+      .catch(() => setPlanes([]))
+      .finally(() => setCargandoPlanes(false));
+  }, []);
 
   function handleChange(
     e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>
@@ -164,15 +176,37 @@ export default function NuevoProspectoPage() {
               <label className={labelClass}>
                 Servicio / Producto de interés <span className="text-red-500">*</span>
               </label>
-              <textarea
-                name="servicio"
-                value={form.servicio}
-                onChange={handleChange}
-                placeholder="Describí qué necesita el prospecto"
-                rows={2}
-                className={`${inputClass} resize-none`}
-                required
-              />
+              {cargandoPlanes ? (
+                <p className="text-sm text-gray-400 py-2">Cargando planes…</p>
+              ) : planes.length === 0 ? (
+                <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                  <p className="font-medium">No hay planes creados para esta empresa.</p>
+                  <p className="mt-1 text-amber-700">
+                    Creá un plan primero para poder seleccionarlo como servicio de interés.
+                  </p>
+                  <Link
+                    href="/planes/nuevo"
+                    className="mt-3 inline-flex items-center gap-1.5 text-[#0EA5E9] hover:text-[#0284C7] font-medium"
+                  >
+                    Ir a crear plan →
+                  </Link>
+                </div>
+              ) : (
+                <select
+                  name="servicio"
+                  value={form.servicio}
+                  onChange={handleChange}
+                  className={inputClass}
+                  required
+                >
+                  <option value="">Seleccioná un plan</option>
+                  {planes.filter((p) => p.estado === "activo").map((plan) => (
+                    <option key={plan.id} value={plan.nombre}>
+                      {plan.nombre} {plan.codigo_plan ? `(${plan.codigo_plan})` : ""}
+                    </option>
+                  ))}
+                </select>
+              )}
             </div>
 
             <div className="grid grid-cols-2 gap-4">

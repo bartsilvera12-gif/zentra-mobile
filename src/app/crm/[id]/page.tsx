@@ -1,9 +1,12 @@
 "use client";
 
+import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { addNota, deleteProspecto, getProspecto, moveProspecto, updateProspecto } from "@/lib/crm/storage";
+import { getPlanes } from "@/lib/planes/storage";
 import type { EtapaFunnel, Nota, Prospecto } from "@/lib/crm/types";
+import type { Plan } from "@/lib/planes/types";
 
 // ── Estilos ────────────────────────────────────────────────────────────────────
 
@@ -70,6 +73,15 @@ export default function EditProspectoPage() {
 
   const [errorForm,         setErrorForm]         = useState<string | null>(null);
   const [confirmarEliminar, setConfirmarEliminar] = useState(false);
+  const [planes,            setPlanes]            = useState<Plan[]>([]);
+  const [cargandoPlanes,    setCargandoPlanes]    = useState(true);
+
+  useEffect(() => {
+    getPlanes()
+      .then(setPlanes)
+      .catch(() => setPlanes([]))
+      .finally(() => setCargandoPlanes(false));
+  }, []);
 
   async function cargar() {
     const p = await getProspecto(id);
@@ -318,13 +330,36 @@ export default function EditProspectoPage() {
           {/* Servicio */}
           <div>
             <label className={labelClass}>Servicio / Producto de interés</label>
-            <textarea
-              name="servicio"
-              value={form.servicio}
-              onChange={handleChange}
-              rows={2}
-              className={`${inputClass} resize-none`}
-            />
+            {cargandoPlanes ? (
+              <p className="text-sm text-gray-400 py-2">Cargando planes…</p>
+            ) : planes.length === 0 ? (
+              <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                <p className="font-medium">No hay planes creados para esta empresa.</p>
+                <Link
+                  href="/planes/nuevo"
+                  className="mt-2 inline-flex items-center gap-1.5 text-[#0EA5E9] hover:text-[#0284C7] font-medium"
+                >
+                  Ir a crear plan →
+                </Link>
+              </div>
+            ) : (
+              <select
+                name="servicio"
+                value={form.servicio}
+                onChange={handleChange}
+                className={inputClass}
+              >
+                <option value="">Seleccioná un plan</option>
+                {planes.filter((p) => p.estado === "activo").map((plan) => (
+                  <option key={plan.id} value={plan.nombre}>
+                    {plan.nombre} {plan.codigo_plan ? `(${plan.codigo_plan})` : ""}
+                  </option>
+                ))}
+                {form.servicio && !planes.some((p) => p.nombre === form.servicio) && (
+                  <option value={form.servicio}>{form.servicio} (valor anterior)</option>
+                )}
+              </select>
+            )}
           </div>
 
           {/* Valor estimado */}
