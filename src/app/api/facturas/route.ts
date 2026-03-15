@@ -94,7 +94,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(errorResponse(error.message), { status: 400 });
     }
 
-    emitEvent(EVENT_TYPES.factura_creada, { factura_id: data.id, cliente_id: data.cliente_id, monto: data.monto });
+    await emitEvent(EVENT_TYPES.factura_creada, { factura_id: data.id, cliente_id: data.cliente_id, monto: data.monto });
 
     return NextResponse.json(successResponse(data));
   } catch (err) {

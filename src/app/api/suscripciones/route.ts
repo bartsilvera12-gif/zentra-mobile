@@ -90,7 +90,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(errorResponse(error.message), { status: 400 });
     }
 
-    emitEvent(EVENT_TYPES.suscripcion_creada, { suscripcion_id: data.id, cliente_id: data.cliente_id });
+    await emitEvent(EVENT_TYPES.suscripcion_creada, { suscripcion_id: data.id, cliente_id: data.cliente_id });
 
     return NextResponse.json(successResponse(data));
   } catch (err) {

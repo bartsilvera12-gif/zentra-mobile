@@ -80,7 +80,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(errorResponse(error.message), { status: 400 });
     }
 
-    emitEvent(EVENT_TYPES.cliente_creado, { cliente_id: data.id, empresa: data.empresa });
+    await emitEvent(EVENT_TYPES.cliente_creado, { cliente_id: data.id, empresa: data.empresa });
 
     return NextResponse.json(successResponse(data));
   } catch (err) {

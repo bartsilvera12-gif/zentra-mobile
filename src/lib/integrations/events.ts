@@ -3,6 +3,8 @@
  * Base para Webhooks y automatizaciones futuras.
  */
 
+import { sendWebhook } from "./webhooks";
+
 export const EVENT_TYPES = {
   cliente_creado: "cliente_creado",
   factura_creada: "factura_creada",
@@ -13,9 +15,9 @@ export const EVENT_TYPES = {
 export type EventType = (typeof EVENT_TYPES)[keyof typeof EVENT_TYPES];
 
 /**
- * Emite un evento. Por ahora solo registra en consola.
- * En el futuro: disparar webhooks, colas, etc.
+ * Emite un evento. Registra en consola y envía webhook si WEBHOOK_URL está configurada.
  */
-export function emitEvent(eventName: EventType, payload: Record<string, unknown>): void {
+export async function emitEvent(eventName: EventType, payload: Record<string, unknown>): Promise<void> {
   console.log(`[ERP Event] ${eventName}`, payload);
+  await sendWebhook(eventName, payload);
 }

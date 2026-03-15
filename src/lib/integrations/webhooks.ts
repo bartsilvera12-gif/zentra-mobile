@@ -1,21 +1,35 @@
 /**
  * Sistema de Webhooks para integraciones externas (n8n, Zapier, etc.).
- * Placeholder para implementación futura.
+ * Envía POST a WEBHOOK_URL cuando se emiten eventos.
  */
 
 import type { EventType } from "./events";
 
 /**
- * Envía un webhook con el evento y payload.
- * Por ahora es un placeholder; en el futuro:
- * - Consultar tabla webhooks_config (URLs por empresa/evento)
- * - Hacer POST a cada URL registrada
- * - Retry con backoff en caso de fallo
+ * Envía un webhook HTTP POST con el evento y payload.
+ * Requiere WEBHOOK_URL en variables de entorno.
  */
-export async function sendWebhook(
-  _event: EventType,
-  _payload: Record<string, unknown>
-): Promise<void> {
-  // TODO: Implementar cuando exista tabla webhooks_config
-  // await fetch(webhookUrl, { method: "POST", body: JSON.stringify(payload) });
+export async function sendWebhook(event: EventType, payload: Record<string, unknown>): Promise<void> {
+  try {
+    const url = process.env.WEBHOOK_URL;
+
+    if (!url) {
+      console.warn("[Webhook] WEBHOOK_URL not configured");
+      return;
+    }
+
+    await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        event,
+        payload,
+        source: "neura_erp",
+      }),
+    });
+  } catch (error) {
+    console.error("[Webhook] Error:", error);
+  }
 }
