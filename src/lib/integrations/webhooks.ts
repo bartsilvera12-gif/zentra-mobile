@@ -18,6 +18,10 @@ export async function sendWebhook(event: EventType, payload: Record<string, unkn
       return;
     }
 
+    console.log("[WEBHOOK] URL:", url);
+    console.log("[WEBHOOK] EVENT:", event);
+    console.log("[WEBHOOK] PAYLOAD:", payload);
+
     await fetch(url, {
       method: "POST",
       headers: {
@@ -29,6 +33,8 @@ export async function sendWebhook(event: EventType, payload: Record<string, unkn
         source: "neura_erp",
       }),
     });
+
+    console.log("[WEBHOOK] SENT");
   } catch (error) {
     console.error("[Webhook] Error:", error);
   }
