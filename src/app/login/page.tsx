@@ -25,7 +25,16 @@ export default function LoginPage() {
     setLoading(false);
 
     if (authError) {
-      setError("Credenciales incorrectas. Verificá tu email y contraseña.");
+      const msg = authError.message || "Credenciales incorrectas.";
+      if (msg.includes("Invalid login credentials") || msg.includes("invalid_credentials")) {
+        setError("Credenciales incorrectas. Verificá tu email y contraseña.");
+      } else if (msg.includes("Email not confirmed")) {
+        setError("Tu email no está confirmado. Revisá tu bandeja de entrada o contactá al administrador.");
+      } else if (msg.includes("user_banned") || msg.includes("User is banned")) {
+        setError("Tu cuenta está desactivada. Contactá al administrador.");
+      } else {
+        setError(msg);
+      }
       return;
     }
 
