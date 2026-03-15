@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useRouter, useParams } from "next/navigation";
+import MontoInput from "@/components/ui/MontoInput";
 import { getProducto, productoExiste, updateProducto } from "@/lib/inventario/storage";
 import type { MetodoValuacion } from "@/lib/inventario/types";
 
@@ -58,19 +59,18 @@ export default function EditarProductoPage() {
     setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
   }
 
-  function handleCostoChange(e: React.ChangeEvent<HTMLInputElement>) {
+  function handleCostoChange(costo: number) {
     setErrorDuplicado(null);
-    const costo = parseFloat(e.target.value);
     const markup = parseFloat(form.markup);
     const precio = parseFloat(form.precio_venta);
     if (!isNaN(costo) && costo > 0 && !isNaN(markup)) {
       const nuevoPrecio = costo * (1 + markup / 100);
-      setForm((prev) => ({ ...prev, costo_promedio: e.target.value, precio_venta: nuevoPrecio.toFixed(0) }));
+      setForm((prev) => ({ ...prev, costo_promedio: String(costo), precio_venta: nuevoPrecio.toFixed(0) }));
     } else if (!isNaN(costo) && costo > 0 && !isNaN(precio)) {
       const nuevoMarkup = ((precio - costo) / costo) * 100;
-      setForm((prev) => ({ ...prev, costo_promedio: e.target.value, markup: nuevoMarkup.toFixed(2) }));
+      setForm((prev) => ({ ...prev, costo_promedio: String(costo), markup: nuevoMarkup.toFixed(2) }));
     } else {
-      setForm((prev) => ({ ...prev, costo_promedio: e.target.value }));
+      setForm((prev) => ({ ...prev, costo_promedio: String(costo) }));
     }
   }
 
@@ -86,15 +86,14 @@ export default function EditarProductoPage() {
     }
   }
 
-  function handlePrecioChange(e: React.ChangeEvent<HTMLInputElement>) {
+  function handlePrecioChange(precio: number) {
     setErrorDuplicado(null);
-    const precio = parseFloat(e.target.value);
     const costo = parseFloat(form.costo_promedio);
     if (!isNaN(precio) && !isNaN(costo) && costo > 0) {
       const nuevoMarkup = ((precio - costo) / costo) * 100;
-      setForm((prev) => ({ ...prev, precio_venta: e.target.value, markup: nuevoMarkup.toFixed(2) }));
+      setForm((prev) => ({ ...prev, precio_venta: String(precio), markup: nuevoMarkup.toFixed(2) }));
     } else {
-      setForm((prev) => ({ ...prev, precio_venta: e.target.value }));
+      setForm((prev) => ({ ...prev, precio_venta: String(precio) }));
     }
   }
 
@@ -199,13 +198,11 @@ export default function EditarProductoPage() {
             <div className="grid grid-cols-3 gap-6">
               <div>
                 <label className={labelClass}>Costo promedio (Gs.)</label>
-                <input
-                  type="number"
-                  name="costo_promedio"
+                <MontoInput
                   value={form.costo_promedio}
                   onChange={handleCostoChange}
                   className={inputClass}
-                  min={0}
+                  decimals={false}
                   required
                 />
               </div>
@@ -222,13 +219,11 @@ export default function EditarProductoPage() {
               </div>
               <div>
                 <label className={labelClass}>Precio de venta (Gs.)</label>
-                <input
-                  type="number"
-                  name="precio_venta"
+                <MontoInput
                   value={form.precio_venta}
                   onChange={handlePrecioChange}
                   className={inputClass}
-                  min={0}
+                  decimals={false}
                   required
                 />
               </div>

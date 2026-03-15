@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import MontoInput from "@/components/ui/MontoInput";
 import { saveUsuario, emailExiste } from "@/lib/usuarios/storage";
 import { createUser, getCurrentUser } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
@@ -211,8 +212,13 @@ export default function NuevoUsuarioPage() {
               {showSalario && (
                 <div>
                   <label className={fLabel}>Salario base (Gs.)</label>
-                  <input type="number" name="salario_base" value={form.salario_base}
-                    onChange={handleChange} min={0} step="1000" placeholder="0" className={fInput} />
+                  <MontoInput
+                    value={form.salario_base}
+                    onChange={(n) => setForm((prev) => ({ ...prev, salario_base: String(n) }))}
+                    placeholder="0"
+                    className={fInput}
+                    decimals={false}
+                  />
                 </div>
               )}
               {showComision && (

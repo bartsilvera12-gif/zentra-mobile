@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import MontoInput from "@/components/ui/MontoInput";
 import { productoExiste, saveProducto } from "@/lib/inventario/storage";
 import type { MetodoValuacion } from "@/lib/inventario/types";
 
@@ -35,9 +36,8 @@ export default function NuevoProductoPage() {
    * - si hay markup → recalcula precio_venta = costo * (1 + markup/100)
    * - si no hay markup pero hay precio → recalcula markup = ((precio-costo)/costo)*100
    */
-  function handleCostoChange(e: React.ChangeEvent<HTMLInputElement>) {
+  function handleCostoChange(costo: number) {
     setErrorDuplicado(null);
-    const costo = parseFloat(e.target.value);
     const markup = parseFloat(form.markup);
     const precio = parseFloat(form.precio_venta);
 
@@ -45,18 +45,18 @@ export default function NuevoProductoPage() {
       const nuevoPrecio = costo * (1 + markup / 100);
       setForm((prev) => ({
         ...prev,
-        costo_promedio: e.target.value,
+        costo_promedio: String(costo),
         precio_venta: nuevoPrecio.toFixed(0),
       }));
     } else if (!isNaN(costo) && costo > 0 && !isNaN(precio)) {
       const nuevoMarkup = ((precio - costo) / costo) * 100;
       setForm((prev) => ({
         ...prev,
-        costo_promedio: e.target.value,
+        costo_promedio: String(costo),
         markup: nuevoMarkup.toFixed(2),
       }));
     } else {
-      setForm((prev) => ({ ...prev, costo_promedio: e.target.value }));
+      setForm((prev) => ({ ...prev, costo_promedio: String(costo) }));
     }
   }
 
@@ -83,20 +83,19 @@ export default function NuevoProductoPage() {
   /**
    * Al cambiar precio → recalcula markup (puede resultar negativo si precio < costo)
    */
-  function handlePrecioChange(e: React.ChangeEvent<HTMLInputElement>) {
+  function handlePrecioChange(precio: number) {
     setErrorDuplicado(null);
-    const precio = parseFloat(e.target.value);
     const costo = parseFloat(form.costo_promedio);
 
     if (!isNaN(precio) && !isNaN(costo) && costo > 0) {
       const nuevoMarkup = ((precio - costo) / costo) * 100;
       setForm((prev) => ({
         ...prev,
-        precio_venta: e.target.value,
+        precio_venta: String(precio),
         markup: nuevoMarkup.toFixed(2),
       }));
     } else {
-      setForm((prev) => ({ ...prev, precio_venta: e.target.value }));
+      setForm((prev) => ({ ...prev, precio_venta: String(precio) }));
     }
   }
 
@@ -222,14 +221,12 @@ export default function NuevoProductoPage() {
 
               <div>
                 <label className={labelClass}>Costo promedio (Gs.)</label>
-                <input
-                  type="number"
-                  name="costo_promedio"
+                <MontoInput
                   value={form.costo_promedio}
                   onChange={handleCostoChange}
                   placeholder="Ej: 52000"
                   className={inputClass}
-                  min={0}
+                  decimals={false}
                   required
                 />
               </div>
@@ -255,14 +252,12 @@ export default function NuevoProductoPage() {
 
               <div>
                 <label className={labelClass}>Precio de venta (Gs.)</label>
-                <input
-                  type="number"
-                  name="precio_venta"
+                <MontoInput
                   value={form.precio_venta}
                   onChange={handlePrecioChange}
                   placeholder="Ej: 78000"
                   className={inputClass}
-                  min={0}
+                  decimals={false}
                   required
                 />
               </div>

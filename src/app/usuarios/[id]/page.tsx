@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { Suspense, useEffect, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
+import MontoInput from "@/components/ui/MontoInput";
 import {
   getUsuario, updateUsuario, toggleEstadoUsuario, deleteUsuario, emailExiste,
 } from "@/lib/usuarios/storage";
@@ -345,8 +346,13 @@ function UsuarioDetailContent() {
                 {showSalario && (
                   <div>
                     <label className={fLabel}>Salario base (Gs.)</label>
-                    <input type="number" name="salario_base" value={form.salario_base}
-                      onChange={handleChange} min={0} step="1000" placeholder="0" className={fInput} />
+                    <MontoInput
+                      value={form.salario_base}
+                      onChange={(n) => setForm((prev) => ({ ...prev, salario_base: String(n) }))}
+                      placeholder="0"
+                      className={fInput}
+                      decimals={false}
+                    />
                   </div>
                 )}
                 {showComision && (

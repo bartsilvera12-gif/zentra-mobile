@@ -18,6 +18,7 @@ import {
   savePago,
   saveSuscripcion,
 } from "@/lib/facturacion/storage";
+import MontoInput from "@/components/ui/MontoInput";
 import { getPlanes } from "@/lib/planes/storage";
 import type { Cliente, NotaCliente } from "@/lib/clientes/types";
 import type { Factura } from "@/lib/gestion-clientes/types";
@@ -626,7 +627,7 @@ export default function ClienteDetailPage() {
                   </div>
                   <div>
                     <label className={labelClass}>Valor anual estimado (Gs.)</label>
-                    <input type="number" name="valor_cliente" value={form.valor_cliente} onChange={handleChange} min={0} step={1} className={inputClass} />
+                    <MontoInput value={form.valor_cliente} onChange={(n) => setForm((p) => ({ ...p, valor_cliente: String(n) }))} className={inputClass} decimals={false} />
                   </div>
                 </div>
 
@@ -670,12 +671,10 @@ export default function ClienteDetailPage() {
                           <>
                             <div>
                               <label className={labelClass}>Monto (Gs.)</label>
-                              <input
-                                type="number"
+                              <MontoInput
                                 value={formContadoEdit.monto}
-                                onChange={(e) => setFormContadoEdit((p) => ({ ...p, monto: e.target.value }))}
+                                onChange={(n) => setFormContadoEdit((p) => ({ ...p, monto: String(n) }))}
                                 className={inputClass}
-                                min={0}
                                 placeholder="Monto de la factura"
                               />
                             </div>
@@ -722,12 +721,10 @@ export default function ClienteDetailPage() {
                         </div>
                         <div>
                           <label className={labelClass}>Precio (Gs.)</label>
-                          <input
-                            type="number"
+                          <MontoInput
                             value={formSuscEdit.precio}
-                            onChange={(e) => setFormSuscEdit((p) => ({ ...p, precio: e.target.value }))}
+                            onChange={(n) => setFormSuscEdit((p) => ({ ...p, precio: String(n) }))}
                             className={inputClass}
-                            min={0}
                             placeholder="Monto mensual"
                           />
                         </div>
@@ -1023,7 +1020,7 @@ export default function ClienteDetailPage() {
               </div>
               <div>
                 <label className={labelClass}>Precio</label>
-                <input type="number" value={formSusc.precio} onChange={(e) => setFormSusc((p) => ({ ...p, precio: e.target.value }))} className={inputClass} min={0} required />
+                <MontoInput value={formSusc.precio} onChange={(n) => setFormSusc((p) => ({ ...p, precio: String(n) }))} className={inputClass} required />
               </div>
               <div>
                 <label className={labelClass}>Fecha inicio</label>
@@ -1103,7 +1100,7 @@ export default function ClienteDetailPage() {
               )}
               <div>
                 <label className={labelClass}>Monto</label>
-                <input type="number" value={formPago.monto} onChange={(e) => setFormPago((p) => ({ ...p, monto: e.target.value }))} className={inputClass} min={0} step={0.01} required />
+                <MontoInput value={formPago.monto} onChange={(n) => setFormPago((p) => ({ ...p, monto: String(n) }))} className={inputClass} required />
               </div>
               <div>
                 <label className={labelClass}>Fecha pago</label>

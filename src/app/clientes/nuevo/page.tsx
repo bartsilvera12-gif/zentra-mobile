@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { saveCliente } from "@/lib/clientes/storage";
 import { getProspecto, updateProspecto } from "@/lib/crm/storage";
 import { crearFacturaContado, saveSuscripcion } from "@/lib/facturacion/storage";
+import MontoInput from "@/components/ui/MontoInput";
 import { getPlanes } from "@/lib/planes/storage";
 import type { TipoCliente, OrigenCliente } from "@/lib/clientes/types";
 import type { Plan } from "@/lib/planes/types";
@@ -539,12 +540,10 @@ function NuevoClienteForm() {
                   <>
                     <div>
                       <label className={labelClass}>Monto (Gs.)</label>
-                      <input
-                        type="number"
+                      <MontoInput
                         value={formContado.monto}
-                        onChange={(e) => setFormContado((p) => ({ ...p, monto: e.target.value }))}
+                        onChange={(n) => setFormContado((p) => ({ ...p, monto: String(n) }))}
                         className={inputClass}
-                        min={0}
                         placeholder="Monto de la factura"
                       />
                     </div>
@@ -585,12 +584,10 @@ function NuevoClienteForm() {
                 </div>
                 <div>
                   <label className={labelClass}>Precio (Gs.)</label>
-                  <input
-                    type="number"
+                  <MontoInput
                     value={formSusc.precio}
-                    onChange={(e) => setFormSusc((p) => ({ ...p, precio: e.target.value }))}
+                    onChange={(n) => setFormSusc((p) => ({ ...p, precio: String(n) }))}
                     className={inputClass}
-                    min={0}
                     placeholder="Monto mensual"
                   />
                 </div>

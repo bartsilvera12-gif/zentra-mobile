@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import MontoInput from "@/components/ui/MontoInput";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { getPlan, updatePlan, toggleEstadoPlan, deletePlan } from "@/lib/planes/storage";
 import type { Plan } from "@/lib/planes/types";
@@ -287,14 +288,11 @@ function PlanDetailContent() {
             <div className="grid grid-cols-3 gap-4">
               <div>
                 <label className={fLabelClass}>Precio *</label>
-                <input
-                  type="number"
-                  name="precio"
+                <MontoInput
                   value={form.precio}
-                  onChange={handleChange}
-                  min={1}
-                  step={form.moneda === "USD" ? "0.01" : "1"}
+                  onChange={(n) => setForm((p) => ({ ...p, precio: String(n) }))}
                   className={fInputClass}
+                  decimals={form.moneda === "USD"}
                   required
                 />
               </div>

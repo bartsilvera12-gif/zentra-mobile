@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import MontoInput from "@/components/ui/MontoInput";
 import { getProductos, saveMovimiento } from "@/lib/inventario/storage";
 import type { Producto, TipoMovimiento, OrigenMovimiento } from "@/lib/inventario/types";
 
@@ -165,14 +166,12 @@ export default function NuevoMovimientoPage() {
 
             <div>
               <label className={labelClass}>Costo unitario (Gs.)</label>
-              <input
-                type="number"
-                name="costo_unitario"
+              <MontoInput
                 value={form.costo_unitario}
-                onChange={handleChange}
+                onChange={(n) => setForm((prev) => ({ ...prev, costo_unitario: String(n) }))}
                 placeholder="Ej: 35000"
                 className={inputClass}
-                min={0}
+                decimals={false}
                 required
               />
             </div>

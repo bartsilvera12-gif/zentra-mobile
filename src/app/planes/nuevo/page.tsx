@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
+import MontoInput from "@/components/ui/MontoInput";
 import { useRouter } from "next/navigation";
 import { savePlan } from "@/lib/planes/storage";
 
@@ -148,15 +149,12 @@ export default function NuevoPlanPage() {
 
             <div>
               <label className={fLabelClass}>Precio *</label>
-              <input
-                type="number"
-                name="precio"
+              <MontoInput
                 value={form.precio}
-                onChange={handleChange}
-                min={1}
-                step={form.moneda === "USD" ? "0.01" : "1"}
+                onChange={(n) => setForm((p) => ({ ...p, precio: String(n) }))}
                 placeholder="0"
                 className={fInputClass}
+                decimals={form.moneda === "USD"}
                 required
               />
             </div>

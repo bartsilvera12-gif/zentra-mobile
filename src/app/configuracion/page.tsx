@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import MontoInput from "@/components/ui/MontoInput";
 import { getConfig, saveConfig, resetConfig } from "@/lib/config/storage";
 import { getCurrentUser } from "@/lib/auth";
 import { getEtapasParaConfig, createEtapa, updateEtapa, deleteEtapa, getEtapaClasses, type EtapaCrm } from "@/lib/crm/etapas";
@@ -493,9 +494,12 @@ export default function ConfiguracionPage() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className={fLabel}>Meta de ventas mensuales (Gs.)</label>
-                  <input type="number" name="meta_ventas_mensuales"
+                  <MontoInput
                     value={form.meta_ventas_mensuales}
-                    onChange={handleChange} min={0} step={1000} className={fInput} />
+                    onChange={(n) => setForm((prev) => ({ ...prev, meta_ventas_mensuales: n }))}
+                    className={fInput}
+                    decimals={false}
+                  />
                   <HelpText>Ingreso total en ventas esperado cada mes.</HelpText>
                 </div>
                 <div>
@@ -513,9 +517,12 @@ export default function ConfiguracionPage() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className={fLabel}>Meta de facturación mensual (Gs.)</label>
-                  <input type="number" name="meta_facturacion_mensual"
+                  <MontoInput
                     value={form.meta_facturacion_mensual}
-                    onChange={handleChange} min={0} step={1000} className={fInput} />
+                    onChange={(n) => setForm((prev) => ({ ...prev, meta_facturacion_mensual: n }))}
+                    className={fInput}
+                    decimals={false}
+                  />
                   <HelpText>Monto total de facturas emitidas esperado al mes.</HelpText>
                 </div>
                 <div>

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import MontoInput from "@/components/ui/MontoInput";
 import { saveCompra } from "@/lib/compras/storage";
 import { getProveedores, proveedorExiste, saveProveedor } from "@/lib/proveedores/storage";
 import {
@@ -522,10 +523,13 @@ export default function NuevaCompraPage() {
                     </div>
                     <div className="col-span-2">
                       <label className={labelSmClass}>Precio de venta sugerido (Gs.)</label>
-                      <input type="number" name="precio_venta_sugerido"
+                      <MontoInput
                         value={formProducto.precio_venta_sugerido}
-                        onChange={handleProductoInputChange} placeholder="Ej: 75000" min={1}
-                        className={inputSmClass} />
+                        onChange={(n) => setFormProducto((prev) => ({ ...prev, precio_venta_sugerido: String(n) }))}
+                        placeholder="Ej: 75000"
+                        className={inputSmClass}
+                        decimals={false}
+                      />
                       {/* Preview de margen usando el costo del formulario principal */}
                       {margenPreview !== null && (
                         <p className={`mt-1 text-xs font-medium ${margenColor(margenPreview)}`}>
@@ -596,9 +600,14 @@ export default function NuevaCompraPage() {
                 <label className={labelClass}>
                   Tipo de cambio (USD → Gs.) <span className="text-red-500">*</span>
                 </label>
-                <input type="number" name="tipo_cambio" value={form.tipo_cambio}
-                  onChange={handleChange} placeholder="Ej: 7500"
-                  className={inputClass} min={1} required={form.moneda === "USD"} />
+                <MontoInput
+                  value={form.tipo_cambio}
+                  onChange={(n) => setForm((prev) => ({ ...prev, tipo_cambio: String(n) }))}
+                  placeholder="Ej: 7500"
+                  className={inputClass}
+                  decimals={false}
+                  required={form.moneda === "USD"}
+                />
               </div>
             )}
 
@@ -616,14 +625,14 @@ export default function NuevaCompraPage() {
                   Costo unitario ({form.moneda === "USD" ? "USD" : "Gs."})
                   <span className="text-red-500"> *</span>
                 </label>
-                <input type="number" name="costo_unitario_input"
+                <MontoInput
                   value={form.costo_unitario_input}
-                  onChange={handleChange}
+                  onChange={(n) => setForm((prev) => ({ ...prev, costo_unitario_input: String(n) }))}
                   placeholder={form.moneda === "USD" ? "Ej: 12" : "Ej: 35000"}
                   className={inputClass}
-                  min={form.moneda === "USD" ? 0.01 : 1}
-                  step={form.moneda === "USD" ? "0.01" : "1"}
-                  required />
+                  decimals={form.moneda === "USD"}
+                  required
+                />
                 {form.moneda === "USD" && costoInputNum > 0 && tipoCambioNum > 0 && (
                   <p className="mt-1 text-xs text-gray-400">
                     ≈ {formatGs(costoUnitarioPYG)} por unidad
@@ -675,9 +684,14 @@ export default function NuevaCompraPage() {
               <label className={labelClass}>
                 Precio de venta (Gs.) <span className="text-red-500">*</span>
               </label>
-              <input type="number" name="precio_venta" value={form.precio_venta}
-                onChange={handleChange} placeholder="Ej: 75000"
-                className={inputClass} min={1} required />
+              <MontoInput
+                value={form.precio_venta}
+                onChange={(n) => setForm((prev) => ({ ...prev, precio_venta: String(n) }))}
+                placeholder="Ej: 75000"
+                className={inputClass}
+                decimals={false}
+                required
+              />
               <p className="mt-1 text-xs text-gray-400">
                 Se actualizará en inventario al guardar la compra.
               </p>

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createGasto, updateGasto } from "@/lib/gastos/actions";
+import MontoInput from "@/components/ui/MontoInput";
 import type { Gasto, GastoInput } from "@/lib/gastos/actions";
 
 const fLabel = "block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1";
@@ -33,10 +34,7 @@ export default function GastoForm({ gasto, onSuccess }: Props) {
     const { name, value, type } = e.target;
     if (type === "checkbox") {
       setForm((prev) => ({ ...prev, recurrente: (e.target as HTMLInputElement).checked }));
-    } else if (name === "monto") {
-      const n = parseFloat(value) || 0;
-      setForm((prev) => ({ ...prev, monto: n }));
-    } else {
+    } else if (name !== "monto") {
       setForm((prev) => ({ ...prev, [name]: value }));
     }
   }
@@ -106,14 +104,10 @@ export default function GastoForm({ gasto, onSuccess }: Props) {
           </div>
           <div>
             <label className={fLabel}>Monto (Gs.) *</label>
-            <input
-              type="number"
-              name="monto"
-              value={form.monto || ""}
-              onChange={handleChange}
+            <MontoInput
+              value={form.monto}
+              onChange={(n) => setForm((prev) => ({ ...prev, monto: n }))}
               placeholder="0"
-              min={0.01}
-              step={0.01}
               className={fInput}
               required
             />

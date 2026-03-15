@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import MontoInput from "@/components/ui/MontoInput";
 import { saveVenta } from "@/lib/ventas/storage";
 import { getProductos } from "@/lib/inventario/storage";
 import type { TipoIvaVenta, TipoVenta, MonedaVenta, LineaVenta } from "@/lib/ventas/types";
@@ -321,13 +322,12 @@ export default function NuevaVentaPage() {
 
             <div className={moneda === "USD" ? "" : "opacity-0 pointer-events-none"}>
               <label className={labelClass}>Tipo de cambio (USD → Gs.)</label>
-              <input
-                type="number"
+              <MontoInput
                 value={tipoCambio}
-                onChange={(e) => setTipoCambio(e.target.value)}
+                onChange={(n) => setTipoCambio(String(n))}
                 placeholder="Ej: 7500"
                 className={inputClass}
-                min={1} step={1}
+                decimals={false}
                 disabled={monedaBloqueada}
               />
             </div>
@@ -466,15 +466,13 @@ export default function NuevaVentaPage() {
               <label className={labelClass}>
                 Precio ({moneda === "USD" ? "USD" : "Gs."})
               </label>
-              <input
-                type="number"
+              <MontoInput
                 value={lineaPrecio}
-                onChange={(e) => { setErrorLinea(null); setLineaPrecio(e.target.value); }}
+                onChange={(n) => { setErrorLinea(null); setLineaPrecio(String(n)); }}
                 onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); handleAgregarLinea(); }}}
                 placeholder="Precio"
                 className={inputClass}
-                min={1}
-                step={moneda === "USD" ? "0.01" : "1"}
+                decimals={moneda === "USD"}
               />
               {moneda === "USD" && precioInput > 0 && tipoCambioNum > 0 && (
                 <p className="mt-1 text-xs text-gray-400">≈ {formatGs(precioGs)}</p>

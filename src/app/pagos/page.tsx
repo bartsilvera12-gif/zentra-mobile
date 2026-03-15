@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { getFacturas } from "@/lib/gestion-clientes/storage";
+import MontoInput from "@/components/ui/MontoInput";
 import { getClientes } from "@/lib/clientes/storage";
 import { savePago } from "@/lib/facturacion/storage";
 import type { Factura } from "@/lib/gestion-clientes/types";
@@ -126,7 +127,12 @@ export default function PagosPage() {
             <form onSubmit={handleRegistrarPago} className="space-y-4">
               <div>
                 <label className={labelClass}>Monto</label>
-                <input type="number" value={formPago.monto} onChange={(e) => setFormPago((p) => ({ ...p, monto: e.target.value }))} className={inputClass} min={0} step={0.01} required />
+                <MontoInput
+                  value={formPago.monto}
+                  onChange={(n) => setFormPago((p) => ({ ...p, monto: String(n) }))}
+                  className={inputClass}
+                  required
+                />
               </div>
               <div>
                 <label className={labelClass}>Fecha pago</label>
