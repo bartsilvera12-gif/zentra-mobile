@@ -251,6 +251,9 @@ function ModalFacturacion({
                         {item.badge_estado === "emitida" ? "Emitida" : item.badge_estado === "proyectada" ? "Proyectada" : item.badge_estado === "vencida" ? "Vencida" : "Pendiente"}
                       </span>
                     </div>
+                    <div className="shrink-0 text-sm font-semibold text-gray-700 tabular-nums">
+                      {data.suscripcion.moneda === "USD" ? "USD" : "Gs."} {data.suscripcion.precio.toLocaleString("es-PY")}
+                    </div>
                     <div className="shrink-0">
                       {item.estado === "proyectada" && (
                         <button
