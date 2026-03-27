@@ -126,6 +126,9 @@ export async function saveChatChannel(input: ChatChannelFormInput): Promise<void
   const pid = input.meta_phone_number_id.trim();
   if (!pid) throw new Error("Phone Number ID es obligatorio");
 
+  const existingId =
+    typeof input.id === "string" && input.id.trim().length > 0 ? input.id.trim() : undefined;
+
   const config: Record<string, unknown> = {
     phone_number_id: pid,
   };
@@ -144,7 +147,7 @@ export async function saveChatChannel(input: ChatChannelFormInput): Promise<void
 
   const tokenPatch = input.whatsapp_access_token?.trim();
 
-  if (input.id) {
+  if (existingId) {
     const updatePayload: Record<string, unknown> = {
       ...base,
       updated_at: new Date().toISOString(),
@@ -152,13 +155,18 @@ export async function saveChatChannel(input: ChatChannelFormInput): Promise<void
     if (tokenPatch) {
       updatePayload.whatsapp_access_token = tokenPatch;
     }
-    const { error } = await supabase
+    const { data: updated, error } = await supabase
       .from("chat_channels")
       .update(updatePayload)
-      .eq("id", input.id)
-      .eq("empresa_id", empresa_id);
+      .eq("id", existingId)
+      .eq("empresa_id", empresa_id)
+      .select("id")
+      .maybeSingle();
 
     if (error) throw new Error(error.message);
+    if (!updated) {
+      throw new Error("No se pudo actualizar el canal (¿pertenece a tu empresa?).");
+    }
     return;
   }
 
