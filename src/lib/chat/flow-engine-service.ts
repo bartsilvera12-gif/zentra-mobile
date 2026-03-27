@@ -83,6 +83,19 @@ export type ProcessImageReplyParams = {
   rawPayload: Record<string, unknown>;
 };
 
+export type EnsureInboundPresentParams = {
+  conversationId: string;
+  empresaId: string;
+};
+
+export type EnsureInboundPresentResult = {
+  ok: boolean;
+  status: string;
+  /** Si true, acabamos de enviar la UI del nodo actual; no interpretar el mismo mensaje de texto como captura */
+  presentedNow: boolean;
+  error?: string;
+};
+
 export type FlowEngineContext = {
   supabase: SupabaseAdmin;
 };
@@ -266,6 +279,140 @@ export function createFlowEngine(ctx: FlowEngineContext) {
     }
     const arr = new Uint8Array(await binRes.arrayBuffer());
     return { bytes: arr, mimeType: metaJson.mime_type || params.mimeTypeHint || "image/jpeg" };
+  }
+
+  async function isFlowDefinitionActive(empresaId: string, flowCode: string): Promise<boolean> {
+    const { data, error } = await supabase
+      .from("chat_flows")
+      .select("activo")
+      .eq("empresa_id", empresaId)
+      .eq("flow_code", flowCode)
+      .maybeSingle();
+    if (error) {
+      console.warn("[flow-engine] isFlowDefinitionActive:", error.message);
+      return true;
+    }
+    if (!data) return true;
+    return (data as { activo?: boolean }).activo !== false;
+  }
+
+  async function wasNodeSentForCurrentStep(
+    conversationId: string,
+    flowCode: string,
+    nodeCode: string
+  ): Promise<boolean> {
+    const { data, error } = await supabase
+      .from("chat_flow_events")
+      .select("id")
+      .eq("conversation_id", conversationId)
+      .eq("flow_code", flowCode)
+      .eq("node_code", nodeCode)
+      .eq("event_type", "node_sent")
+      .limit(1)
+      .maybeSingle();
+    if (error) {
+      console.error("[flow-engine] wasNodeSentForCurrentStep:", error.message);
+      return false;
+    }
+    return Boolean((data as { id?: string } | null)?.id);
+  }
+
+  /**
+   * Tras un mensaje entrante del cliente: si el nodo actual aún no se envió (botones/texto/media, etc.),
+   * ejecuta sendCurrentFlowNode. Sin esto, processTextReply ignora textos cuando el nodo no es captura.
+   */
+  async function ensureCurrentNodePresentedAfterInbound(
+    params: EnsureInboundPresentParams
+  ): Promise<EnsureInboundPresentResult> {
+    const logPrefix = "[flow-engine][inbound-present]";
+    try {
+      const state = await getConversationFlowState(params.conversationId);
+      if (!state || state.empresa_id !== params.empresaId) {
+        console.info(logPrefix, "skip: conversation_not_found", {
+          conversationId: params.conversationId,
+        });
+        return { ok: true, status: "conversation_not_found", presentedNow: false };
+      }
+      if (state.flow_status !== "bot" || state.human_taken_over) {
+        console.info(logPrefix, "skip: not_bot_mode", {
+          conversationId: state.id,
+          flow_status: state.flow_status,
+          human_taken_over: state.human_taken_over,
+        });
+        return { ok: true, status: "skipped_not_bot_mode", presentedNow: false };
+      }
+      if (!state.flow_code?.trim() || !state.flow_current_node?.trim()) {
+        console.info(logPrefix, "skip: missing_flow_pointer", {
+          conversationId: state.id,
+          flow_code: state.flow_code,
+          flow_current_node: state.flow_current_node,
+        });
+        return { ok: true, status: "missing_flow_state", presentedNow: false };
+      }
+
+      const flowCode = state.flow_code as string;
+      const nodeCode = state.flow_current_node as string;
+
+      const flowActive = await isFlowDefinitionActive(state.empresa_id, flowCode);
+      if (!flowActive) {
+        console.warn(logPrefix, "skip: flow_inactive_in_catalog", { flowCode, conversationId: state.id });
+        await insertFlowEvent({
+          empresaId: state.empresa_id,
+          conversationId: state.id,
+          flowCode,
+          nodeCode,
+          eventType: "automation_skipped_flow_inactive",
+          payload: {},
+        });
+        return { ok: true, status: "flow_inactive", presentedNow: false };
+      }
+
+      const already = await wasNodeSentForCurrentStep(state.id, flowCode, nodeCode);
+      if (already) {
+        console.info(logPrefix, "skip: node_already_sent", {
+          conversationId: state.id,
+          flowCode,
+          nodeCode,
+        });
+        return { ok: true, status: "already_presented", presentedNow: false };
+      }
+
+      console.info(logPrefix, "trigger: sending_current_node", {
+        conversationId: state.id,
+        empresaId: state.empresa_id,
+        flowCode,
+        nodeCode,
+      });
+
+      const sent = await sendCurrentFlowNode({ conversationId: state.id });
+      if (!sent.ok) {
+        console.error(logPrefix, "send_failed", { conversationId: state.id, error: sent.error });
+        await insertFlowEvent({
+          empresaId: state.empresa_id,
+          conversationId: state.id,
+          flowCode,
+          nodeCode,
+          eventType: "present_failed",
+          payload: { error: sent.error ?? "unknown" },
+        });
+        return {
+          ok: false,
+          status: "send_failed",
+          presentedNow: false,
+          error: sent.error,
+        };
+      }
+
+      console.info(logPrefix, "ok: node_presented", {
+        conversationId: state.id,
+        nodeCode: sent.nodeCode ?? nodeCode,
+      });
+      return { ok: true, status: "presented", presentedNow: true };
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      console.error(logPrefix, "exception", msg);
+      return { ok: false, status: "exception", presentedNow: false, error: msg };
+    }
   }
 
   async function getNode(
@@ -1039,6 +1186,7 @@ export function createFlowEngine(ctx: FlowEngineContext) {
     processImageReply,
     advanceConversationToNode,
     sendCurrentFlowNode,
+    ensureCurrentNodePresentedAfterInbound,
   };
 }
 
@@ -1082,4 +1230,11 @@ export async function sendCurrentFlowNode(
   params: SendCurrentNodeParams
 ) {
   return createFlowEngine({ supabase }).sendCurrentFlowNode(params);
+}
+
+export async function ensureCurrentNodePresentedAfterInbound(
+  supabase: SupabaseAdmin,
+  params: EnsureInboundPresentParams
+): Promise<EnsureInboundPresentResult> {
+  return createFlowEngine({ supabase }).ensureCurrentNodePresentedAfterInbound(params);
 }

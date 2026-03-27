@@ -295,6 +295,19 @@ export async function processInboundWebhookValue(
 
       const conversationId = existingConv.id as string;
 
+      const logW = "[webhook/whatsapp][inbound]";
+      console.info(logW, "message_received", {
+        waMessageId: waMid,
+        fromDigits: from,
+        phoneNumberId,
+        channelId,
+        messageType: (msg as { type?: string }).type ?? "unknown",
+        conversationId,
+        flow_code: (existingConv as { flow_code?: string | null }).flow_code ?? null,
+        flow_current_node: (existingConv as { flow_current_node?: string | null }).flow_current_node ?? null,
+        flow_status: (existingConv as { flow_status?: string | null }).flow_status ?? null,
+      });
+
       // ── Integración CRM Funnel (WhatsApp) ─────────────────────────────
       // Si el contacto no tiene prospecto, crear uno en crm_prospectos y enlazarlo a chat_contacts.
       const contactCrmProspectoId =
@@ -349,6 +362,12 @@ export async function processInboundWebhookValue(
         continue;
       }
 
+      console.info(logW, "inbound_message_persisted", {
+        conversationId,
+        waMessageId: waMid,
+        message_type,
+      });
+
       const prevStatus = existingConv.status as string;
       const nextStatus = prevStatus === "cerrado" ? "pendiente" : prevStatus;
 
@@ -371,9 +390,32 @@ export async function processInboundWebhookValue(
         })
         .eq("id", conversationId);
 
+      console.info(logW, "conversation_updated_unread", { conversationId, nextStatus });
+
+      /**
+       * 1) Presentar nodo actual si aún no se envió (botones/texto/media, etc.).
+       *    Sin esto, processTextReply solo reacciona a nodos de captura y el primer mensaje no dispara el flujo.
+       * 2) Luego procesar respuesta (botón / texto / imagen).
+       * Solo mensajes entrantes del cliente entran aquí (from_me: false); salientes del ERP no pasan por este bloque.
+       */
+      const presentResult = await flowEngine.ensureCurrentNodePresentedAfterInbound({
+        conversationId,
+        empresaId,
+      });
+      console.info(logW, "flow_present_step", {
+        conversationId,
+        ok: presentResult.ok,
+        status: presentResult.status,
+        presentedNow: presentResult.presentedNow,
+        error: presentResult.error ?? null,
+      });
+      if (!presentResult.ok && presentResult.error) {
+        errors.push(`Flow present: ${presentResult.error}`);
+      }
+
       const metaButtonId = extractMetaButtonId(msg);
       if (metaButtonId) {
-        console.info("[webhook] interactive reply", {
+        console.info(logW, "flow_trigger: interactive_reply", {
           conversationId,
           empresaId,
           metaButtonId,
@@ -387,7 +429,7 @@ export async function processInboundWebhookValue(
           metaButtonId,
           rawPayload: msg as unknown as Record<string, unknown>,
         });
-        console.info("[webhook] interactive result", {
+        console.info(logW, "flow_result: interactive", {
           conversationId,
           metaButtonId,
           status: interactiveResult.status,
@@ -399,19 +441,27 @@ export async function processInboundWebhookValue(
           );
         }
       } else if (message_type === "text") {
-        const textResult = await flowEngine.processTextReply({
-          conversationId,
-          empresaId,
-          textValue: content,
-          rawPayload: msg as unknown as Record<string, unknown>,
-        });
-        console.info("[webhook] text flow result", {
-          conversationId,
-          status: textResult.status,
-          nextNodeCode: textResult.nextNodeCode ?? null,
-        });
-        if (!textResult.ok) {
-          errors.push(`Flow text: ${textResult.error ?? textResult.status}`);
+        if (presentResult.presentedNow) {
+          console.info(logW, "skip_text_flow_handler", {
+            conversationId,
+            reason:
+              "Se acaba de enviar la UI del nodo actual; el mismo mensaje no se interpreta como captura",
+          });
+        } else {
+          const textResult = await flowEngine.processTextReply({
+            conversationId,
+            empresaId,
+            textValue: content,
+            rawPayload: msg as unknown as Record<string, unknown>,
+          });
+          console.info(logW, "flow_result: text", {
+            conversationId,
+            status: textResult.status,
+            nextNodeCode: textResult.nextNodeCode ?? null,
+          });
+          if (!textResult.ok) {
+            errors.push(`Flow text: ${textResult.error ?? textResult.status}`);
+          }
         }
       } else if (message_type === "image") {
         const mediaId = msg.image?.id?.trim() || "";
@@ -426,7 +476,7 @@ export async function processInboundWebhookValue(
             caption: msg.image?.caption ?? null,
             rawPayload: msg as unknown as Record<string, unknown>,
           });
-          console.info("[webhook] image flow result", {
+          console.info(logW, "flow_result: image", {
             conversationId,
             mediaId,
             status: imageResult.status,
@@ -436,6 +486,11 @@ export async function processInboundWebhookValue(
             errors.push(`Flow image: ${imageResult.error ?? imageResult.status}`);
           }
         }
+      } else {
+        console.info(logW, "no_typed_flow_handler", {
+          conversationId,
+          message_type,
+        });
       }
 
       processed += 1;

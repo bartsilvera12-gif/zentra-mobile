@@ -4,6 +4,9 @@ import type { WebhookProvisionEnv } from "@/lib/chat/channel-provision";
 import { verifyMetaSignature } from "@/lib/chat/meta-signature";
 import { processWhatsAppWebhookBody } from "@/lib/chat/whatsapp-webhook-service";
 
+/** Evita caché en Vercel/App Router: Meta debe recibir siempre el challenge en vivo. */
+export const dynamic = "force-dynamic";
+
 function getSupabaseAdmin() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -12,20 +15,56 @@ function getSupabaseAdmin() {
 }
 
 /**
- * GET — verificación del webhook Meta (hub.challenge)
+ * GET — verificación del webhook Meta (WhatsApp Cloud API).
+ * Meta envía: hub.mode, hub.verify_token, hub.challenge (query string).
  */
 export async function GET(request: NextRequest) {
   const url = new URL(request.url);
-  const mode = url.searchParams.get("hub.mode");
-  const token = url.searchParams.get("hub.verify_token");
+  const mode = url.searchParams.get("hub.mode")?.trim() ?? "";
+  const token = url.searchParams.get("hub.verify_token")?.trim() ?? "";
   const challenge = url.searchParams.get("hub.challenge");
-  const verify = process.env.WHATSAPP_VERIFY_TOKEN;
+  const verifyEnv = process.env.WHATSAPP_VERIFY_TOKEN?.trim() ?? "";
 
-  if (mode === "subscribe" && verify && token === verify && challenge) {
-    return new NextResponse(challenge, { status: 200 });
+  const logPrefix = "[webhooks/whatsapp][GET verify]";
+  console.info(logPrefix, {
+    mode: mode || "(vacío)",
+    hasChallenge: Boolean(challenge),
+    challengeLength: challenge?.length ?? 0,
+    hasVerifyEnv: Boolean(verifyEnv),
+    tokenMatch: Boolean(verifyEnv && token && verifyEnv === token),
+  });
+
+  if (mode !== "subscribe") {
+    console.warn(logPrefix, "rechazado: hub.mode no es subscribe");
+    return new NextResponse("Forbidden", { status: 403 });
   }
 
-  return new NextResponse("Forbidden", { status: 403 });
+  if (!verifyEnv) {
+    console.error(
+      logPrefix,
+      "rechazado: falta WHATSAPP_VERIFY_TOKEN en el servidor (Vercel → Environment Variables)"
+    );
+    return new NextResponse("Forbidden", { status: 403 });
+  }
+
+  if (!token || token !== verifyEnv) {
+    console.warn(logPrefix, "rechazado: hub.verify_token no coincide con WHATSAPP_VERIFY_TOKEN");
+    return new NextResponse("Forbidden", { status: 403 });
+  }
+
+  if (challenge === null || challenge === "") {
+    console.warn(logPrefix, "rechazado: falta hub.challenge");
+    return new NextResponse("Forbidden", { status: 403 });
+  }
+
+  console.info(logPrefix, "OK: respondiendo hub.challenge (200 text/plain)");
+  return new NextResponse(challenge, {
+    status: 200,
+    headers: {
+      "Content-Type": "text/plain; charset=utf-8",
+      "Cache-Control": "no-store, max-age=0",
+    },
+  });
 }
 
 /**
@@ -57,6 +96,19 @@ export async function POST(request: NextRequest) {
       expectedPhoneNumberId: process.env.WHATSAPP_PHONE_NUMBER_ID?.trim(),
     };
     const result = await processWhatsAppWebhookBody(supabase, body, provisionEnv);
+
+    if (result.errors.length > 0) {
+      console.warn("[webhooks/whatsapp][POST] resultado con errores/advertencias", {
+        processed: result.processed,
+        skipped: result.skipped,
+        errors: result.errors,
+      });
+    } else if (result.processed > 0) {
+      console.info("[webhooks/whatsapp][POST] ok", {
+        processed: result.processed,
+        skipped: result.skipped,
+      });
+    }
 
     return NextResponse.json({
       ok: result.ok,
