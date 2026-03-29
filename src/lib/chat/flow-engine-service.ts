@@ -706,7 +706,8 @@ export function createFlowEngine(ctx: FlowEngineContext) {
   async function autoChainOutboundIfApplicable(
     state: ConversationFlowState,
     node: FlowNode,
-    currentHop: number
+    currentHop: number,
+    mergeFlowVars?: Record<string, string>
   ): Promise<{ ok: boolean; nodeCode?: string; error?: string } | null> {
     const canAutoAdvance =
       Boolean(node.next_node_code) &&
@@ -720,6 +721,7 @@ export function createFlowEngine(ctx: FlowEngineContext) {
       nextNodeCode: node.next_node_code,
       node_type: node.node_type,
       save_as_field: node.save_as_field ?? null,
+      carriesMergeFlowVars: Boolean(mergeFlowVars && Object.keys(mergeFlowVars).length),
     });
 
     const adv = await advanceConversationToNode({
@@ -742,7 +744,11 @@ export function createFlowEngine(ctx: FlowEngineContext) {
         reason: "auto_chain_after_outbound",
       },
     });
-    return sendCurrentFlowNode({ conversationId: state.id, __autoHop: currentHop + 1 });
+    return sendCurrentFlowNode({
+      conversationId: state.id,
+      __autoHop: currentHop + 1,
+      mergeFlowVars,
+    });
   }
 
   async function sendCurrentFlowNode(
@@ -873,7 +879,12 @@ export function createFlowEngine(ctx: FlowEngineContext) {
         payload: { ...basePayload, legacy: true },
       });
 
-      const chainedLegacy = await autoChainOutboundIfApplicable(state, node, currentHop);
+      const chainedLegacy = await autoChainOutboundIfApplicable(
+        state,
+        node,
+        currentHop,
+        params.mergeFlowVars
+      );
       if (chainedLegacy) return chainedLegacy;
       return { ok: true, nodeCode: node.node_code };
     }
@@ -977,7 +988,12 @@ export function createFlowEngine(ctx: FlowEngineContext) {
       payload: { ...basePayload, blocks: blocks.length },
     });
 
-    const chained = await autoChainOutboundIfApplicable(state, node, currentHop);
+    const chained = await autoChainOutboundIfApplicable(
+      state,
+      node,
+      currentHop,
+      params.mergeFlowVars
+    );
     if (chained) return chained;
     return { ok: true, nodeCode: node.node_code };
   }
@@ -1533,51 +1549,77 @@ export function createFlowEngine(ctx: FlowEngineContext) {
         error: sorteoOrderResult.message,
       };
     }
-    let mergeFlowVarsAfterSorteo: Record<string, string> | undefined;
-    if (!sorteoOrderResult.skipped) {
-      mergeFlowVarsAfterSorteo = buildSorteoOrderFlowVarOverrides(sorteoOrderResult);
-      const contextRows = buildChatFlowDataUpsertsForSorteoOrder(
-        state.empresa_id,
-        state.id,
-        state.flow_code as string,
-        sorteoOrderResult
-      );
-      const { error: sorteoCtxErr } = await supabase
-        .from("chat_flow_data")
-        .upsert(contextRows, { onConflict: "conversation_id,flow_code,field_name" });
-      if (sorteoCtxErr) {
-        console.error(FLOW_SORTEO_LOG, "sorteo_order_context_upsert_failed", {
-          conversationId: state.id,
-          flowCode: state.flow_code,
-          message: sorteoCtxErr.message,
+    if (sorteoOrderResult.skipped) {
+      const detail =
+        sorteoOrderResult.reason === "flow_sin_sorteo_id"
+          ? "No pudimos registrar la participación: el flujo no está vinculado a un sorteo. Contactá al equipo."
+          : "No pudimos registrar la participación: faltan datos del flujo (nombre, cantidad u opción). Volvé a elegir tu opción y completá todos los pasos antes de enviar el comprobante, o escribí REINICIAR para empezar de nuevo.";
+      const send = await sendWhatsAppText({
+        toDigits: sendCtx.toDigits,
+        phoneNumberId: sendCtx.phoneNumberId,
+        accessToken: sendCtx.token,
+        text: detail,
+      });
+      if (send.ok) {
+        await persistOutgoingMessage({
+          conversation: state,
+          content: detail,
+          messageType: "text",
+          waMessageId: send.waMessageId,
+          raw: send.raw,
+          senderType: "system",
+          automationSource: "flow_engine",
         });
-        return {
-          ok: false,
-          status: "sorteo_context_persist_failed",
-          error: sorteoCtxErr.message,
-        };
       }
-
-      await insertFlowEvent({
-        empresaId: state.empresa_id,
+      console.warn(FLOW_SORTEO_LOG, "processImageReply_sorteo_skipped_no_advance", {
         conversationId: state.id,
         flowCode: state.flow_code,
-        nodeCode: currentNode.node_code,
-        eventType: "sorteo_order_ensured",
-        payload: {
-          idempotent: sorteoOrderResult.idempotent,
-          entrada_id: sorteoOrderResult.entradaId,
-          numero_orden: sorteoOrderResult.numeroOrden,
-          cantidad_boletos: sorteoOrderResult.cantidadBoletos,
-          monto_total: sorteoOrderResult.montoTotal,
-          precio_fuente: sorteoOrderResult.precioFuente,
-          promo_nombre: sorteoOrderResult.promoNombre,
-          sorteo_id: sorteoOrderResult.sorteoId,
-          sorteo_nombre: sorteoOrderResult.sorteoNombre,
-          cupones: sorteoOrderResult.cupones.map((c) => c.numero_cupon),
-        },
+        reason: sorteoOrderResult.reason,
       });
+      return { ok: true, status: "sorteo_order_skipped" };
     }
+    const mergeFlowVarsAfterSorteo = buildSorteoOrderFlowVarOverrides(sorteoOrderResult);
+    const contextRows = buildChatFlowDataUpsertsForSorteoOrder(
+      state.empresa_id,
+      state.id,
+      state.flow_code as string,
+      sorteoOrderResult
+    );
+    const { error: sorteoCtxErr } = await supabase
+      .from("chat_flow_data")
+      .upsert(contextRows, { onConflict: "conversation_id,flow_code,field_name" });
+    if (sorteoCtxErr) {
+      console.error(FLOW_SORTEO_LOG, "sorteo_order_context_upsert_failed", {
+        conversationId: state.id,
+        flowCode: state.flow_code,
+        message: sorteoCtxErr.message,
+      });
+      return {
+        ok: false,
+        status: "sorteo_context_persist_failed",
+        error: sorteoCtxErr.message,
+      };
+    }
+
+    await insertFlowEvent({
+      empresaId: state.empresa_id,
+      conversationId: state.id,
+      flowCode: state.flow_code,
+      nodeCode: currentNode.node_code,
+      eventType: "sorteo_order_ensured",
+      payload: {
+        idempotent: sorteoOrderResult.idempotent,
+        entrada_id: sorteoOrderResult.entradaId,
+        numero_orden: sorteoOrderResult.numeroOrden,
+        cantidad_boletos: sorteoOrderResult.cantidadBoletos,
+        monto_total: sorteoOrderResult.montoTotal,
+        precio_fuente: sorteoOrderResult.precioFuente,
+        promo_nombre: sorteoOrderResult.promoNombre,
+        sorteo_id: sorteoOrderResult.sorteoId,
+        sorteo_nombre: sorteoOrderResult.sorteoNombre,
+        cupones: sorteoOrderResult.cupones.map((c) => c.numero_cupon),
+      },
+    });
 
     if (!currentNode.next_node_code) {
       return { ok: true, status: "captured_no_next_node" };
