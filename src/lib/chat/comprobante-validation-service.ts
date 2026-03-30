@@ -19,6 +19,7 @@ import {
   SORTEO_COMPROBANTE_VALIDACION_ID_FIELD,
 } from "@/lib/chat/comprobante-validation-types";
 import { runGoogleVisionDocumentOcr } from "@/lib/chat/comprobante-vision-ocr";
+import { validateReceiptAmountAgainstFlow } from "@/lib/chat/comprobante-monto-flow-validation";
 import {
   SORTEO_COMPROBANTE_MEDIA_ID_FIELD,
   SORTEO_COMPROBANTE_URL_FIELD,
@@ -252,11 +253,21 @@ async function insertValidationRow(
     ocr_hora: string | null;
     ocr_banco: string | null;
     ocr_fingerprint: string | null;
+    monto_validacion_esperado_gs?: number | null;
+    monto_validacion_ocr_gs?: number | null;
+    monto_validacion_diferencia_gs?: number | null;
+    monto_validacion_status?: string | null;
   }
 ): Promise<string> {
   const { data, error } = await supabase
     .from("chat_comprobante_validaciones")
-    .insert(input)
+    .insert({
+      ...input,
+      monto_validacion_esperado_gs: input.monto_validacion_esperado_gs ?? null,
+      monto_validacion_ocr_gs: input.monto_validacion_ocr_gs ?? null,
+      monto_validacion_diferencia_gs: input.monto_validacion_diferencia_gs ?? null,
+      monto_validacion_status: input.monto_validacion_status ?? null,
+    })
     .select("id")
     .single();
   if (error) throw new Error(error.message);
@@ -457,6 +468,15 @@ export async function runComprobanteValidationPipeline(ctx: PipelineCtx): Promis
   }
 
   const extracted = extractReceiptFieldsFromOcr(fullText);
+
+  const montoFlowResult = await validateReceiptAmountAgainstFlow(supabase, {
+    flowSessionId: sid,
+    validar_monto_vs_flujo: settings.validar_monto_vs_flujo,
+    monto_tolerancia_absoluta_gs: settings.monto_tolerancia_absoluta_gs,
+    monto_fields_prioridad: settings.monto_fields_prioridad,
+    extractedMontoString: extracted.monto,
+  });
+
   const fp =
     settings.ocr_fields.texto_completo.use_duplicate_detection && extracted.texto_completo
       ? ocrFingerprint(extracted.texto_completo)
@@ -509,6 +529,10 @@ export async function runComprobanteValidationPipeline(ctx: PipelineCtx): Promis
   } else if (missingWorst === "revision_manual") {
     estado = "revision_manual";
     motivo = `campo_faltante_revision:${missingParts.join(",")}`;
+  } else if (montoFlowResult.apply && !montoFlowResult.ok) {
+    estado = "monto_incoherente";
+    const a = montoFlowResult.audit;
+    motivo = `monto_vs_flujo:esperado=${a.monto_validacion_esperado_gs};ocr=${a.monto_validacion_ocr_gs};diff=${a.monto_validacion_diferencia_gs}`;
   } else if (sospecha) {
     estado = "revision_manual";
     motivo = "ocr_texto_corto_sospecha";
@@ -532,6 +556,10 @@ export async function runComprobanteValidationPipeline(ctx: PipelineCtx): Promis
     ocr_hora: extracted.hora || null,
     ocr_banco: extracted.banco || null,
     ocr_fingerprint: fp,
+    monto_validacion_esperado_gs: montoFlowResult.audit.monto_validacion_esperado_gs,
+    monto_validacion_ocr_gs: montoFlowResult.audit.monto_validacion_ocr_gs,
+    monto_validacion_diferencia_gs: montoFlowResult.audit.monto_validacion_diferencia_gs,
+    monto_validacion_status: montoFlowResult.audit.monto_validacion_status,
   });
 
   const flowUpserts = baseUpserts([
@@ -556,6 +584,27 @@ export async function runComprobanteValidationPipeline(ctx: PipelineCtx): Promis
       advance: false,
       sendInteractive: {
         body: settings.messages.ocr_duplicado,
+        buttons: [
+          { id: COMPROBANTE_BUTTON_IDS.enviar_otro, title: settings.messages.boton_otro_titulo.slice(0, 20) },
+          {
+            id: COMPROBANTE_BUTTON_IDS.hablar_asesor,
+            title: settings.messages.boton_asesor_titulo.slice(0, 20),
+          },
+        ],
+      },
+    };
+  }
+
+  if (estado === "monto_incoherente") {
+    return {
+      kind: "resolved",
+      validationId,
+      estado,
+      motivo,
+      flowUpserts,
+      advance: false,
+      sendInteractive: {
+        body: settings.messages.monto_incoherente,
         buttons: [
           { id: COMPROBANTE_BUTTON_IDS.enviar_otro, title: settings.messages.boton_otro_titulo.slice(0, 20) },
           {
@@ -637,6 +686,7 @@ export async function mensajeClienteComprobanteNoValido(
   if (estado === "revision_manual") return s.messages.revision_manual;
   if (estado === "duplicado_hash") return s.messages.hash_duplicado;
   if (estado === "duplicado_ocr") return s.messages.ocr_duplicado;
+  if (estado === "monto_incoherente") return s.messages.monto_incoherente;
   if (estado === "ocr_error") return s.messages.ocr_insuficiente;
   return DEFAULT_MSG_COMPROBANTE_NO_CIERRA;
 }

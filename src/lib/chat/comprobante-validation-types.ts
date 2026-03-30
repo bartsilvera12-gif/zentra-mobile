@@ -10,7 +10,8 @@ export type ComprobanteEstadoValidacion =
   | "duplicado_hash"
   | "duplicado_ocr"
   | "revision_manual"
-  | "ocr_error";
+  | "ocr_error"
+  | "monto_incoherente";
 
 export interface OcrFieldRule {
   analyzed: boolean;
@@ -24,6 +25,8 @@ export interface ComprobanteValidationMessages {
   ocr_duplicado: string;
   revision_manual: string;
   ocr_insuficiente: string;
+  /** Monto del comprobante no coincide con el elegido en el flujo (validación opt-in). */
+  monto_incoherente: string;
   boton_otro_titulo: string;
   boton_asesor_titulo: string;
 }
@@ -31,6 +34,15 @@ export interface ComprobanteValidationMessages {
 export interface ComprobanteValidationSettings {
   /** Maestro: si false, no se aplica capa (flujo actual sin cambios). */
   enabled: boolean;
+  /**
+   * Si true, tras OCR compara monto detectado vs monto en chat_flow_data del flow_session_id activo.
+   * Por defecto false: no altera el comportamiento existente.
+   */
+  validar_monto_vs_flujo: boolean;
+  /** Tolerancia en guaraníes: abs(ocr - esperado) <= tolerancia se considera válido. */
+  monto_tolerancia_absoluta_gs: number;
+  /** Orden de lectura de field_name en chat_flow_data para el monto esperado. */
+  monto_fields_prioridad: string[];
   deteccion_duplicados_hash: boolean;
   ocr_obligatorio: boolean;
   bloquear_por_hash_duplicado: boolean;
@@ -72,6 +84,8 @@ export const DEFAULT_COMPROBANTE_VALIDATION_MESSAGES: ComprobanteValidationMessa
     "Recibimos tu comprobante. Nuestro equipo lo está revisando; en breve te confirmamos. Podés seguir con los datos si el flujo te lo pide.",
   ocr_insuficiente:
     "No pudimos leer bien el comprobante. Enviá una foto más clara o hablá con un asesor.",
+  monto_incoherente:
+    "El comprobante recibido no coincide con el monto seleccionado. Podés reenviar el comprobante o hablar con un asesor.",
   boton_otro_titulo: "Otro comprobante",
   boton_asesor_titulo: "Hablar con asesor",
 };
@@ -88,6 +102,9 @@ function defaultOcrFieldRule(partial: Partial<OcrFieldRule> = {}): OcrFieldRule 
 export function defaultComprobanteValidationSettings(): ComprobanteValidationSettings {
   return {
     enabled: false,
+    validar_monto_vs_flujo: false,
+    monto_tolerancia_absoluta_gs: 0,
+    monto_fields_prioridad: ["monto", "monto_compra", "sorteo_monto_opcion"],
     deteccion_duplicados_hash: true,
     ocr_obligatorio: true,
     bloquear_por_hash_duplicado: true,
@@ -172,6 +189,10 @@ export function parseComprobanteValidationConfig(config: unknown): ComprobanteVa
       typeof messages.boton_asesor_titulo === "string" && messages.boton_asesor_titulo.trim()
         ? messages.boton_asesor_titulo.trim().slice(0, 20)
         : base.messages.boton_asesor_titulo,
+    monto_incoherente:
+      typeof messages.monto_incoherente === "string" && messages.monto_incoherente.trim()
+        ? messages.monto_incoherente.trim()
+        : base.messages.monto_incoherente,
   };
 
   const ocrFieldsRaw = r.ocr_fields;
@@ -186,8 +207,29 @@ export function parseComprobanteValidationConfig(config: unknown): ComprobanteVa
   }
 
   const fallo = r.ocr_fallo_comportamiento;
+
+  let montoFields: string[] = base.monto_fields_prioridad;
+  const mfp = r.monto_fields_prioridad;
+  if (Array.isArray(mfp)) {
+    const cleaned = mfp
+      .map((x) => (typeof x === "string" ? x.trim() : ""))
+      .filter((x) => x.length > 0 && x.length <= 64)
+      .slice(0, 20);
+    if (cleaned.length > 0) montoFields = cleaned;
+    else montoFields = [...base.monto_fields_prioridad];
+  }
+
+  const tolRaw = r.monto_tolerancia_absoluta_gs;
+  const tolerancia =
+    typeof tolRaw === "number" && Number.isFinite(tolRaw) && tolRaw >= 0
+      ? Math.min(Math.trunc(tolRaw), 1_000_000_000)
+      : base.monto_tolerancia_absoluta_gs;
+
   return {
     enabled: r.enabled === true,
+    validar_monto_vs_flujo: r.validar_monto_vs_flujo === true,
+    monto_tolerancia_absoluta_gs: tolerancia,
+    monto_fields_prioridad: montoFields,
     deteccion_duplicados_hash: r.deteccion_duplicados_hash !== false,
     ocr_obligatorio: r.ocr_obligatorio !== false,
     bloquear_por_hash_duplicado: r.bloquear_por_hash_duplicado !== false,
@@ -209,6 +251,9 @@ export function comprobanteValidationSettingsForForm(
 ): Record<string, unknown> {
   return {
     enabled: settings.enabled,
+    validar_monto_vs_flujo: settings.validar_monto_vs_flujo,
+    monto_tolerancia_absoluta_gs: settings.monto_tolerancia_absoluta_gs,
+    monto_fields_prioridad: [...settings.monto_fields_prioridad],
     deteccion_duplicados_hash: settings.deteccion_duplicados_hash,
     ocr_obligatorio: settings.ocr_obligatorio,
     bloquear_por_hash_duplicado: settings.bloquear_por_hash_duplicado,

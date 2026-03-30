@@ -557,6 +557,18 @@ export default function ConversacionesPage() {
                         className="flex flex-wrap items-center gap-2 text-xs bg-white border border-slate-200 rounded-lg px-2 py-1.5"
                       >
                         <span className="font-mono text-slate-600">{v.estado_validacion}</span>
+                        {v.monto_validacion_status != null && v.monto_validacion_status !== "" ? (
+                          <span className="text-[10px] text-slate-500 max-w-[200px] truncate" title={v.motivo_validacion ?? ""}>
+                            monto: {v.monto_validacion_status}
+                            {v.monto_validacion_esperado_gs != null
+                              ? ` · esp ${v.monto_validacion_esperado_gs}`
+                              : ""}
+                            {v.monto_validacion_ocr_gs != null ? ` · ocr ${v.monto_validacion_ocr_gs}` : ""}
+                            {v.monto_validacion_diferencia_gs != null
+                              ? ` · Δ ${v.monto_validacion_diferencia_gs}`
+                              : ""}
+                          </span>
+                        ) : null}
                         {v.comprobante_url ? (
                           <a
                             href={v.comprobante_url}

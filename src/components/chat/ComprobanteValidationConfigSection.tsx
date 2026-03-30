@@ -70,6 +70,65 @@ export function ComprobanteValidationConfigSection(props: {
         Activar validación inteligente en este canal
       </label>
 
+      <div className="rounded-lg border border-slate-200 bg-slate-50/80 p-4 space-y-3">
+        <h4 className="text-xs font-semibold text-slate-700 uppercase tracking-wide">
+          Monto del comprobante vs monto elegido en el flujo
+        </h4>
+        <p className="text-[11px] text-slate-500">
+          Opcional: compara el monto leído por OCR con el valor guardado en{" "}
+          <code className="bg-white px-0.5 rounded">chat_flow_data</code> del{" "}
+          <strong>mismo</strong> <code className="bg-white px-0.5 rounded">flow_session_id</code>. Si está
+          desactivado, el comportamiento es el de siempre.
+        </p>
+        <label className="flex items-center gap-2 text-sm text-slate-700">
+          <input
+            type="checkbox"
+            checked={s.validar_monto_vs_flujo}
+            onChange={(e) => set({ validar_monto_vs_flujo: e.target.checked })}
+          />
+          Validar monto OCR contra el monto del flujo (opt-in)
+        </label>
+        <div className="grid gap-2 sm:grid-cols-2">
+          <div>
+            <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">
+              Tolerancia absoluta (Gs)
+            </label>
+            <input
+              type="number"
+              min={0}
+              max={1_000_000_000}
+              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white"
+              value={s.monto_tolerancia_absoluta_gs}
+              onChange={(e) =>
+                set({ monto_tolerancia_absoluta_gs: Math.max(0, Number(e.target.value) || 0) })
+              }
+            />
+          </div>
+          <div className="sm:col-span-2">
+            <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">
+              Prioridad de campos en <code className="text-[10px]">chat_flow_data</code> (coma)
+            </label>
+            <input
+              type="text"
+              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-xs font-mono bg-white"
+              value={s.monto_fields_prioridad.join(", ")}
+              onChange={(e) => {
+                const next = e.target.value
+                  .split(",")
+                  .map((x) => x.trim())
+                  .filter(Boolean)
+                  .slice(0, 20);
+                set({
+                  monto_fields_prioridad:
+                    next.length > 0 ? next : [...defaultComprobanteValidationSettings().monto_fields_prioridad],
+                });
+              }}
+              placeholder="monto, monto_compra, sorteo_monto_opcion"
+            />
+          </div>
+        </div>
+      </div>
+
       <div className="grid gap-3 sm:grid-cols-2">
         <label className="flex items-center gap-2 text-sm text-slate-700">
           <input
@@ -154,6 +213,7 @@ export function ComprobanteValidationConfigSection(props: {
           [
             ["hash_duplicado", "Hash duplicado"],
             ["ocr_duplicado", "OCR / datos duplicados"],
+            ["monto_incoherente", "Monto no coincide con la opción elegida"],
             ["revision_manual", "Revisión manual"],
             ["ocr_insuficiente", "OCR insuficiente o error"],
           ] as const
