@@ -288,6 +288,15 @@ export type ComprobanteValidacionListRow = {
   monto_validacion_ocr_gs: number | null;
   monto_validacion_diferencia_gs: number | null;
   monto_validacion_status: string | null;
+  bank_val_titular_esperado: string | null;
+  bank_val_cuenta_esperada: string | null;
+  bank_val_alias_esperado: string | null;
+  bank_val_titular_ocr: string | null;
+  bank_val_cuenta_ocr: string | null;
+  bank_val_alias_ocr: string | null;
+  bank_val_coincidencias: number | null;
+  bank_val_min_requeridas: number | null;
+  bank_val_status: string | null;
 };
 
 export async function fetchComprobanteValidacionesForConversation(
@@ -297,7 +306,7 @@ export async function fetchComprobanteValidacionesForConversation(
   const { data, error } = await supabase
     .from("chat_comprobante_validaciones")
     .select(
-      "id, estado_validacion, motivo_validacion, comprobante_url, flow_code, created_at, ocr_referencia, ocr_monto, monto_validacion_esperado_gs, monto_validacion_ocr_gs, monto_validacion_diferencia_gs, monto_validacion_status"
+      "id, estado_validacion, motivo_validacion, comprobante_url, flow_code, created_at, ocr_referencia, ocr_monto, monto_validacion_esperado_gs, monto_validacion_ocr_gs, monto_validacion_diferencia_gs, monto_validacion_status, bank_val_titular_esperado, bank_val_cuenta_esperada, bank_val_alias_esperado, bank_val_titular_ocr, bank_val_cuenta_ocr, bank_val_alias_ocr, bank_val_coincidencias, bank_val_min_requeridas, bank_val_status"
     )
     .eq("conversation_id", conversationId)
     .order("created_at", { ascending: false });

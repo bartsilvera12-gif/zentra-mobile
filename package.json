@@ -17,6 +17,7 @@
     "verify:sorteo-rpc": "tsx scripts/verify-sorteo-order-rpc.ts",
     "db:apply-sorteo-migrations": "tsx scripts/apply-sorteo-supabase-migrations.ts",
     "db:apply-comprobante-monto-migration": "tsx scripts/apply-comprobante-monto-vs-flujo-migration.ts",
+    "db:apply-comprobante-bank-validation-migration": "tsx scripts/apply-comprobante-bank-validation-migration.ts",
     "verify:sorteo-integridad": "tsx scripts/verify-sorteo-integridad-nombre-monto.ts",
     "verify:flow-sessions": "tsx scripts/verify-flow-session-isolation.ts",
     "test:comprobante-tech": "tsx scripts/technical-tests-comprobante-full.ts"

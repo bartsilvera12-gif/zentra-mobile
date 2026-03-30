@@ -11,7 +11,8 @@ export type ComprobanteEstadoValidacion =
   | "duplicado_ocr"
   | "revision_manual"
   | "ocr_error"
-  | "monto_incoherente";
+  | "monto_incoherente"
+  | "datos_bancarios_incoherentes";
 
 export interface OcrFieldRule {
   analyzed: boolean;
@@ -27,8 +28,17 @@ export interface ComprobanteValidationMessages {
   ocr_insuficiente: string;
   /** Monto del comprobante no coincide con el elegido en el flujo (validación opt-in). */
   monto_incoherente: string;
+  /** Datos bancarios del OCR no coinciden con los configurados en el canal (opt-in). */
+  datos_bancarios_incoherentes: string;
   boton_otro_titulo: string;
   boton_asesor_titulo: string;
+}
+
+/** Datos bancarios esperados en el canal (no se leen del flujo). */
+export interface DatosBancariosEsperadosConfig {
+  titular: string;
+  numero_cuenta: string;
+  alias: string;
 }
 
 export interface ComprobanteValidationSettings {
@@ -43,6 +53,13 @@ export interface ComprobanteValidationSettings {
   monto_tolerancia_absoluta_gs: number;
   /** Orden de lectura de field_name en chat_flow_data para el monto esperado. */
   monto_fields_prioridad: string[];
+  /**
+   * Si true, compara titular / cuenta / alias detectados en OCR con datos_bancarios_esperados del canal.
+   */
+  validar_datos_bancarios_ocr: boolean;
+  datos_bancarios_esperados: DatosBancariosEsperadosConfig;
+  /** Mínimo de coincidencias entre pares (titular, cuenta, alias) requeridas; acotado al número de campos esperados no vacíos. */
+  min_coincidencias_bancarias: number;
   deteccion_duplicados_hash: boolean;
   ocr_obligatorio: boolean;
   bloquear_por_hash_duplicado: boolean;
@@ -86,6 +103,8 @@ export const DEFAULT_COMPROBANTE_VALIDATION_MESSAGES: ComprobanteValidationMessa
     "No pudimos leer bien el comprobante. Enviá una foto más clara o hablá con un asesor.",
   monto_incoherente:
     "El comprobante recibido no coincide con el monto seleccionado. Podés reenviar el comprobante o hablar con un asesor.",
+  datos_bancarios_incoherentes:
+    "El comprobante no coincide con los datos bancarios esperados. Podés reenviar el comprobante o hablar con un asesor.",
   boton_otro_titulo: "Otro comprobante",
   boton_asesor_titulo: "Hablar con asesor",
 };
@@ -105,6 +124,9 @@ export function defaultComprobanteValidationSettings(): ComprobanteValidationSet
     validar_monto_vs_flujo: false,
     monto_tolerancia_absoluta_gs: 0,
     monto_fields_prioridad: ["monto", "monto_compra", "sorteo_monto_opcion"],
+    validar_datos_bancarios_ocr: false,
+    datos_bancarios_esperados: { titular: "", numero_cuenta: "", alias: "" },
+    min_coincidencias_bancarias: 1,
     deteccion_duplicados_hash: true,
     ocr_obligatorio: true,
     bloquear_por_hash_duplicado: true,
@@ -193,6 +215,10 @@ export function parseComprobanteValidationConfig(config: unknown): ComprobanteVa
       typeof messages.monto_incoherente === "string" && messages.monto_incoherente.trim()
         ? messages.monto_incoherente.trim()
         : base.messages.monto_incoherente,
+    datos_bancarios_incoherentes:
+      typeof messages.datos_bancarios_incoherentes === "string" && messages.datos_bancarios_incoherentes.trim()
+        ? messages.datos_bancarios_incoherentes.trim()
+        : base.messages.datos_bancarios_incoherentes,
   };
 
   const ocrFieldsRaw = r.ocr_fields;
@@ -225,11 +251,32 @@ export function parseComprobanteValidationConfig(config: unknown): ComprobanteVa
       ? Math.min(Math.trunc(tolRaw), 1_000_000_000)
       : base.monto_tolerancia_absoluta_gs;
 
+  let datosBancarios: DatosBancariosEsperadosConfig = { ...base.datos_bancarios_esperados };
+  const dbeRaw = r.datos_bancarios_esperados;
+  if (dbeRaw && typeof dbeRaw === "object" && !Array.isArray(dbeRaw)) {
+    const o = dbeRaw as Record<string, unknown>;
+    const clip = (v: unknown, max: number) => (typeof v === "string" ? v.trim().slice(0, max) : "");
+    datosBancarios = {
+      titular: clip(o.titular, 200),
+      numero_cuenta: clip(o.numero_cuenta, 64),
+      alias: clip(o.alias, 80),
+    };
+  }
+
+  const minCoinRaw = r.min_coincidencias_bancarias;
+  const minCoin =
+    typeof minCoinRaw === "number" && Number.isFinite(minCoinRaw)
+      ? Math.min(3, Math.max(1, Math.trunc(minCoinRaw)))
+      : base.min_coincidencias_bancarias;
+
   return {
     enabled: r.enabled === true,
     validar_monto_vs_flujo: r.validar_monto_vs_flujo === true,
     monto_tolerancia_absoluta_gs: tolerancia,
     monto_fields_prioridad: montoFields,
+    validar_datos_bancarios_ocr: r.validar_datos_bancarios_ocr === true,
+    datos_bancarios_esperados: datosBancarios,
+    min_coincidencias_bancarias: minCoin,
     deteccion_duplicados_hash: r.deteccion_duplicados_hash !== false,
     ocr_obligatorio: r.ocr_obligatorio !== false,
     bloquear_por_hash_duplicado: r.bloquear_por_hash_duplicado !== false,
@@ -254,6 +301,9 @@ export function comprobanteValidationSettingsForForm(
     validar_monto_vs_flujo: settings.validar_monto_vs_flujo,
     monto_tolerancia_absoluta_gs: settings.monto_tolerancia_absoluta_gs,
     monto_fields_prioridad: [...settings.monto_fields_prioridad],
+    validar_datos_bancarios_ocr: settings.validar_datos_bancarios_ocr,
+    datos_bancarios_esperados: { ...settings.datos_bancarios_esperados },
+    min_coincidencias_bancarias: settings.min_coincidencias_bancarias,
     deteccion_duplicados_hash: settings.deteccion_duplicados_hash,
     ocr_obligatorio: settings.ocr_obligatorio,
     bloquear_por_hash_duplicado: settings.bloquear_por_hash_duplicado,

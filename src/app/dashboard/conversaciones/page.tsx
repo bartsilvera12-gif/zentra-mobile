@@ -569,6 +569,17 @@ export default function ConversacionesPage() {
                               : ""}
                           </span>
                         ) : null}
+                        {v.bank_val_status != null && v.bank_val_status !== "" ? (
+                          <span
+                            className="text-[10px] text-slate-500 max-w-[220px] truncate"
+                            title={v.motivo_validacion ?? ""}
+                          >
+                            banco: {v.bank_val_status}
+                            {v.bank_val_coincidencias != null && v.bank_val_min_requeridas != null
+                              ? ` · ${v.bank_val_coincidencias}/${v.bank_val_min_requeridas}`
+                              : ""}
+                          </span>
+                        ) : null}
                         {v.comprobante_url ? (
                           <a
                             href={v.comprobante_url}

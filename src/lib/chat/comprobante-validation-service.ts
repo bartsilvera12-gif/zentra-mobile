@@ -20,6 +20,7 @@ import {
 } from "@/lib/chat/comprobante-validation-types";
 import { runGoogleVisionDocumentOcr } from "@/lib/chat/comprobante-vision-ocr";
 import { validateReceiptAmountAgainstFlow } from "@/lib/chat/comprobante-monto-flow-validation";
+import { validateReceiptBankDataAgainstExpected } from "@/lib/chat/comprobante-bank-data-validation";
 import {
   SORTEO_COMPROBANTE_MEDIA_ID_FIELD,
   SORTEO_COMPROBANTE_URL_FIELD,
@@ -257,6 +258,15 @@ async function insertValidationRow(
     monto_validacion_ocr_gs?: number | null;
     monto_validacion_diferencia_gs?: number | null;
     monto_validacion_status?: string | null;
+    bank_val_titular_esperado?: string | null;
+    bank_val_cuenta_esperada?: string | null;
+    bank_val_alias_esperado?: string | null;
+    bank_val_titular_ocr?: string | null;
+    bank_val_cuenta_ocr?: string | null;
+    bank_val_alias_ocr?: string | null;
+    bank_val_coincidencias?: number | null;
+    bank_val_min_requeridas?: number | null;
+    bank_val_status?: string | null;
   }
 ): Promise<string> {
   const { data, error } = await supabase
@@ -267,6 +277,15 @@ async function insertValidationRow(
       monto_validacion_ocr_gs: input.monto_validacion_ocr_gs ?? null,
       monto_validacion_diferencia_gs: input.monto_validacion_diferencia_gs ?? null,
       monto_validacion_status: input.monto_validacion_status ?? null,
+      bank_val_titular_esperado: input.bank_val_titular_esperado ?? null,
+      bank_val_cuenta_esperada: input.bank_val_cuenta_esperada ?? null,
+      bank_val_alias_esperado: input.bank_val_alias_esperado ?? null,
+      bank_val_titular_ocr: input.bank_val_titular_ocr ?? null,
+      bank_val_cuenta_ocr: input.bank_val_cuenta_ocr ?? null,
+      bank_val_alias_ocr: input.bank_val_alias_ocr ?? null,
+      bank_val_coincidencias: input.bank_val_coincidencias ?? null,
+      bank_val_min_requeridas: input.bank_val_min_requeridas ?? null,
+      bank_val_status: input.bank_val_status ?? null,
     })
     .select("id")
     .single();
@@ -477,6 +496,8 @@ export async function runComprobanteValidationPipeline(ctx: PipelineCtx): Promis
     extractedMontoString: extracted.monto,
   });
 
+  const bankFlowResult = validateReceiptBankDataAgainstExpected(settings, fullText);
+
   const fp =
     settings.ocr_fields.texto_completo.use_duplicate_detection && extracted.texto_completo
       ? ocrFingerprint(extracted.texto_completo)
@@ -533,6 +554,9 @@ export async function runComprobanteValidationPipeline(ctx: PipelineCtx): Promis
     estado = "monto_incoherente";
     const a = montoFlowResult.audit;
     motivo = `monto_vs_flujo:esperado=${a.monto_validacion_esperado_gs};ocr=${a.monto_validacion_ocr_gs};diff=${a.monto_validacion_diferencia_gs}`;
+  } else if (bankFlowResult.apply && !bankFlowResult.ok) {
+    estado = "datos_bancarios_incoherentes";
+    motivo = bankFlowResult.motivoDetalle ?? "datos_bancarios:discrepancia";
   } else if (sospecha) {
     estado = "revision_manual";
     motivo = "ocr_texto_corto_sospecha";
@@ -560,6 +584,15 @@ export async function runComprobanteValidationPipeline(ctx: PipelineCtx): Promis
     monto_validacion_ocr_gs: montoFlowResult.audit.monto_validacion_ocr_gs,
     monto_validacion_diferencia_gs: montoFlowResult.audit.monto_validacion_diferencia_gs,
     monto_validacion_status: montoFlowResult.audit.monto_validacion_status,
+    bank_val_titular_esperado: bankFlowResult.audit.bank_val_titular_esperado,
+    bank_val_cuenta_esperada: bankFlowResult.audit.bank_val_cuenta_esperada,
+    bank_val_alias_esperado: bankFlowResult.audit.bank_val_alias_esperado,
+    bank_val_titular_ocr: bankFlowResult.audit.bank_val_titular_ocr,
+    bank_val_cuenta_ocr: bankFlowResult.audit.bank_val_cuenta_ocr,
+    bank_val_alias_ocr: bankFlowResult.audit.bank_val_alias_ocr,
+    bank_val_coincidencias: bankFlowResult.audit.bank_val_coincidencias,
+    bank_val_min_requeridas: bankFlowResult.audit.bank_val_min_requeridas,
+    bank_val_status: bankFlowResult.audit.bank_val_status,
   });
 
   const flowUpserts = baseUpserts([
@@ -616,6 +649,27 @@ export async function runComprobanteValidationPipeline(ctx: PipelineCtx): Promis
     };
   }
 
+  if (estado === "datos_bancarios_incoherentes") {
+    return {
+      kind: "resolved",
+      validationId,
+      estado,
+      motivo,
+      flowUpserts,
+      advance: false,
+      sendInteractive: {
+        body: settings.messages.datos_bancarios_incoherentes,
+        buttons: [
+          { id: COMPROBANTE_BUTTON_IDS.enviar_otro, title: settings.messages.boton_otro_titulo.slice(0, 20) },
+          {
+            id: COMPROBANTE_BUTTON_IDS.hablar_asesor,
+            title: settings.messages.boton_asesor_titulo.slice(0, 20),
+          },
+        ],
+      },
+    };
+  }
+
   if (estado === "ocr_error" && missingWorst === "bloquear") {
     return {
       kind: "resolved",
@@ -655,8 +709,8 @@ export async function runComprobanteValidationPipeline(ctx: PipelineCtx): Promis
   return {
     kind: "resolved",
     validationId,
-    estado: "valido",
-    motivo: "ok",
+    estado,
+    motivo,
     flowUpserts,
     advance: true,
   };
@@ -687,6 +741,7 @@ export async function mensajeClienteComprobanteNoValido(
   if (estado === "duplicado_hash") return s.messages.hash_duplicado;
   if (estado === "duplicado_ocr") return s.messages.ocr_duplicado;
   if (estado === "monto_incoherente") return s.messages.monto_incoherente;
+  if (estado === "datos_bancarios_incoherentes") return s.messages.datos_bancarios_incoherentes;
   if (estado === "ocr_error") return s.messages.ocr_insuficiente;
   return DEFAULT_MSG_COMPROBANTE_NO_CIERRA;
 }

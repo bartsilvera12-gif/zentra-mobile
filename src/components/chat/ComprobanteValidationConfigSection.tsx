@@ -129,6 +129,98 @@ export function ComprobanteValidationConfigSection(props: {
         </div>
       </div>
 
+      <div className="rounded-lg border border-slate-200 bg-slate-50/80 p-4 space-y-3">
+        <h4 className="text-xs font-semibold text-slate-700 uppercase tracking-wide">
+          Datos bancarios del comprobante vs datos esperados
+        </h4>
+        <p className="text-[11px] text-slate-500">
+          Opcional: compara titular, número de cuenta y alias detectados en el OCR con los valores que cargás acá (por
+          canal). No usa el texto del flujo. Si está desactivado o no hay datos esperados, el comportamiento es el de
+          siempre.
+        </p>
+        <label className="flex items-center gap-2 text-sm text-slate-700">
+          <input
+            type="checkbox"
+            checked={s.validar_datos_bancarios_ocr}
+            onChange={(e) => set({ validar_datos_bancarios_ocr: e.target.checked })}
+          />
+          Validar datos bancarios OCR contra datos esperados (opt-in)
+        </label>
+        <div className="grid gap-2 sm:grid-cols-2">
+          <div className="sm:col-span-2">
+            <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Titular esperado</label>
+            <input
+              type="text"
+              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white"
+              value={s.datos_bancarios_esperados.titular}
+              onChange={(e) =>
+                set({
+                  datos_bancarios_esperados: {
+                    ...s.datos_bancarios_esperados,
+                    titular: e.target.value,
+                  },
+                })
+              }
+              placeholder="Ej. Razón social o nombre"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Nº cuenta esperada</label>
+            <input
+              type="text"
+              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white font-mono"
+              value={s.datos_bancarios_esperados.numero_cuenta}
+              onChange={(e) =>
+                set({
+                  datos_bancarios_esperados: {
+                    ...s.datos_bancarios_esperados,
+                    numero_cuenta: e.target.value,
+                  },
+                })
+              }
+              placeholder="Solo dígitos o con formato"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Alias esperado</label>
+            <input
+              type="text"
+              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white"
+              value={s.datos_bancarios_esperados.alias}
+              onChange={(e) =>
+                set({
+                  datos_bancarios_esperados: {
+                    ...s.datos_bancarios_esperados,
+                    alias: e.target.value,
+                  },
+                })
+              }
+              placeholder="Ej. mi.alias.mp"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">
+              Mín. coincidencias (1–3)
+            </label>
+            <input
+              type="number"
+              min={1}
+              max={3}
+              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white"
+              value={s.min_coincidencias_bancarias}
+              onChange={(e) =>
+                set({
+                  min_coincidencias_bancarias: Math.min(3, Math.max(1, Math.trunc(Number(e.target.value)) || 1)),
+                })
+              }
+            />
+            <p className="text-[10px] text-slate-400 mt-0.5">
+              Se exige al menos esta cantidad de pares (titular / cuenta / alias) que coincidan entre esperado y OCR.
+            </p>
+          </div>
+        </div>
+      </div>
+
       <div className="grid gap-3 sm:grid-cols-2">
         <label className="flex items-center gap-2 text-sm text-slate-700">
           <input
@@ -214,6 +306,7 @@ export function ComprobanteValidationConfigSection(props: {
             ["hash_duplicado", "Hash duplicado"],
             ["ocr_duplicado", "OCR / datos duplicados"],
             ["monto_incoherente", "Monto no coincide con la opción elegida"],
+            ["datos_bancarios_incoherentes", "Datos bancarios no coinciden con lo configurado"],
             ["revision_manual", "Revisión manual"],
             ["ocr_insuficiente", "OCR insuficiente o error"],
           ] as const
