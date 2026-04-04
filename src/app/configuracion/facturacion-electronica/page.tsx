@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import type { AmbienteSifen, EmpresaSifenConfigDTO } from "@/lib/sifen/types";
 
 const fLabel = "block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1";
@@ -47,6 +47,11 @@ export default function FacturacionElectronicaSifenPage() {
   const [certVenc, setCertVenc] = useState("");
   const [nuevaPassword, setNuevaPassword] = useState("");
   const [limpiarPassword, setLimpiarPassword] = useState(false);
+
+  const certFileInputId = useId();
+  const certFileInputRef = useRef<HTMLInputElement>(null);
+  /** Nombre del .p12 elegido en el diálogo (se limpia tras subida OK). */
+  const [nombreArchivoCert, setNombreArchivoCert] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -190,7 +195,11 @@ export default function FacturacionElectronicaSifenPage() {
   async function onCertFileChange(ev: React.ChangeEvent<HTMLInputElement>) {
     const file = ev.target.files?.[0];
     ev.target.value = "";
-    if (!file) return;
+    if (!file) {
+      setNombreArchivoCert(null);
+      return;
+    }
+    setNombreArchivoCert(file.name);
     setError(null);
     setSuccess(null);
     setUploading(true);
@@ -208,6 +217,7 @@ export default function FacturacionElectronicaSifenPage() {
         return;
       }
       if (j.data?.config) setCfg(j.data.config);
+      setNombreArchivoCert(null);
       setSuccess("Certificado .p12 cargado correctamente.");
       await load();
     } catch {
@@ -378,16 +388,35 @@ export default function FacturacionElectronicaSifenPage() {
               </p>
             </div>
             <div>
-              <label className={fLabel}>Subir / reemplazar .p12</label>
+              <label htmlFor={certFileInputId} className={`${fLabel} block`}>
+                Subir / reemplazar .p12
+              </label>
               <input
+                ref={certFileInputRef}
+                id={certFileInputId}
                 type="file"
-                accept=".p12,.pfx,application/x-pkcs12"
+                accept=".p12,.pfx,application/x-pkcs12,application/octet-stream"
                 disabled={!cfg || uploading}
                 onChange={onCertFileChange}
-                className="text-sm text-slate-600"
+                className="sr-only"
               />
+              <div className="mt-1 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+                <button
+                  type="button"
+                  disabled={!cfg || uploading}
+                  onClick={() => certFileInputRef.current?.click()}
+                  className="w-fit rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-800 shadow-sm hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Seleccionar archivo
+                </button>
+                {nombreArchivoCert && (
+                  <span className="text-xs text-slate-600 truncate max-w-full sm:max-w-xs" title={nombreArchivoCert}>
+                    Archivo: <span className="font-mono font-medium text-slate-800">{nombreArchivoCert}</span>
+                  </span>
+                )}
+              </div>
               {!cfg && (
-                <p className="text-xs text-amber-700 mt-1">Guardá primero la configuración base para habilitar la subida del certificado.</p>
+                <p className="text-xs text-amber-700 mt-2">Guardá primero la configuración base para habilitar la subida del certificado.</p>
               )}
               {uploading && <p className="text-xs text-slate-500 mt-1">Subiendo…</p>}
             </div>
