@@ -1,17 +1,19 @@
 /**
  * Cliente técnico: envío de lote asíncrono a SIFEN TEST (recibe-lote).
  *
- * Alineado al binding oficial `rEnvioLote` / `rResEnviLoteDe`
- * (namespace http://ekuatia.set.gov.py/sifen/xsd), mismo criterio que la lib
- * de referencia Python `sifen` (kmee): `xDE` = Base64 del XML del lote en UTF-8.
+ * `xDE` = Base64 de un ZIP (application/zip) que contiene un único `lote.xml`
+ * con el XML del lote (`rLoteDE`), según WS_SiRecepLoteDE / guía DNIT.
  *
  * TLS mutuo: certificado/clave en PEM extraídos del .p12 de la empresa (igual que firma).
  */
 import * as https from "node:https";
 import { URL } from "node:url";
-import { gzipSync } from "node:zlib";
+import JSZip from "jszip";
 import type { AmbienteSifen } from "./types";
 import { extractKeyAndCertFromP12 } from "./sign-xml";
+
+/** Nombre del archivo dentro del ZIP enviado en xDE. */
+const NOMBRE_XML_DENTRO_ZIP = "lote.xml";
 
 const SIFEN_NS = "http://ekuatia.set.gov.py/sifen/xsd";
 const SOAP_ENV = "http://www.w3.org/2003/05/soap-envelope";
@@ -43,11 +45,6 @@ export interface EnviarLoteSifenTestParams {
    * El endpoint `enviar-test` lo activa; sin envoltorio se envía solo `<rDE>...</rDE>` (sin prolog), lo que a veces provoca 0160 en SET.
    */
   envoltorioRloteDe?: boolean;
-  /**
-   * Si true, aplica gzip al UTF-8 del lote antes del Base64.
-   * Por defecto false (mismo criterio que `sifen` PyPI).
-   */
-  comprimirLoteGzip?: boolean;
 }
 
 export interface RecibeLoteRespuestaParsed {
@@ -83,10 +80,43 @@ function generarDId(): number {
   return n;
 }
 
-function bytesParaXdeBase64(xmlLoteUtf8: string, comprimirGzip: boolean): string {
-  let buf = Buffer.from(xmlLoteUtf8, "utf-8");
-  if (comprimirGzip) buf = gzipSync(buf);
-  return buf.toString("base64");
+/**
+ * Empaqueta `xmlLote` en un ZIP real (DEFLATE), verifica entrada `lote.xml` y devuelve Base64 del ZIP.
+ */
+async function zipLoteXmlAUtf8Base64(xmlLote: string): Promise<string> {
+  const zip = new JSZip();
+  zip.file(NOMBRE_XML_DENTRO_ZIP, xmlLote);
+  const zipBuffer = await zip.generateAsync({
+    type: "nodebuffer",
+    compression: "DEFLATE",
+    compressionOptions: { level: 6 },
+  });
+
+  const zipSize = zipBuffer.length;
+  const reopened = await JSZip.loadAsync(zipBuffer);
+  const entry = reopened.file(NOMBRE_XML_DENTRO_ZIP);
+  if (!entry) {
+    throw new Error(`El ZIP generado no contiene ${NOMBRE_XML_DENTRO_ZIP}`);
+  }
+  const inner = await entry.async("string");
+  if (inner !== xmlLote) {
+    throw new Error("El contenido de lote.xml dentro del ZIP no coincide con el XML del lote");
+  }
+
+  const zipB64 = zipBuffer.toString("base64");
+  const plainB64 = Buffer.from(xmlLote, "utf-8").toString("base64");
+  if (zipB64 === plainB64) {
+    throw new Error("xDE: Base64 del ZIP coincide con Base64 del XML en claro (empaquetado inválido)");
+  }
+
+  if (process.env.SIFEN_DEBUG_LOTE_XML === "1") {
+    const xmlBytes = Buffer.byteLength(xmlLote, "utf-8");
+    console.info(
+      `[SIFEN_LOTE_ZIP] zip_bytes=${zipSize} xml_utf8_bytes=${xmlBytes} entry=${NOMBRE_XML_DENTRO_ZIP} xde_source=zip_base64`
+    );
+  }
+
+  return zipB64;
 }
 
 function construirSoapRecibeLote(dId: number, xdeBase64: string): string {
@@ -220,7 +250,7 @@ export async function enviarLoteSifenTest(
     );
   }
 
-  const xde = bytesParaXdeBase64(xmlLote, params.comprimirLoteGzip === true);
+  const xde = await zipLoteXmlAUtf8Base64(xmlLote);
   const soap = construirSoapRecibeLote(dId, xde);
 
   const { privateKeyPem, certificatePem } = extractKeyAndCertFromP12(
