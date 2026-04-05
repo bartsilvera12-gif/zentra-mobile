@@ -5,7 +5,7 @@
  * hermano posterior a `DE` bajo `rDE` (campos firmados del DE, sin incluir gCamFuFD).
  * Tras firmar, se añade `gCamFuFD` con URL de consulta QR si aún no existe.
  *
- * Nota: el SET puede exigir ajustes de perfil (transforms, XAdES). Validar con XSD y ambiente de pruebas.
+ * Nota: validar siempre contra XSD v150 y ambiente de pruebas SET.
  *
  * Stack: node-forge (PKCS#12) + xml-crypto (serverless sin openssl CLI).
  */
@@ -16,8 +16,16 @@ import { escapeXml } from "./xml";
 
 const XPATH_DE =
   "/*[local-name(.)='rDE']/*[local-name(.)='DE']";
-/** C14N del fragmento firmado (sin enveloped: la firma no va dentro del DE). */
-const TRANSFORMS_DE = ["http://www.w3.org/2001/10/xml-exc-c14n#"] as const;
+/**
+ * SIFEN / guía e-kuatia: Reference con Enveloped + exclusive C14N (orden obligatorio).
+ * El nodo `Signature` va como hermano de `DE` bajo `rDE` (XSD `rDE`: dVerFor, DE, ds:Signature, gCamFuFD).
+ * Con esa ubicación, el digest sigue siendo solo del subárbol `DE`; el transform enveloped no elimina
+ * nodos (no hay `Signature` dentro de `DE`), pero cumple el perfil de transforms exigido por SET.
+ */
+const TRANSFORMS_DE = [
+  "http://www.w3.org/2000/09/xmldsig#enveloped-signature",
+  "http://www.w3.org/2001/10/xml-exc-c14n#",
+] as const;
 const DIGEST = "http://www.w3.org/2001/04/xmlenc#sha256";
 const SIG_ALG = "http://www.w3.org/2001/04/xmldsig-more#rsa-sha256";
 
@@ -83,7 +91,8 @@ function anexarCamFuFdSiFalta(xml: string): string {
 }
 
 /**
- * Firma el documento rDE: referencia el nodo `DE` y coloca `Signature` después de `DE`.
+ * Firma el documento rDE: referencia el nodo `DE` y coloca `Signature` inmediatamente después de `DE`
+ * (hermano bajo `rDE`), alineado al orden del tipo `rDE` en el XSD oficial.
  */
 export function signSifenDocumentoXml(xmlUtf8: string, material: P12KeyMaterial): string {
   const trimmed = xmlUtf8.trim();
@@ -112,6 +121,7 @@ export function signSifenDocumentoXml(xmlUtf8: string, material: P12KeyMaterial)
   sig.computeSignature(trimmed, {
     location: {
       reference: XPATH_DE,
+      /** Hermano posterior a `DE` (no dentro de `DE`: el XSD no lo permite). */
       action: "after",
     },
   });
