@@ -11,6 +11,7 @@ import { URL } from "node:url";
 import JSZip from "jszip";
 import type { AmbienteSifen } from "./types";
 import { extractKeyAndCertFromP12 } from "./sign-xml";
+import { escapeXml } from "./xml";
 
 /**
  * Nombre del archivo dentro del ZIP enviado en xDE.
@@ -20,6 +21,12 @@ const NOMBRE_XML_DENTRO_ZIP = "xml_file.xml";
 
 const SIFEN_NS = "http://ekuatia.set.gov.py/sifen/xsd";
 const SOAP_ENV = "http://www.w3.org/2003/05/soap-envelope";
+const XMLNS_XSI = "http://www.w3.org/2001/XMLSchema-instance";
+/**
+ * Raíz del `xml_file.xml` dentro del ZIP. SET valida este documento; sin xsi:schemaLocation suele devolver 0160
+ * aunque el `rDE` interno sí lo tenga.
+ */
+const RLOTE_DE_SCHEMA_LOCATION = `${SIFEN_NS} siRecepDE_v150.xsd`;
 
 /**
  * URL del servicio TEST (misma que documentan DNIT / pysifen: `recibe-lote.wsdl`).
@@ -78,7 +85,7 @@ function construirXmlLoteRloteDe(xmlFirmado: string): string {
   const inner = stripXmlDeclaration(xmlFirmado);
   return (
     `<?xml version="1.0" encoding="UTF-8"?>\n` +
-    `<rLoteDE xmlns="${SIFEN_NS}">\n${inner}\n</rLoteDE>\n`
+    `<rLoteDE xmlns="${SIFEN_NS}" xmlns:xsi="${XMLNS_XSI}" xsi:schemaLocation="${escapeXml(RLOTE_DE_SCHEMA_LOCATION)}">\n${inner}\n</rLoteDE>\n`
   );
 }
 

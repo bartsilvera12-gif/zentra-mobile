@@ -14,6 +14,33 @@ import { SignedXml } from "xml-crypto";
 import { createPrivateKey } from "node:crypto";
 import { escapeXml } from "./xml";
 
+const SIFEN_NS = "http://ekuatia.set.gov.py/sifen/xsd";
+const XMLNS_XSI = "http://www.w3.org/2001/XMLSchema-instance";
+const RDE_SCHEMA_LOCATION = `${SIFEN_NS} siRecepDE_v150.xsd`;
+
+/**
+ * Garantiza xmlns:xsi + xsi:schemaLocation en la etiqueta de apertura de `rDE` (SET 0160 si faltan).
+ * xml-crypto suele preservarlos; esto cubre regresiones entre runtimes.
+ */
+function ensureRdeRootSchemaAttrs(xml: string): string {
+  const m = /^([\s\S]*?)(<rDE)(\s[^>]*)?>/i.exec(xml);
+  if (!m) return xml;
+  const before = m[1] ?? "";
+  const tag = m[2] ?? "<rDE";
+  let rest = (m[3] ?? "").trimStart();
+  if (!rest.startsWith(" ")) rest = rest ? ` ${rest}` : "";
+  const hasXsiNs = /\sxmlns:xsi\s*=/.test(rest);
+  const hasLoc = /\sxsi:schemaLocation\s*=/.test(rest);
+  const hasDefaultNs = /\sxmlns\s*=\s*"/.test(rest);
+  let add = "";
+  if (!hasDefaultNs) add += ` xmlns="${SIFEN_NS}"`;
+  if (!hasXsiNs) add += ` xmlns:xsi="${XMLNS_XSI}"`;
+  if (!hasLoc) add += ` xsi:schemaLocation="${escapeXml(RDE_SCHEMA_LOCATION)}"`;
+  if (!add) return xml;
+  const rebuilt = `${tag}${rest}${add}>`;
+  return before + rebuilt + xml.slice(m.index! + m[0].length);
+}
+
 const XPATH_DE =
   "/*[local-name(.)='rDE']/*[local-name(.)='DE']";
 /**
@@ -126,5 +153,6 @@ export function signSifenDocumentoXml(xmlUtf8: string, material: P12KeyMaterial)
     },
   });
 
-  return anexarCamFuFdSiFalta(sig.getSignedXml());
+  const rawSigned = sig.getSignedXml();
+  return anexarCamFuFdSiFalta(ensureRdeRootSchemaAttrs(rawSigned));
 }
