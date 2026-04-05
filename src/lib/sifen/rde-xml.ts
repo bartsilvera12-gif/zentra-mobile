@@ -53,6 +53,23 @@ function formatDeDateTime(d: Date): string {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
 }
 
+/**
+ * `dFeEmiDE` / `dFecFirma` deben usar la **misma fecha calendario** que entra en el CDC (`fechaEmisionCdc(documento.fecha)`).
+ * Si se usa solo `new Date()` al generar el XML días después, el Id (CDC) y la fecha en el DE quedan desalineados y SET rechaza el documento.
+ */
+function dFeEmiDeYFecFirma(fechaFacturaIso: string, horaReferencia: Date): string {
+  const t = fechaFacturaIso.trim();
+  const dm = /^(\d{4})-(\d{2})-(\d{2})/.exec(t);
+  const p = (x: number) => String(x).padStart(2, "0");
+  if (dm) {
+    const y = dm[1]!;
+    const mo = dm[2]!;
+    const d = dm[3]!;
+    return `${y}-${mo}-${d}T${p(horaReferencia.getHours())}:${p(horaReferencia.getMinutes())}:${p(horaReferencia.getSeconds())}`;
+  }
+  return formatDeDateTime(horaReferencia);
+}
+
 function inferirTasaIva(subtotal: number, iva: number): 0 | 5 | 10 {
   if (!(subtotal > 0) || iva <= 0) return 0;
   const p = Math.round((100 * iva) / subtotal);
@@ -157,7 +174,7 @@ export function buildOfficialRdeFacturaElectronicaXml(
   });
 
   const ahora = opts.fechaHoraEmision ?? new Date();
-  const dFeEmiDE = formatDeDateTime(ahora);
+  const dFeEmiDE = dFeEmiDeYFecFirma(documento.fecha, ahora);
   const dFecFirma = dFeEmiDE;
 
   const dFeIniT = vigenciaIso(opts.timbradoFechaInicio);
