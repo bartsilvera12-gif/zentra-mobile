@@ -173,6 +173,7 @@ export async function POST(
           certificadoPassword: p12Password,
         },
         facturaElectronicaId: String(feRow.id),
+        envoltorioRloteDe: true,
       });
     } catch (e) {
       const m = e instanceof Error ? e.message : String(e);

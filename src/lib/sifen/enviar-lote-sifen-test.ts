@@ -39,8 +39,8 @@ export interface EnviarLoteSifenTestParams {
   /** Identificador de control de envío (dId). Si no se indica, se genera. */
   dId?: number;
   /**
-   * Si true, envuelve el DE en `<rLoteDE xmlns="...">...</rLoteDE>`.
-   * La referencia Python concatena XML de DE sin este envoltorio; dejar en false si el SET rechaza.
+   * Si true, envuelve el XML firmado en `<rLoteDE xmlns="...">...</rLoteDE>` con `<?xml encoding="UTF-8"?>`.
+   * El endpoint `enviar-test` lo activa; sin envoltorio se envía solo `<rDE>...</rDE>` (sin prolog), lo que a veces provoca 0160 en SET.
    */
   envoltorioRloteDe?: boolean;
   /**
@@ -211,6 +211,14 @@ export async function enviarLoteSifenTest(
   const xmlLote = envoltorio
     ? construirXmlLoteRloteDe(params.xmlFirmado)
     : stripXmlDeclaration(params.xmlFirmado);
+
+  if (process.env.SIFEN_DEBUG_LOTE_XML === "1") {
+    const head = xmlLote.slice(0, 4000);
+    const tail = xmlLote.length > 4000 ? xmlLote.slice(-800) : "";
+    console.info(
+      `[SIFEN_DEBUG_LOTE_XML] bytes_utf8=${Buffer.byteLength(xmlLote, "utf8")} chars=${xmlLote.length} envoltorio_rLoteDE=${envoltorio}\n--- head ---\n${head}\n--- tail ---\n${tail}`
+    );
+  }
 
   const xde = bytesParaXdeBase64(xmlLote, params.comprimirLoteGzip === true);
   const soap = construirSoapRecibeLote(dId, xde);
