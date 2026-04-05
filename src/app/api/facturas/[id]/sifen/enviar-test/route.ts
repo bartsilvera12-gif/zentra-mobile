@@ -214,10 +214,15 @@ export async function POST(
       nuevoProt = resp.dProtConsLote == null ? null : String(resp.dProtConsLote).trim() || null;
     } else if (resp.loteNoEncolado) {
       nuevoEstado = "error_envio";
-      nuevoError =
+      const baseErr =
         [resp.dMsgRes, resp.dCodRes ? `Código ${resp.dCodRes}` : null].filter(Boolean).join(" — ") ||
         "SET no encoló el lote (0301).";
-      nuevoProt = null;
+      /** SET suele devolver dProtConsLote igual con 0301; hace falta para consulta-lote y ver el rechazo por CDC. */
+      nuevoProt = protTrim.length > 0 ? protTrim : null;
+      nuevoError =
+        nuevoProt != null
+          ? `${baseErr} — Use «Consultar lote TEST» con el protocolo ${nuevoProt} para el detalle por CDC.`
+          : baseErr;
     } else {
       nuevoEstado = "error_envio";
       const code = resp.dCodRes?.trim() ?? "";
@@ -225,7 +230,7 @@ export async function POST(
         [resp.dMsgRes, code ? `Código ${code}` : null, `HTTP ${resp.httpStatus}`]
           .filter(Boolean)
           .join(" — ") || "Respuesta inesperada de recibe-lote.";
-      nuevoProt = null;
+      nuevoProt = protTrim.length > 0 ? protTrim : null;
     }
 
     const { data: updatedRow, error: errUpdate } = await supabase
