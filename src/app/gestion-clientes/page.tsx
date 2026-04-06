@@ -75,6 +75,97 @@ function BadgeTipo({ tipo }: { tipo: string }) {
   );
 }
 
+const KUDE_SOLO_APROBADO_TIP =
+  "KuDE (factura electrónica PDF): solo disponible cuando SIFEN está «Aprobado».";
+
+function FacturaRowAccionesSifen({
+  facturaId,
+  sifenAprobado,
+}: {
+  facturaId: string;
+  sifenAprobado: boolean;
+}) {
+  const kudeView = `/api/facturas/${facturaId}/sifen/kude`;
+  const kudeDl = `/api/facturas/${facturaId}/sifen/kude?download=1`;
+  const btnBase =
+    "inline-flex items-center justify-center w-7 h-7 rounded-lg transition-colors";
+  const active = "text-gray-400 hover:text-blue-600 hover:bg-blue-50";
+  const activePrint = "text-gray-400 hover:text-gray-700 hover:bg-gray-100";
+  const activePdf = "text-gray-400 hover:text-green-600 hover:bg-green-50";
+  const disabledCls = "text-gray-200 cursor-not-allowed opacity-50";
+
+  const iconEye = (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3.5 h-3.5">
+      <path d="M10 12.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5Z" />
+      <path
+        fillRule="evenodd"
+        d="M.664 10.59a1.651 1.651 0 0 1 0-1.186A10.004 10.004 0 0 1 10 3c4.257 0 7.893 2.66 9.336 6.41.147.381.146.804 0 1.186A10.004 10.004 0 0 1 10 17c-4.257 0-7.893-2.66-9.336-6.41ZM14 10a4 4 0 1 1-8 0 4 4 0 0 1 8 0Z"
+        clipRule="evenodd"
+      />
+    </svg>
+  );
+  const iconPrint = (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3.5 h-3.5">
+      <path
+        fillRule="evenodd"
+        d="M5 4v3H4a2 2 0 0 0-2 2v3a2 2 0 0 0 2 2h1v2a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1v-2h1a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-1V4a1 1 0 0 0-1-1H6a1 1 0 0 0-1 1Zm2 0h6v3H7V4Zm-1 9v-1h8v1a.5.5 0 0 1-.5.5h-7A.5.5 0 0 1 6 13Zm8-4.5a.5.5 0 1 1-1 0 .5.5 0 0 1 1 0Z"
+        clipRule="evenodd"
+      />
+    </svg>
+  );
+  const iconPdf = (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3.5 h-3.5">
+      <path
+        fillRule="evenodd"
+        d="M4 4a2 2 0 0 1 2-2h4.586A2 2 0 0 1 12 2.586L15.414 6A2 2 0 0 1 16 7.414V16a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4Zm2 6a1 1 0 0 1 1-1h6a1 1 0 1 1 0 2H7a1 1 0 0 1-1-1Zm1 3a1 1 0 1 0 0 2h6a1 1 0 1 0 0-2H7Z"
+        clipRule="evenodd"
+      />
+    </svg>
+  );
+
+  return (
+    <div className="flex items-center gap-0.5">
+      {sifenAprobado ? (
+        <button
+          type="button"
+          title="Ver KuDE (PDF) en nueva pestaña"
+          onClick={() => window.open(kudeView, "_blank", "noopener,noreferrer")}
+          className={`${btnBase} ${active}`}
+        >
+          {iconEye}
+        </button>
+      ) : (
+        <button type="button" disabled title={KUDE_SOLO_APROBADO_TIP} className={`${btnBase} ${disabledCls}`}>
+          {iconEye}
+        </button>
+      )}
+      {sifenAprobado ? (
+        <a
+          href={kudeDl}
+          download
+          title="Descargar KuDE (PDF)"
+          className={`${btnBase} ${activePrint}`}
+        >
+          {iconPrint}
+        </a>
+      ) : (
+        <button type="button" disabled title={KUDE_SOLO_APROBADO_TIP} className={`${btnBase} ${disabledCls}`}>
+          {iconPrint}
+        </button>
+      )}
+      {sifenAprobado ? (
+        <a href={kudeDl} download title="Descargar KuDE (PDF)" className={`${btnBase} ${activePdf}`}>
+          {iconPdf}
+        </a>
+      ) : (
+        <button type="button" disabled title={KUDE_SOLO_APROBADO_TIP} className={`${btnBase} ${disabledCls}`}>
+          {iconPdf}
+        </button>
+      )}
+    </div>
+  );
+}
+
 // ── Botón operativo ───────────────────────────────────────────────────────────
 
 function BotonOperativo({
@@ -977,43 +1068,12 @@ export default function GestionClientesPage() {
                                 estadoSifen={sifenPorFactura[f.id]?.estado_sifen ?? null}
                               />
                             </td>
-                            {/* Acciones */}
+                            {/* Acciones — KuDE (PDF SIFEN) solo si estado_sifen = aprobado */}
                             <td className="px-3 py-2.5">
-                              <div className="flex items-center gap-0.5">
-                                {/* Ver */}
-                                <Link
-                                  href={`/facturas/${f.id}`}
-                                  title="Ver factura"
-                                  className="inline-flex items-center justify-center w-7 h-7 rounded-lg text-gray-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
-                                >
-                                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3.5 h-3.5">
-                                    <path d="M10 12.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5Z" />
-                                    <path fillRule="evenodd" d="M.664 10.59a1.651 1.651 0 0 1 0-1.186A10.004 10.004 0 0 1 10 3c4.257 0 7.893 2.66 9.336 6.41.147.381.146.804 0 1.186A10.004 10.004 0 0 1 10 17c-4.257 0-7.893-2.66-9.336-6.41ZM14 10a4 4 0 1 1-8 0 4 4 0 0 1 8 0Z" clipRule="evenodd" />
-                                  </svg>
-                                </Link>
-                                {/* Imprimir */}
-                                <button
-                                  type="button"
-                                  title="Imprimir factura"
-                                  onClick={() => window.open(`/facturas/${f.id}?print=1`, "_blank")}
-                                  className="inline-flex items-center justify-center w-7 h-7 rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors"
-                                >
-                                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3.5 h-3.5">
-                                    <path fillRule="evenodd" d="M5 4v3H4a2 2 0 0 0-2 2v3a2 2 0 0 0 2 2h1v2a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1v-2h1a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-1V4a1 1 0 0 0-1-1H6a1 1 0 0 0-1 1Zm2 0h6v3H7V4Zm-1 9v-1h8v1a.5.5 0 0 1-.5.5h-7A.5.5 0 0 1 6 13Zm8-4.5a.5.5 0 1 1-1 0 .5.5 0 0 1 1 0Z" clipRule="evenodd" />
-                                  </svg>
-                                </button>
-                                {/* Descargar PDF */}
-                                <button
-                                  type="button"
-                                  title="Descargar PDF"
-                                  onClick={() => window.open(`/facturas/${f.id}?download=1`, "_blank")}
-                                  className="inline-flex items-center justify-center w-7 h-7 rounded-lg text-gray-400 hover:text-green-600 hover:bg-green-50 transition-colors"
-                                >
-                                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3.5 h-3.5">
-                                    <path fillRule="evenodd" d="M4 4a2 2 0 0 1 2-2h4.586A2 2 0 0 1 12 2.586L15.414 6A2 2 0 0 1 16 7.414V16a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4Zm2 6a1 1 0 0 1 1-1h6a1 1 0 1 1 0 2H7a1 1 0 0 1-1-1Zm1 3a1 1 0 1 0 0 2h6a1 1 0 1 0 0-2H7Z" clipRule="evenodd" />
-                                  </svg>
-                                </button>
-                              </div>
+                              <FacturaRowAccionesSifen
+                                facturaId={f.id}
+                                sifenAprobado={sifenPorFactura[f.id]?.estado_sifen === "aprobado"}
+                              />
                             </td>
                           </tr>
                         ))}
