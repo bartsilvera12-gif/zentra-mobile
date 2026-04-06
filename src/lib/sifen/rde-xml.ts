@@ -107,6 +107,51 @@ function cantidadProSerValida(cant: number): number {
   return cant;
 }
 
+const SIFEN_E8 = BigInt(100000000);
+/** Escala 10¹⁶: (cant×10⁸)×(precio×10⁸) = cant×precio×10¹⁶ */
+const SIFEN_TEN16 = BigInt(10) ** BigInt(16);
+const SIFEN_HALF16 = BigInt(5) * (BigInt(10) ** BigInt(15));
+const SIFEN_BI0 = BigInt(0);
+const SIFEN_BI1 = BigInt(1);
+const SIFEN_BI2 = BigInt(2);
+
+/** Convierte literal decimal positivo (punto, ≤8 fraccionales) a entero = valor×10⁸. */
+function decimalStringAEscalaE8(s: string): bigint {
+  const t = s.trim();
+  if (!t || t === "0") return SIFEN_BI0;
+  const [intRaw, fracRaw = ""] = t.split(".");
+  const intPart = intRaw === "" ? "0" : intRaw;
+  const frac8 = (fracRaw + "00000000").slice(0, 8);
+  return BigInt(intPart) * SIFEN_E8 + BigInt(frac8 || "0");
+}
+
+/** Entero escala 10⁻⁸ → cadena XSD (sin notación científica). */
+function escalaE8AStringDecimal(scaled: bigint): string {
+  if (scaled <= SIFEN_BI0) return "0";
+  const intPart = scaled / SIFEN_E8;
+  let frac = (scaled % SIFEN_E8).toString().padStart(8, "0");
+  frac = frac.replace(/0+$/, "");
+  return frac ? `${intPart}.${frac}` : `${intPart}`;
+}
+
+/**
+ * Precio unitario (×10⁸ entero) tal que redondeo half-up de (cant×precio) a guaraníes enteros = T.
+ * Evita 1858 cuando la SET valida cant×precio en decimal fijo (p. ej. 3×3333.33333333≠10000).
+ */
+function precioUnitarioE8DesdeTotalGuaranies(T: number, cantE8: bigint): bigint {
+  const Tb = BigInt(Math.max(0, Math.round(T)));
+  const Q = cantE8 > SIFEN_BI0 ? cantE8 : SIFEN_E8;
+  const P = (Tb * SIFEN_TEN16 + Q / SIFEN_BI2) / Q;
+  const redondeado = (Q * P + SIFEN_HALF16) / SIFEN_TEN16;
+  if (redondeado === Tb) return P;
+  const lo = Tb * SIFEN_TEN16 - SIFEN_HALF16;
+  const pMin = (lo + Q - SIFEN_BI1) / Q;
+  const hi = (Tb + SIFEN_BI1) * SIFEN_TEN16 - SIFEN_HALF16 - SIFEN_BI1;
+  const pMax = hi / Q;
+  if (pMin <= pMax) return pMin;
+  throw new Error(`SIFEN ítem: total ${T} incompatible con cantidad (escala ${Q}) para precio unitario`);
+}
+
 /** `tdDesAfecIVA`: solo coinciden textos fijos del XSD (la tasa va en `dTasaIVA`). */
 function descripcionAfectacion(tasa: 0 | 5 | 10): string {
   if (tasa === 0) return XSD_DES_AFEC_EXENTO;
@@ -352,13 +397,16 @@ export function buildOfficialRdeFacturaElectronicaXml(
     /** Total línea en guaraníes (con IVA incluido en el precio al público, modelo SET). */
     const dTotOpeItem = Math.round(it.total);
     const cantNum = cantidadProSerValida(Number(it.cantidad));
-    const cantStr = formatDecimalSifen(cantNum);
+    const cantStrNorm = formatDecimalSifen(cantNum);
+    let cantE8 = decimalStringAEscalaE8(cantStrNorm);
+    if (cantE8 <= SIFEN_BI0) cantE8 = SIFEN_E8;
+    const dCantStr = escalaE8AStringDecimal(cantE8);
     /**
-     * SET valida coherencia: dTotBruOpeItem = dCantProSer × dPUniProSer (tMontoBase con decimales).
-     * El ERP guarda precio sin IVA + IVA aparte; el DE debe expresar precio unitario con IVA (= T/cant).
+     * SET (1858): cant×precio en decimales del DE debe cerrar al total en guaraníes.
+     * Precio unitario en escala 10⁻⁸ para que redondeo half-up de (cant×precio) = T.
      */
-    const dPUniProSerNum = dTotOpeItem / cantNum;
-    const dPUniStr = formatDecimalSifen(dPUniProSerNum);
+    const dPUniE8 = precioUnitarioE8DesdeTotalGuaranies(dTotOpeItem, cantE8);
+    const dPUniStr = escalaE8AStringDecimal(dPUniE8);
     const dTotBruOpeItem = dTotOpeItem;
 
     let baseGrav = 0;
@@ -392,7 +440,7 @@ export function buildOfficialRdeFacturaElectronicaXml(
     itemsXml.push(textEl("dDesProSer", dDesProSer));
     itemsXml.push(textEl("cUniMed", "77"));
     itemsXml.push(textEl("dDesUniMed", XSD_DES_UNI_MED));
-    itemsXml.push(textEl("dCantProSer", cantStr));
+    itemsXml.push(textEl("dCantProSer", dCantStr));
     itemsXml.push("<gValorItem>");
     itemsXml.push(textEl("dPUniProSer", dPUniStr));
     itemsXml.push(textEl("dTotBruOpeItem", dTotBruOpeItem));
