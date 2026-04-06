@@ -19,6 +19,10 @@ export interface EmpresaSifenConfigDTO {
   timbrado_numero: string;
   /** Inicio vigencia timbrado YYYY-MM-DD (gTimb.dFeIniT); como figura en la documentación DNIT. */
   timbrado_fecha_inicio_vigencia: string | null;
+  /** Catálogo SET (gEmis.gActEco.cActEco). */
+  actividad_economica_codigo: string | null;
+  /** Texto oficial del catálogo (dDesActEco). */
+  actividad_economica_descripcion: string | null;
   establecimiento: string;
   punto_expedicion: string;
   csc: string | null;
@@ -38,6 +42,9 @@ export interface EmpresaSifenConfigCreateBody {
   timbrado_numero: string;
   /** Obligatorio: misma fecha que «Fecha Inicio Vigencia» del timbrado en DNIT. */
   timbrado_fecha_inicio_vigencia: string;
+  /** Código numérico catálogo SET (principal para el RUC). */
+  actividad_economica_codigo: string;
+  actividad_economica_descripcion: string;
   establecimiento: string;
   punto_expedicion: string;
   ambiente: AmbienteSifen;
@@ -55,6 +62,8 @@ export interface EmpresaSifenConfigPatchBody {
   direccion_fiscal?: string | null;
   timbrado_numero?: string;
   timbrado_fecha_inicio_vigencia?: string;
+  actividad_economica_codigo?: string;
+  actividad_economica_descripcion?: string;
   establecimiento?: string;
   punto_expedicion?: string;
   ambiente?: AmbienteSifen;
@@ -161,6 +170,8 @@ export interface SifenPayloadEmisor {
   timbrado_numero: string;
   /** YYYY-MM-DD; debe coincidir con inicio de vigencia del timbrado en DNIT (dFeIniT). */
   timbrado_fecha_inicio_vigencia: string;
+  actividad_economica_codigo: string;
+  actividad_economica_descripcion: string;
   establecimiento: string;
   punto_expedicion: string;
   /** Código de seguridad del timbrado (SET); obligatorio para generar el DE oficial. */

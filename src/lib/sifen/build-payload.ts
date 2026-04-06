@@ -7,7 +7,7 @@ import type {
   SifenPayloadMeta,
   SifenPayloadReceptor,
 } from "./types";
-import { normalizeTimbradoFechaInicioVigencia } from "./config-validation";
+import { normalizeActividadEconomica, normalizeTimbradoFechaInicioVigencia } from "./config-validation";
 
 function trimStr(v: unknown): string {
   if (v == null) return "";
@@ -62,6 +62,8 @@ export interface SifenBuildConfigRow {
   direccion_fiscal: string | null;
   timbrado_numero: string;
   timbrado_fecha_inicio_vigencia?: string | null;
+  actividad_economica_codigo?: string | null;
+  actividad_economica_descripcion?: string | null;
   establecimiento: string;
   punto_expedicion: string;
   csc: string | null;
@@ -138,6 +140,16 @@ function validateEmisor(config: SifenBuildConfigRow | null): { ok: true; emisor:
       error: `Configuración SIFEN: ${tin.error} Configuración → Facturación electrónica.`,
     };
   }
+  const act = normalizeActividadEconomica(
+    config.actividad_economica_codigo,
+    config.actividad_economica_descripcion
+  );
+  if (!act.ok) {
+    return {
+      ok: false,
+      error: `Configuración SIFEN: ${act.error} Configuración → Facturación electrónica.`,
+    };
+  }
   return {
     ok: true,
     emisor: {
@@ -146,6 +158,8 @@ function validateEmisor(config: SifenBuildConfigRow | null): { ok: true; emisor:
       direccion_fiscal,
       timbrado_numero,
       timbrado_fecha_inicio_vigencia: tin.value,
+      actividad_economica_codigo: act.codigo,
+      actividad_economica_descripcion: act.descripcion,
       establecimiento,
       punto_expedicion,
       csc: cscRaw === "" ? null : cscRaw,

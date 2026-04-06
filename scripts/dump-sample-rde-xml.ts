@@ -10,6 +10,9 @@ const base: SifenFacturaPayloadBase = {
     razon_social: "EMPRESA DEMO S.A.",
     direccion_fiscal: "Calle Principal 123",
     timbrado_numero: "12345678",
+    timbrado_fecha_inicio_vigencia: "2025-01-01",
+    actividad_economica_codigo: "47111",
+    actividad_economica_descripcion: "Comercio al por menor",
     establecimiento: "001",
     punto_expedicion: "001",
     csc: "123456789",
@@ -55,6 +58,8 @@ const xml = buildOfficialRdeFacturaElectronicaXml(base, {
   emisorEmail: "facturacion@empresa.com.py",
   emisorDireccion: "Calle Principal 123",
   emisorNumCasa: 0,
+  actividadEconomicaCodigo: "47111",
+  actividadEconomicaDescripcion: "Comercio al por menor",
   fechaHoraEmision: new Date("2026-04-04T12:00:00"),
 });
 

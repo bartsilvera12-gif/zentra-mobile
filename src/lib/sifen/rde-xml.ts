@@ -236,8 +236,13 @@ export function buildOfficialRdeFacturaElectronicaXml(
 
   const dep = (opts.emisorDepartamento ?? "1").trim();
   const depDes = (opts.emisorDepartamentoDescripcion ?? "CAPITAL").trim();
-  const cAct = (opts.actividadEconomicaCodigo ?? "47111").trim();
-  const dActDes = (opts.actividadEconomicaDescripcion ?? "Comercio al por menor").trim();
+  const cAct = opts.actividadEconomicaCodigo?.trim() ?? "";
+  const dActDes = opts.actividadEconomicaDescripcion?.trim() ?? "";
+  if (!cAct || !dActDes) {
+    throw new Error(
+      "Faltan actividadEconomicaCodigo y actividadEconomicaDescripcion (gEmis.gActEco). Configúrelos en Facturación electrónica; deben coincidir con el catálogo SET para su RUC (error 1261 si no)."
+    );
+  }
 
   const dNomEmi = esAmbienteTest ? SIFEN_TEST_LITERAL_DOCUMENTO : emisor.razon_social.trim();
 

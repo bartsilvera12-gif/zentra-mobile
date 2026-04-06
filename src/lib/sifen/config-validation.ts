@@ -40,6 +40,39 @@ export function normalizeTimbradoFechaInicioVigencia(
   return { ok: true, value: s };
 }
 
+/** cActEco / dDesActEco: deben coincidir con el catálogo y la actividad declarada para el RUC. */
+export function normalizeActividadEconomica(
+  codigoRaw: unknown,
+  descRaw: unknown
+): { ok: true; codigo: string; descripcion: string } | { ok: false; error: string } {
+  const codigo = trimStr(codigoRaw);
+  const descripcion = trimStr(descRaw);
+  if (!codigo) {
+    return {
+      ok: false,
+      error:
+        "actividad_economica_codigo es obligatorio (código numérico del catálogo SET / e-kuatia para su actividad principal).",
+    };
+  }
+  if (!/^\d{4,8}$/.test(codigo)) {
+    return {
+      ok: false,
+      error: "actividad_economica_codigo debe ser numérico de 4 a 8 dígitos (catálogo SET).",
+    };
+  }
+  if (!descripcion) {
+    return {
+      ok: false,
+      error:
+        "actividad_economica_descripcion es obligatoria (texto oficial del catálogo para ese código; error SET 1261 si no coincide).",
+    };
+  }
+  if (descripcion.length > 600) {
+    return { ok: false, error: "actividad_economica_descripcion es demasiado larga." };
+  }
+  return { ok: true, codigo, descripcion };
+}
+
 export function parseAmbiente(v: unknown): AmbienteSifen | null {
   const s = trimStr(v);
   if (s === "test" || s === "produccion") return s;
@@ -92,6 +125,8 @@ export function validateCreateBody(raw: unknown): EmpresaSifenConfigCreateResult
   if (!timbrado_numero) return { ok: false, error: "timbrado_numero es obligatorio" };
   const tin = normalizeTimbradoFechaInicioVigencia(b.timbrado_fecha_inicio_vigencia);
   if (!tin.ok) return { ok: false, error: tin.error };
+  const act = normalizeActividadEconomica(b.actividad_economica_codigo, b.actividad_economica_descripcion);
+  if (!act.ok) return { ok: false, error: act.error };
   if (!establecimiento) return { ok: false, error: "establecimiento es obligatorio" };
   if (!punto_expedicion) return { ok: false, error: "punto_expedicion es obligatorio" };
 
@@ -118,6 +153,8 @@ export function validateCreateBody(raw: unknown): EmpresaSifenConfigCreateResult
     direccion_fiscal: optionalNullableString(b.direccion_fiscal),
     timbrado_numero,
     timbrado_fecha_inicio_vigencia: tin.value,
+    actividad_economica_codigo: act.codigo,
+    actividad_economica_descripcion: act.descripcion,
     establecimiento,
     punto_expedicion,
     ambiente,
@@ -179,6 +216,12 @@ export function buildPatchUpdate(raw: unknown): EmpresaSifenConfigPatchResult {
     if (!tin.ok) return { ok: false, error: tin.error };
     patch.timbrado_fecha_inicio_vigencia = tin.value;
   }
+  if ("actividad_economica_codigo" in b || "actividad_economica_descripcion" in b) {
+    const act = normalizeActividadEconomica(b.actividad_economica_codigo, b.actividad_economica_descripcion);
+    if (!act.ok) return { ok: false, error: act.error };
+    patch.actividad_economica_codigo = act.codigo;
+    patch.actividad_economica_descripcion = act.descripcion;
+  }
   if ("establecimiento" in b) {
     const v = trimStr(b.establecimiento);
     if (!v) return { ok: false, error: "establecimiento no puede quedar vacío" };
@@ -233,6 +276,8 @@ export function rowFromCreateBody(empresaId: string, body: EmpresaSifenConfigCre
     razon_social: body.razon_social,
     timbrado_numero: body.timbrado_numero,
     timbrado_fecha_inicio_vigencia: body.timbrado_fecha_inicio_vigencia,
+    actividad_economica_codigo: body.actividad_economica_codigo,
+    actividad_economica_descripcion: body.actividad_economica_descripcion,
     establecimiento: body.establecimiento,
     punto_expedicion: body.punto_expedicion,
     csc: body.csc ?? null,

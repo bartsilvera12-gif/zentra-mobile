@@ -61,7 +61,7 @@ export async function loadValidatedSifenPayload(
     supabase
       .from("empresa_sifen_config")
       .select(
-        "ruc, razon_social, direccion_fiscal, timbrado_numero, timbrado_fecha_inicio_vigencia, establecimiento, punto_expedicion, csc, activo, ambiente"
+        "ruc, razon_social, direccion_fiscal, timbrado_numero, timbrado_fecha_inicio_vigencia, actividad_economica_codigo, actividad_economica_descripcion, establecimiento, punto_expedicion, csc, activo, ambiente"
       )
       .eq("empresa_id", empresaId)
       .maybeSingle(),

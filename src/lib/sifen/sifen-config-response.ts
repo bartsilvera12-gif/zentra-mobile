@@ -31,6 +31,14 @@ export function toEmpresaSifenConfigPublicDto(
       row.timbrado_fecha_inicio_vigencia == null || String(row.timbrado_fecha_inicio_vigencia).trim() === ""
         ? null
         : String(row.timbrado_fecha_inicio_vigencia).trim().slice(0, 10),
+    actividad_economica_codigo:
+      row.actividad_economica_codigo == null || String(row.actividad_economica_codigo).trim() === ""
+        ? null
+        : String(row.actividad_economica_codigo).trim(),
+    actividad_economica_descripcion:
+      row.actividad_economica_descripcion == null || String(row.actividad_economica_descripcion).trim() === ""
+        ? null
+        : String(row.actividad_economica_descripcion).trim(),
     establecimiento: String(row.establecimiento ?? ""),
     punto_expedicion: String(row.punto_expedicion ?? ""),
     csc: row.csc == null ? null : String(row.csc),

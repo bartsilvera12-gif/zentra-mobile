@@ -2,6 +2,7 @@
 
 import { Fragment, useCallback, useState } from "react";
 import type { FacturaElectronicaDTO, SifenConsultaLoteUltimaPersistida } from "@/lib/sifen/types";
+import { decodeXmlNumericEntities } from "@/lib/sifen/decode-xml-entities";
 import { SifenEstadoBadge, labelSifenEstado } from "./SifenEstadoBadge";
 
 type Resumen = {
@@ -512,7 +513,7 @@ export function FacturaElectronicaPanel({
                               <ul className="list-circle pl-4 mt-1 space-y-0.5">
                                 {d.grupoRes.map((g, i) => (
                                   <li key={`${d.cdc}-${g.dCodRes}-${i}`}>
-                                    <code>{g.dCodRes}</code> — {g.dMsgRes}
+                                    <code>{g.dCodRes}</code> — {decodeXmlNumericEntities(g.dMsgRes)}
                                   </li>
                                 ))}
                               </ul>
@@ -532,7 +533,7 @@ export function FacturaElectronicaPanel({
                 {mostrarErrorPersistido && (
                   <div className="rounded-lg bg-red-50 border border-red-200 text-red-800 text-sm px-3 py-2 whitespace-pre-wrap">
                     <span className="font-semibold">Error: </span>
-                    {fe.error}
+                    {decodeXmlNumericEntities(fe.error ?? "")}
                   </div>
                 )}
               </>
@@ -547,7 +548,7 @@ export function FacturaElectronicaPanel({
                   : "bg-red-50 border border-red-200 text-red-800"
               }`}
             >
-              {flash.text}
+              {decodeXmlNumericEntities(flash.text)}
             </div>
           )}
 

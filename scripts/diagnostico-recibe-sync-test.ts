@@ -58,13 +58,15 @@ async function main() {
   const yAnio = /^(\d{4})/.exec(fecha)?.[1] ?? String(new Date().getFullYear());
 
   const xmlSinFirma = buildOfficialRdeFacturaElectronicaXml(loaded.payload, {
-    timbradoFechaInicio: `${yAnio}-01-01`,
+    timbradoFechaInicio: loaded.payload.emisor.timbrado_fecha_inicio_vigencia,
     timbradoFechaFin: `${yAnio}-12-31`,
     ambiente: loaded.ambiente,
     emisorTelefono: "021000000",
     emisorEmail: "facturacion@configurar-empresa.com.py",
     emisorDireccion: loaded.payload.emisor.direccion_fiscal.trim(),
     emisorNumCasa: 0,
+    actividadEconomicaCodigo: loaded.payload.emisor.actividad_economica_codigo,
+    actividadEconomicaDescripcion: loaded.payload.emisor.actividad_economica_descripcion,
   });
 
   const material = extractKeyAndCertFromP12(p12Dl.data, p12Password);

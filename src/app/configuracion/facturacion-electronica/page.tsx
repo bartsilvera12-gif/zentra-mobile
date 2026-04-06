@@ -43,6 +43,8 @@ function isSifenConfigCompleta(c: EmpresaSifenConfigDTO): boolean {
     Boolean(c.direccion_fiscal?.trim()) &&
     Boolean(c.timbrado_numero?.trim()) &&
     Boolean(c.timbrado_fecha_inicio_vigencia?.trim()) &&
+    Boolean(c.actividad_economica_codigo?.trim()) &&
+    Boolean(c.actividad_economica_descripcion?.trim()) &&
     Boolean(c.establecimiento?.trim()) &&
     Boolean(c.punto_expedicion?.trim());
   return (
@@ -67,6 +69,8 @@ export default function FacturacionElectronicaSifenPage() {
   const [direccionFiscal, setDireccionFiscal] = useState("");
   const [timbradoNumero, setTimbradoNumero] = useState("");
   const [timbradoFechaIni, setTimbradoFechaIni] = useState("");
+  const [actEcoCodigo, setActEcoCodigo] = useState("");
+  const [actEcoDescripcion, setActEcoDescripcion] = useState("");
   const [establecimiento, setEstablecimiento] = useState("");
   const [puntoExpedicion, setPuntoExpedicion] = useState("");
   const [csc, setCsc] = useState("");
@@ -101,6 +105,8 @@ export default function FacturacionElectronicaSifenPage() {
         setDireccionFiscal(d.direccion_fiscal ?? "");
         setTimbradoNumero(d.timbrado_numero);
         setTimbradoFechaIni(ymdToDateInput(d.timbrado_fecha_inicio_vigencia));
+        setActEcoCodigo(d.actividad_economica_codigo ?? "");
+        setActEcoDescripcion(d.actividad_economica_descripcion ?? "");
         setEstablecimiento(d.establecimiento);
         setPuntoExpedicion(d.punto_expedicion);
         setCsc(d.csc ?? "");
@@ -170,6 +176,8 @@ export default function FacturacionElectronicaSifenPage() {
           direccion_fiscal: direccionFiscal.trim() || null,
           timbrado_numero: timbradoNumero.trim(),
           timbrado_fecha_inicio_vigencia: timbradoFechaIni.trim(),
+          actividad_economica_codigo: actEcoCodigo.trim(),
+          actividad_economica_descripcion: actEcoDescripcion.trim(),
           establecimiento: establecimiento.trim(),
           punto_expedicion: puntoExpedicion.trim(),
           csc: csc.trim() || null,
@@ -200,6 +208,8 @@ export default function FacturacionElectronicaSifenPage() {
           direccion_fiscal: direccionFiscal.trim() || null,
           timbrado_numero: timbradoNumero.trim(),
           timbrado_fecha_inicio_vigencia: timbradoFechaIni.trim(),
+          actividad_economica_codigo: actEcoCodigo.trim(),
+          actividad_economica_descripcion: actEcoDescripcion.trim(),
           establecimiento: establecimiento.trim(),
           punto_expedicion: puntoExpedicion.trim(),
           csc: csc.trim() || null,
@@ -276,6 +286,8 @@ export default function FacturacionElectronicaSifenPage() {
     Boolean(direccionFiscal.trim()) &&
     Boolean(timbradoNumero.trim()) &&
     Boolean(timbradoFechaIni.trim()) &&
+    Boolean(actEcoCodigo.trim()) &&
+    Boolean(actEcoDescripcion.trim()) &&
     Boolean(establecimiento.trim()) &&
     Boolean(puntoExpedicion.trim());
 
@@ -346,6 +358,13 @@ export default function FacturacionElectronicaSifenPage() {
               <li>
                 <span className="text-slate-500">Inicio vigencia timbrado (dFeIniT):</span>{" "}
                 <span className="font-mono font-medium">{cfg.timbrado_fecha_inicio_vigencia ?? "—"}</span>
+              </li>
+              <li>
+                <span className="text-slate-500">Actividad económica (cActEco):</span>{" "}
+                <span className="font-mono font-medium">{cfg.actividad_economica_codigo ?? "—"}</span>
+                {cfg.actividad_economica_descripcion ? (
+                  <span className="block text-slate-600 mt-0.5">{cfg.actividad_economica_descripcion}</span>
+                ) : null}
               </li>
               <li>
                 <span className="text-slate-500">Certificado .p12:</span>{" "}
@@ -478,6 +497,33 @@ export default function FacturacionElectronicaSifenPage() {
               </p>
             </div>
             <div>
+              <label className={fLabel}>Código actividad económica (cActEco)</label>
+              <input
+                className={fInput}
+                inputMode="numeric"
+                pattern="[0-9]*"
+                placeholder="Ej: 70209"
+                value={actEcoCodigo}
+                onChange={(e) => setActEcoCodigo(e.target.value.replace(/\D/g, "").slice(0, 8))}
+                required
+              />
+            </div>
+            <div className="sm:col-span-2">
+              <label className={fLabel}>Descripción actividad económica (dDesActEco)</label>
+              <textarea
+                className={`${fInput} min-h-[4rem] resize-y`}
+                value={actEcoDescripcion}
+                onChange={(e) => setActEcoDescripcion(e.target.value)}
+                placeholder="Texto exacto del catálogo SET / e-kuatia para ese código"
+                required
+                rows={3}
+              />
+              <p className="text-xs text-slate-500 mt-1.5 leading-relaxed">
+                Debe ser la <span className="font-medium">actividad principal declarada para tu RUC</span>. Copiá código y descripción del
+                catálogo en e-kuatia o de tu constancia. Si no coinciden con lo que tiene la SET, devuelve error <span className="font-mono">1261</span>.
+              </p>
+            </div>
+            <div>
               <label className={fLabel}>Establecimiento</label>
               <input className={fInput} value={establecimiento} onChange={(e) => setEstablecimiento(e.target.value)} required />
             </div>
@@ -605,6 +651,8 @@ export default function FacturacionElectronicaSifenPage() {
                   setDireccionFiscal(cfg.direccion_fiscal ?? "");
                   setTimbradoNumero(cfg.timbrado_numero);
                   setTimbradoFechaIni(ymdToDateInput(cfg.timbrado_fecha_inicio_vigencia));
+                  setActEcoCodigo(cfg.actividad_economica_codigo ?? "");
+                  setActEcoDescripcion(cfg.actividad_economica_descripcion ?? "");
                   setEstablecimiento(cfg.establecimiento);
                   setPuntoExpedicion(cfg.punto_expedicion);
                   setCsc(cfg.csc ?? "");

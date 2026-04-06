@@ -105,6 +105,8 @@ export async function POST(
         emisorEmail: "facturacion@configurar-empresa.com.py",
         emisorDireccion: loaded.payload.emisor.direccion_fiscal.trim(),
         emisorNumCasa: 0,
+        actividadEconomicaCodigo: loaded.payload.emisor.actividad_economica_codigo,
+        actividadEconomicaDescripcion: loaded.payload.emisor.actividad_economica_descripcion,
       });
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Error al generar XML SIFEN";
