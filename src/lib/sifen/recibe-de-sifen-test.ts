@@ -8,12 +8,13 @@ import { URL } from "node:url";
 import type { AmbienteSifen } from "./types";
 import { extractKeyAndCertFromP12 } from "./sign-xml";
 import { SIFEN_EKUATIA_TARGET_NS } from "./sifen-xsi-schema-location";
+import { SIFEN_WS, urlRecibeSync } from "./sifen-ws-urls";
 
 const SIFEN_NS = SIFEN_EKUATIA_TARGET_NS;
 const SOAP_ENV = "http://www.w3.org/2003/05/soap-envelope";
 
-export const SIFEN_TEST_RECIBE_SYNC_SERVICE_URL =
-  "https://sifen-test.set.gov.py/de/ws/sync/recibe.wsdl";
+/** @deprecated Usar `SIFEN_WS.test.recibeSync` o `urlRecibeSync("test")`. */
+export const SIFEN_TEST_RECIBE_SYNC_SERVICE_URL = SIFEN_WS.test.recibeSync;
 
 const CONTENT_TYPE = "application/xml; charset=utf-8";
 
@@ -188,14 +189,15 @@ function postHttpsMtls(
 }
 
 /**
- * Envía el `rDE` firmado al endpoint síncrono TEST y devuelve `rProtDe` parseado.
+ * Envía el `rDE` firmado al endpoint síncrono (recibe) y devuelve `rProtDe` parseado.
  */
-export async function recibirDeSifenTestSync(params: RecibeDeSyncParams): Promise<RecibeDeSyncParsed> {
-  const ambiente = params.empresaConfig.ambiente ?? "test";
-  if (ambiente !== "test") {
-    throw new Error("recibirDeSifenTestSync solo opera contra SIFEN TEST.");
+export async function recibirDeSifenSync(params: RecibeDeSyncParams): Promise<RecibeDeSyncParsed> {
+  const ambiente: AmbienteSifen = params.empresaConfig.ambiente ?? "test";
+  if (ambiente !== "test" && ambiente !== "produccion") {
+    throw new Error('ambiente debe ser "test" o "produccion".');
   }
 
+  const serviceUrl = urlRecibeSync(ambiente);
   const dId = params.dId ?? generarDId();
   const rdeInterior = stripXmlDeclaration(params.xmlFirmadoRde);
   if (!/<\s*rDE\b/i.test(rdeInterior)) {
@@ -213,7 +215,7 @@ export async function recibirDeSifenTestSync(params: RecibeDeSyncParams): Promis
   let cuerpo: string;
   try {
     const res = await postHttpsMtls(
-      SIFEN_TEST_RECIBE_SYNC_SERVICE_URL,
+      serviceUrl,
       soap,
       certificatePem,
       privateKeyPem,
@@ -223,8 +225,16 @@ export async function recibirDeSifenTestSync(params: RecibeDeSyncParams): Promis
     cuerpo = res.body;
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
-    throw new Error(`Fallo HTTPS/mTLS recibe síncrono SIFEN TEST: ${msg}`);
+    const label = ambiente === "produccion" ? "SIFEN producción" : "SIFEN TEST";
+    throw new Error(`Fallo HTTPS/mTLS recibe síncrono ${label}: ${msg}`);
   }
 
   return parsearRespuestaRecibeDeSync(cuerpo, httpStatus);
+}
+
+export async function recibirDeSifenTestSync(params: RecibeDeSyncParams): Promise<RecibeDeSyncParsed> {
+  return recibirDeSifenSync({
+    ...params,
+    empresaConfig: { ...params.empresaConfig, ambiente: "test" },
+  });
 }

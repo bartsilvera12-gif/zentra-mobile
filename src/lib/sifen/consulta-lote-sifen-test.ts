@@ -11,12 +11,13 @@ import * as https from "node:https";
 import { URL } from "node:url";
 import type { AmbienteSifen } from "./types";
 import { extractKeyAndCertFromP12 } from "./sign-xml";
+import { SIFEN_WS, urlConsultaLote } from "./sifen-ws-urls";
 
 const SIFEN_NS = "http://ekuatia.set.gov.py/sifen/xsd";
 const SOAP_ENV = "http://www.w3.org/2003/05/soap-envelope";
 
-export const SIFEN_TEST_CONSULTA_LOTE_SERVICE_URL =
-  "https://sifen-test.set.gov.py/de/ws/consultas/consulta-lote.wsdl";
+/** @deprecated Usar `SIFEN_WS.test.consultaLote` o `urlConsultaLote("test")`. */
+export const SIFEN_TEST_CONSULTA_LOTE_SERVICE_URL = SIFEN_WS.test.consultaLote;
 
 /** SOAP 1.2 action (WS-I Basic Profile; algunos gateways la validan). */
 const SOAP_ACTION_CONSULTA_LOTE =
@@ -253,16 +254,15 @@ export function inferirEstadoSifenTrasConsultaLote(
   return { nuevoEstado: null, filaRelevante: row };
 }
 
-export async function consultarLoteSifenTest(
+export async function consultarLoteSifen(
   params: ConsultarLoteSifenTestParams
 ): Promise<ConsultaLoteRespuestaParsed> {
-  const ambiente = params.empresaConfig.ambiente ?? "test";
-  if (ambiente !== "test") {
-    throw new Error(
-      "consultarLoteSifenTest solo opera contra SIFEN TEST; producción se implementará aparte."
-    );
+  const ambiente: AmbienteSifen = params.empresaConfig.ambiente ?? "test";
+  if (ambiente !== "test" && ambiente !== "produccion") {
+    throw new Error('ambiente debe ser "test" o "produccion".');
   }
 
+  const serviceUrl = urlConsultaLote(ambiente);
   const prot = params.dProtConsLote.trim();
   if (!prot || !/^[0-9]+$/.test(prot)) {
     throw new Error("dProtConsLote inválido: debe ser un número (solo dígitos).");
@@ -282,7 +282,7 @@ export async function consultarLoteSifenTest(
   let cuerpo: string;
   try {
     const res = await postHttpsMtls(
-      SIFEN_TEST_CONSULTA_LOTE_SERVICE_URL,
+      serviceUrl,
       soap,
       certificatePem,
       privateKeyPem,
@@ -292,9 +292,19 @@ export async function consultarLoteSifenTest(
     cuerpo = res.body;
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
-    throw new Error(`Fallo HTTPS/mTLS consulta-lote SIFEN TEST: ${msg}`);
+    const label = ambiente === "produccion" ? "SIFEN producción" : "SIFEN TEST";
+    throw new Error(`Fallo HTTPS/mTLS consulta-lote ${label}: ${msg}`);
   }
 
   const parsed = parsearRespuestaConsultaLote(cuerpo);
   return { ...parsed, httpStatus };
+}
+
+export async function consultarLoteSifenTest(
+  params: ConsultarLoteSifenTestParams
+): Promise<ConsultaLoteRespuestaParsed> {
+  return consultarLoteSifen({
+    ...params,
+    empresaConfig: { ...params.empresaConfig, ambiente: "test" },
+  });
 }

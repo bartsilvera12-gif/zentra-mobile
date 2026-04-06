@@ -2,11 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { getUserAndEmpresa } from "@/lib/middleware/auth";
 import { errorResponse } from "@/lib/api/response";
 import { API_ERRORS } from "@/lib/api/errors";
-import { handleSifenConsultaLotePost } from "@/lib/sifen/handle-sifen-consulta-lote-post";
+import { handleSifenEnviarPost } from "@/lib/sifen/handle-sifen-enviar-post";
 
 /**
- * POST /api/facturas/[id]/sifen/consulta-lote-test
- * Igual que `/sifen/consulta-lote` pero solo si ambiente `test` (compatibilidad).
+ * POST /api/facturas/[id]/sifen/enviar
+ * Envía el XML firmado a SIFEN según `empresa_sifen_config.ambiente` (test | producción).
  */
 export async function POST(request: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   const auth = await getUserAndEmpresa();
@@ -14,7 +14,7 @@ export async function POST(request: NextRequest, ctx: { params: Promise<{ id: st
     return NextResponse.json(errorResponse(API_ERRORS.UNAUTHORIZED), { status: 401 });
   }
   try {
-    return await handleSifenConsultaLotePost(request, ctx.params, auth, { soloAmbienteTest: true });
+    return await handleSifenEnviarPost(request, ctx.params, auth, { soloAmbienteTest: false });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Error";
     return NextResponse.json(errorResponse(msg), { status: 500 });

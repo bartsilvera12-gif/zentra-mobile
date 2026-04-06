@@ -310,9 +310,9 @@ export interface SifenFirmarResponseData {
   xml_firmado?: string;
 }
 
-/** Detalle del evento POST enviar-test (recibe-lote). */
+/** Detalle del evento POST enviar / enviar-test (recibe-lote). */
 export interface SifenApiEnviarTestDetalle {
-  origen: "api_enviar_test";
+  origen: "api_enviar_test" | "api_enviar";
   factura_id: string;
   xml_firmado_path: string;
   dCodRes: string | null;
@@ -349,9 +349,9 @@ export interface SifenEnviarTestResponseData {
   };
 }
 
-/** Detalle del evento POST consulta-lote-test. */
+/** Detalle del evento POST consulta-lote / consulta-lote-test. */
 export interface SifenApiConsultaLoteTestDetalle {
-  origen: "api_consulta_lote_test";
+  origen: "api_consulta_lote_test" | "api_consulta_lote";
   factura_id: string;
   dProtConsLote: string;
   dCodResLot: string | null;

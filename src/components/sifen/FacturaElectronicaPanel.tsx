@@ -239,7 +239,7 @@ export function FacturaElectronicaPanel({
   onResumenLoaded: (r: Resumen) => void;
 }) {
   const [action, setAction] = useState<
-    "borrador" | "xml" | "firmar" | "enviar-test" | "consulta-lote-test" | null
+    "borrador" | "xml" | "firmar" | "enviar" | "consulta-lote" | null
   >(null);
   const [flash, setFlash] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
 
@@ -287,11 +287,14 @@ export function FacturaElectronicaPanel({
     }
   };
 
-  const runEnviarTest = async () => {
+  const etiquetaAmbienteSet =
+    resumen?.sifen_ambiente === "produccion" ? "producción" : "pruebas (TEST)";
+
+  const runEnviar = async () => {
     setFlash(null);
-    setAction("enviar-test");
+    setAction("enviar");
     try {
-      const res = await fetch(`/api/facturas/${facturaId}/sifen/enviar-test`, { method: "POST" });
+      const res = await fetch(`/api/facturas/${facturaId}/sifen/enviar`, { method: "POST" });
       const j = (await res.json()) as {
         success?: boolean;
         data?: {
@@ -345,7 +348,10 @@ export function FacturaElectronicaPanel({
       if (resumen != null && feResp) {
         onResumenLoaded({ ...resumen, factura_electronica: feResp });
       }
-      setFlash({ kind: "ok", text: "Lote enviado correctamente a SET (TEST)" });
+      setFlash({
+        kind: "ok",
+        text: `Lote enviado correctamente a SET (${etiquetaAmbienteSet})`,
+      });
 
       const loaded = await refresh();
       if (
@@ -363,11 +369,11 @@ export function FacturaElectronicaPanel({
     }
   };
 
-  const runConsultaLoteTest = async () => {
+  const runConsultaLote = async () => {
     setFlash(null);
-    setAction("consulta-lote-test");
+    setAction("consulta-lote");
     try {
-      const res = await fetch(`/api/facturas/${facturaId}/sifen/consulta-lote-test`, {
+      const res = await fetch(`/api/facturas/${facturaId}/sifen/consulta-lote`, {
         method: "POST",
       });
       const j = (await res.json()) as {
@@ -416,10 +422,8 @@ export function FacturaElectronicaPanel({
     !FIRMAR_BLOQUEADOS.has(String(estado)) &&
     estado !== "firmado";
 
-  const puedeConsultarLoteTest =
-    Boolean(resumen?.sifen_config_activa) &&
-    resumen?.sifen_ambiente === "test" &&
-    Boolean(fe?.sifen_d_prot_cons_lote?.trim());
+  const puedeConsultarLote =
+    Boolean(resumen?.sifen_config_activa) && Boolean(fe?.sifen_d_prot_cons_lote?.trim());
 
   const ultimaConsulta = fe?.sifen_ultima_respuesta_consulta_lote ?? null;
 
@@ -477,7 +481,9 @@ export function FacturaElectronicaPanel({
                 )}
                 {ultimaConsulta && (
                   <div className="rounded-lg border border-sky-100 bg-sky-50/60 px-3 py-2 text-xs space-y-1.5">
-                    <p className="font-semibold text-sky-900">Última consulta lote (TEST)</p>
+                    <p className="font-semibold text-sky-900">
+                      Última consulta lote ({etiquetaAmbienteSet})
+                    </p>
                     <p className="text-slate-700">
                       <span className="text-slate-500">dCodResLot:</span>{" "}
                       <code className="bg-white/80 px-1 rounded">
@@ -576,22 +582,22 @@ export function FacturaElectronicaPanel({
             </button>
           </div>
 
-          {fe && puedeConsultarLoteTest && (
+          {fe && puedeConsultarLote && (
             <div className="rounded-lg border border-sky-200 bg-sky-50/40 px-4 py-3 space-y-2">
               <p className="text-[10px] font-bold text-sky-900/70 uppercase tracking-wide">
-                Consulta asíncrona (TEST)
+                Consulta asíncrona (SET)
               </p>
               <div className="flex flex-col sm:flex-row sm:items-center sm:flex-wrap gap-2">
                 <button
                   type="button"
                   disabled={action !== null}
-                  onClick={() => void runConsultaLoteTest()}
+                  onClick={() => void runConsultaLote()}
                   className="w-fit px-3 py-2 text-xs font-semibold rounded-lg bg-sky-600 text-white shadow-sm disabled:opacity-50 disabled:cursor-not-allowed hover:bg-sky-700"
                 >
-                  {action === "consulta-lote-test" ? "Consultando…" : "Consultar lote TEST"}
+                  {action === "consulta-lote" ? "Consultando…" : "Consultar lote SET"}
                 </button>
                 <p className="text-xs text-slate-600">
-                  Usa el protocolo guardado tras enviar el lote. Requiere ambiente SIFEN test.
+                  Usa el protocolo guardado tras enviar el lote (mismo ambiente que en configuración).
                 </p>
               </div>
             </div>
@@ -604,13 +610,14 @@ export function FacturaElectronicaPanel({
                 <button
                   type="button"
                   disabled={action !== null}
-                  onClick={() => void runEnviarTest()}
+                  onClick={() => void runEnviar()}
                   className="w-fit px-3 py-2 text-xs font-semibold rounded-lg bg-violet-600 text-white shadow-sm disabled:opacity-50 disabled:cursor-not-allowed hover:bg-violet-700"
                 >
-                  {action === "enviar-test" ? "Enviando a SET…" : "Enviar a SET"}
+                  {action === "enviar" ? "Enviando a SET…" : "Enviar a SET"}
                 </button>
                 <p className="text-xs text-violet-900/75 font-medium">
-                  Ambiente de pruebas (TEST). Requiere configuración SIFEN activa en modo test.
+                  Ambiente según Configuración → Facturación electrónica ({etiquetaAmbienteSet}). Certificado
+                  y CSC deben coincidir con ese ambiente.
                 </p>
               </div>
               <p className="text-xs text-slate-700 leading-relaxed">

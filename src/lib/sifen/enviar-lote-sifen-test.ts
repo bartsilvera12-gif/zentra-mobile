@@ -12,6 +12,7 @@ import JSZip from "jszip";
 import type { AmbienteSifen } from "./types";
 import { extractKeyAndCertFromP12 } from "./sign-xml";
 import { SIFEN_EKUATIA_TARGET_NS } from "./sifen-xsi-schema-location";
+import { SIFEN_WS, urlRecepLote } from "./sifen-ws-urls";
 
 /**
  * Nombre del archivo dentro del ZIP enviado en xDE.
@@ -22,15 +23,10 @@ const NOMBRE_XML_DENTRO_ZIP = "xml_file.xml";
 const SIFEN_NS = SIFEN_EKUATIA_TARGET_NS;
 const SOAP_ENV = "http://www.w3.org/2003/05/soap-envelope";
 
-/**
- * URL del servicio TEST (misma que documentan DNIT / pysifen: `recibe-lote.wsdl`).
- * El POST va contra esta URL, no contra la variante sin sufijo.
- */
-export const SIFEN_TEST_RECEP_LOTE_SERVICE_URL =
-  "https://sifen-test.set.gov.py/de/ws/async/recibe-lote.wsdl";
+/** @deprecated Usar `SIFEN_WS.test.recepLote` o `urlRecepLote("test")`. */
+export const SIFEN_TEST_RECEP_LOTE_SERVICE_URL = SIFEN_WS.test.recepLote;
 
 export interface EmpresaConfigEnvioLoteTest {
-  /** Solo se usa `test` en esta función. */
   ambiente?: AmbienteSifen;
   certificadoP12: Buffer;
   certificadoPassword: string;
@@ -150,8 +146,9 @@ function construirSoapRecibeLote(dId: number, xdeBase64: string): string {
 /** SET acepta `application/xml` en recibe-lote (no exige SOAP 1.2 feature con action). */
 const CONTENT_TYPE_RECEP_LOTE = "application/xml; charset=utf-8";
 
-/** Arma el mismo SOAP que envía `enviarLoteSifenTest` (útil para trazas sin mTLS). */
-export async function prepararSoapRecibeLoteTestDe(
+/** Arma el SOAP de recibe-lote (útil para trazas sin mTLS). */
+export async function prepararSoapRecibeLoteDe(
+  ambiente: AmbienteSifen,
   xmlFirmado: string,
   opts?: { envoltorioRloteDe?: boolean; dId?: number }
 ): Promise<{
@@ -170,11 +167,19 @@ export async function prepararSoapRecibeLoteTestDe(
   const soapBodyUtf8 = construirSoapRecibeLote(dId, xde);
   return {
     dId,
-    url: SIFEN_TEST_RECEP_LOTE_SERVICE_URL,
+    url: urlRecepLote(ambiente),
     method: "POST",
     contentType: CONTENT_TYPE_RECEP_LOTE,
     soapBodyUtf8,
   };
+}
+
+/** @deprecated Usar `prepararSoapRecibeLoteDe("test", ...)`. */
+export async function prepararSoapRecibeLoteTestDe(
+  xmlFirmado: string,
+  opts?: { envoltorioRloteDe?: boolean; dId?: number }
+) {
+  return prepararSoapRecibeLoteDe("test", xmlFirmado, opts);
 }
 
 /** Extrae texto de un elemento hoja en respuesta SOAP (prefijo opcional). */
@@ -266,19 +271,18 @@ function postHttpsMtls(
 }
 
 /**
- * Envía un DE firmado en lote de un solo documento al ambiente de pruebas SIFEN (recibe-lote).
- * Requiere certificado de cliente válido para el TEST (mismo .p12 que para firmar).
+ * Envía un DE firmado en lote (recibe-lote) a SIFEN TEST o producción.
+ * mTLS con el mismo .p12 que firma el DE.
  */
-export async function enviarLoteSifenTest(
+export async function enviarLoteSifen(
   params: EnviarLoteSifenTestParams
 ): Promise<RecibeLoteRespuestaParsed> {
-  const ambiente = params.empresaConfig.ambiente ?? "test";
-  if (ambiente !== "test") {
-    throw new Error(
-      "enviarLoteSifenTest solo opera contra SIFEN TEST; para producción habrá que usar otra URL y revisar políticas."
-    );
+  const ambiente: AmbienteSifen = params.empresaConfig.ambiente ?? "test";
+  if (ambiente !== "test" && ambiente !== "produccion") {
+    throw new Error('ambiente debe ser "test" o "produccion".');
   }
 
+  const serviceUrl = urlRecepLote(ambiente);
   const dId = params.dId ?? generarDId();
   const envoltorio = params.envoltorioRloteDe === true;
   const xmlLote = envoltorio
@@ -289,11 +293,11 @@ export async function enviarLoteSifenTest(
     const head = xmlLote.slice(0, 4000);
     const tail = xmlLote.length > 4000 ? xmlLote.slice(-800) : "";
     console.info(
-      `[SIFEN_DEBUG_LOTE_XML] bytes_utf8=${Buffer.byteLength(xmlLote, "utf8")} chars=${xmlLote.length} envoltorio_rLoteDE=${envoltorio}\n--- head ---\n${head}\n--- tail ---\n${tail}`
+      `[SIFEN_DEBUG_LOTE_XML] ambiente=${ambiente} bytes_utf8=${Buffer.byteLength(xmlLote, "utf8")} chars=${xmlLote.length} envoltorio_rLoteDE=${envoltorio}\n--- head ---\n${head}\n--- tail ---\n${tail}`
     );
   }
 
-  const preparado = await prepararSoapRecibeLoteTestDe(params.xmlFirmado, {
+  const preparado = await prepararSoapRecibeLoteDe(ambiente, params.xmlFirmado, {
     envoltorioRloteDe: params.envoltorioRloteDe,
     dId,
   });
@@ -309,7 +313,7 @@ export async function enviarLoteSifenTest(
   let cuerpo: string;
   try {
     const res = await postHttpsMtls(
-      SIFEN_TEST_RECEP_LOTE_SERVICE_URL,
+      serviceUrl,
       soap,
       certificatePem,
       privateKeyPem,
@@ -319,7 +323,8 @@ export async function enviarLoteSifenTest(
     cuerpo = res.body;
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
-    throw new Error(`Fallo HTTPS/mTLS contra SIFEN TEST: ${msg}`);
+    const label = ambiente === "produccion" ? "SIFEN producción" : "SIFEN TEST";
+    throw new Error(`Fallo HTTPS/mTLS contra ${label}: ${msg}`);
   }
 
   const parsed = parsearRespuestaRecibeLote(cuerpo);
@@ -332,10 +337,20 @@ export async function enviarLoteSifenTest(
     loteNoEncolado: code === "0301",
     cuerpoSoapCrudo: cuerpo,
     solicitudHttps: {
-      url: SIFEN_TEST_RECEP_LOTE_SERVICE_URL,
+      url: serviceUrl,
       method: "POST",
       contentType: contentTypeRequest,
       soapBodyUtf8: soap,
     },
   };
+}
+
+/** Envío solo a SIFEN TEST (compatibilidad). */
+export async function enviarLoteSifenTest(
+  params: EnviarLoteSifenTestParams
+): Promise<RecibeLoteRespuestaParsed> {
+  return enviarLoteSifen({
+    ...params,
+    empresaConfig: { ...params.empresaConfig, ambiente: "test" },
+  });
 }
