@@ -5,6 +5,7 @@ import { getConfig, saveConfig } from "@/lib/config/storage";
 import type { Suscripcion, FacturaItem, Pago } from "./types";
 import type { Factura } from "@/lib/gestion-clientes/types";
 import { getFacturas, saveFactura } from "@/lib/gestion-clientes/storage";
+import { fechaVencimientoSuscripcion, hoyYmdLocal } from "@/lib/fechas/calendario";
 
 // ─── Tipos de fila ───────────────────────────────────────────────────────────
 
@@ -166,12 +167,9 @@ async function generarFacturaDesdeSuscripcion(
   if (!usuario?.empresa_id) return null;
 
   const config = getConfig();
-  const hoy = new Date().toISOString().slice(0, 10);
-  const diaVenc = Math.min(suscripcion.dia_vencimiento, 28);
-  const venc = new Date();
-  venc.setMonth(venc.getMonth() + 1);
-  venc.setDate(diaVenc);
-  const fechaVenc = venc.toISOString().slice(0, 10);
+  const hoy = hoyYmdLocal();
+  const diaVencCfg = Math.min(Math.max(1, suscripcion.dia_vencimiento), 31);
+  const fechaVenc = fechaVencimientoSuscripcion(hoy, diaVencCfg);
 
   const total = Number(suscripcion.precio);
   const numeroFactura = `${config.prefijo_factura}${String(config.numeracion_inicial).padStart(6, "0")}`;
@@ -236,7 +234,7 @@ export async function crearFacturaContado(
   if (!usuario?.empresa_id) return null;
 
   const config = getConfig();
-  const hoy = new Date().toISOString().slice(0, 10);
+  const hoy = hoyYmdLocal();
   const numeroFactura = `${config.prefijo_factura}${String(config.numeracion_inicial).padStart(6, "0")}`;
 
   const factura = await saveFactura({

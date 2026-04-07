@@ -6,6 +6,7 @@ import { API_ERRORS } from "@/lib/api/errors";
 import { emitEvent, EVENT_TYPES } from "@/lib/integrations/events";
 import { montosFacturaItemParaInsert } from "@/lib/facturacion/factura-item-montos";
 import { obtenerSiguienteNumeroFacturaEmpresa } from "@/lib/facturacion/factura-suscripcion-servidor";
+import { fechaVencimientoSuscripcion } from "@/lib/fechas/calendario";
 
 function getSupabase() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -70,11 +71,10 @@ export async function POST(
 
     const [year, month] = mes.split("-").map(Number);
     const diaFact = Math.min(suscripcion.dia_facturacion ?? 1, 28);
-    const diaVenc = Math.min(suscripcion.dia_vencimiento ?? 10, 31);
+    const diaVencCfg = Math.min(Math.max(1, suscripcion.dia_vencimiento ?? 10), 31);
 
     const fecha = `${year}-${String(month).padStart(2, "0")}-${String(diaFact).padStart(2, "0")}`;
-    const venc = new Date(year, month, diaVenc);
-    const fechaVenc = venc.toISOString().slice(0, 10);
+    const fechaVenc = fechaVencimientoSuscripcion(fecha, diaVencCfg);
 
     const nextMonth = month === 12 ? 1 : month + 1;
     const nextYear = month === 12 ? year + 1 : year;

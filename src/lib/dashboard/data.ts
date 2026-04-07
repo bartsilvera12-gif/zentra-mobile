@@ -1,5 +1,6 @@
 import { supabase } from "@/lib/supabase";
 import { getProspectos } from "@/lib/crm/storage";
+import { toCalendarDateStr } from "@/lib/fechas/calendario";
 
 // ── Tipos de salida (estructura esperada por el Dashboard en page.tsx) ────────
 
@@ -125,9 +126,12 @@ export interface DashboardData {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function toDateStr(v: string | null | undefined): string {
+/** Timestamps (created_at, etc.): mantener ISO de Supabase sin recomputar UTC desde date-only. */
+function toIsoTimestampStr(v: string | null | undefined): string {
   if (!v) return "";
-  const d = new Date(v);
+  const s = String(v).trim();
+  if (s.includes("T")) return s;
+  const d = new Date(s);
   return isNaN(d.getTime()) ? "" : d.toISOString();
 }
 
@@ -249,7 +253,7 @@ export async function getDashboardData(): Promise<DashboardData> {
       empresa: r.empresa as string | undefined,
       nombre_contacto: (r.nombre_contacto as string) ?? (r.nombre as string) ?? "",
       origen: (r.origen as string) ?? "MANUAL",
-      created_at: toDateStr(r.created_at as string),
+      created_at: toIsoTimestampStr(r.created_at as string),
       vendedor_asignado: r.vendedor_asignado as string | undefined,
     }));
 
@@ -257,8 +261,8 @@ export async function getDashboardData(): Promise<DashboardData> {
       id: r.id as string,
       cliente_id: r.cliente_id as string,
       numero_factura: (r.numero_factura as string) ?? "",
-      fecha: toDateStr(r.fecha as string),
-      fecha_vencimiento: toDateStr(r.fecha_vencimiento as string),
+      fecha: toCalendarDateStr(r.fecha as string),
+      fecha_vencimiento: toCalendarDateStr(r.fecha_vencimiento as string),
       monto: toNum(r.monto),
       saldo: toNum(r.saldo),
       estado: (r.estado as string) ?? "Pendiente",
@@ -270,7 +274,7 @@ export async function getDashboardData(): Promise<DashboardData> {
       id: r.id as string,
       factura_id: r.factura_id as string,
       monto: toNum(r.monto),
-      fecha_pago: toDateStr(r.fecha_pago as string),
+      fecha_pago: toCalendarDateStr(r.fecha_pago as string),
     }));
 
     tipificaciones = (tipificacionesQ.data ?? []).map((r: Record<string, unknown>) => ({
@@ -280,7 +284,7 @@ export async function getDashboardData(): Promise<DashboardData> {
       resultado: (r.resultado as string) ?? "",
       observacion: r.observacion as string | undefined,
       usuario: (r.usuario as string) ?? "",
-      fecha: toDateStr(r.fecha as string),
+      fecha: toCalendarDateStr(r.fecha as string),
     }));
 
     productos = (productosQ.data ?? []).map((r: Record<string, unknown>) => ({
@@ -325,7 +329,7 @@ export async function getDashboardData(): Promise<DashboardData> {
         tipo_venta: (r.tipo_venta as string) ?? "CONTADO",
         moneda: (r.moneda as string) ?? "GS",
         tipo_cambio: Number(r.tipo_cambio) ?? 1,
-        fecha: toDateStr(r.fecha as string),
+        fecha: toIsoTimestampStr(r.fecha as string),
       };
     });
 
@@ -335,7 +339,7 @@ export async function getDashboardData(): Promise<DashboardData> {
       producto_nombre: (r.producto_nombre as string) ?? "",
       proveedor_nombre: (r.proveedor_nombre as string) ?? "",
       total: toNum(r.total),
-      fecha: toDateStr(r.fecha as string),
+      fecha: toCalendarDateStr(r.fecha as string),
     }));
 
     gastos = (gastosQ.data ?? []).map((r: Record<string, unknown>) => ({

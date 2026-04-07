@@ -18,6 +18,7 @@ import type {
   CompraRaw,
   GastoRaw,
 } from "@/lib/dashboard/data";
+import { enRangoCalendario, enMesCalendarioActual, ymdAnioMes } from "@/lib/fechas/calendario";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -47,9 +48,14 @@ function formatGsM(n: number): string {
 }
 
 function formatFecha(s: string): string {
-  const d = new Date(s);
-  if (isNaN(d.getTime())) return "—";
-  return d.toLocaleDateString("es-PY", { day: "2-digit", month: "2-digit", year: "numeric" });
+  const cal = s.slice(0, 10);
+  if (/^\d{4}-\d{2}-\d{2}$/.test(cal)) {
+    const [y, m, d] = cal.split("-");
+    return `${d}/${m}/${y}`;
+  }
+  const dt = new Date(s);
+  if (isNaN(dt.getTime())) return "—";
+  return dt.toLocaleDateString("es-PY", { day: "2-digit", month: "2-digit", year: "numeric" });
 }
 
 function hoyStr(): string {
@@ -70,7 +76,13 @@ function getRango(periodo: Periodo): { desde: Date; hasta: Date } {
   return { desde, hasta };
 }
 
+/** Fecha pura YYYY-MM-DD: comparación calendario (sin UTC). ISO con hora: rango por instante. */
 function enRango(fechaStr: string, desde: Date, hasta: Date): boolean {
+  const t = fechaStr.trim();
+  const cal = t.slice(0, 10);
+  if (/^\d{4}-\d{2}-\d{2}$/.test(cal) && t.length <= 10) {
+    return enRangoCalendario(cal, desde, hasta);
+  }
   const f = new Date(fechaStr);
   return !isNaN(f.getTime()) && f >= desde && f <= hasta;
 }
@@ -657,19 +669,9 @@ function DashFinanciero({
   // Ingresos (pagos cobrados), Gastos, Resultado del mes actual
   const mesActual = useMemo(() => {
     const n = new Date();
-    const y = n.getFullYear(), m = n.getMonth();
-    const pagosMes = pagos.filter((p) => {
-      const d = new Date(p.fecha_pago);
-      return d.getFullYear() === y && d.getMonth() === m;
-    });
-    const comprasMes = compras.filter((c) => {
-      const d = new Date(c.fecha);
-      return d.getFullYear() === y && d.getMonth() === m;
-    });
-    const gastosMes = gastos.filter((g) => {
-      const d = new Date(g.fecha);
-      return d.getFullYear() === y && d.getMonth() === m;
-    });
+    const pagosMes = pagos.filter((p) => enMesCalendarioActual(p.fecha_pago, n));
+    const comprasMes = compras.filter((c) => enMesCalendarioActual(c.fecha, n));
+    const gastosMes = gastos.filter((g) => enMesCalendarioActual(g.fecha, n));
     const sumNum = (arr: { monto?: unknown; total?: unknown }[], key: "monto" | "total") =>
       arr.reduce((acc, x) => {
         const v = Number(key === "monto" ? x.monto : x.total);
@@ -690,6 +692,23 @@ function DashFinanciero({
   const facturado       = sumMonto(facturasPeriodo);
   const pagosPeriodo    = pagos.filter(p => enRango(p.fecha_pago, desde, hasta));
   const cobrado         = sumMonto(pagosPeriodo);
+  const facturaNumById  = useMemo(
+    () => Object.fromEntries(facturas.map(f => [String(f.id), f.numero_factura])),
+    [facturas]
+  );
+  const cobradoDetalle  = useMemo(
+    () =>
+      [...pagosPeriodo]
+        .sort((a, b) => (a.fecha_pago < b.fecha_pago ? 1 : a.fecha_pago > b.fecha_pago ? -1 : 0))
+        .map((p) => ({
+          id: p.id,
+          factura_id: p.factura_id,
+          numero_factura: facturaNumById[String(p.factura_id)] ?? "—",
+          monto: Number(p.monto) || 0,
+          fecha_pago: p.fecha_pago.slice(0, 10),
+        })),
+    [pagosPeriodo, facturaNumById]
+  );
   const saldoPendiente  = sumSaldo(facturasValidas.filter(f => (Number(f.saldo) || 0) > 0));
   const cntVencidas     = facturasValidas.filter(f => estadoEfectivo(f, hoy) === "Vencido").length;
 
@@ -701,7 +720,10 @@ function DashFinanciero({
       const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
       const y = d.getFullYear(), m = d.getMonth() + 1;
       const value = facturasValidas
-        .filter(f => { const fd = new Date(f.fecha); return fd.getFullYear() === y && fd.getMonth() + 1 === m; })
+        .filter((f) => {
+          const am = ymdAnioMes(f.fecha);
+          return am && am.y === y && am.m === m;
+        })
         .reduce((s, f) => s + f.monto, 0);
       result.push({ label: `${String(m).padStart(2,"0")}/${String(y).slice(2)}`, value });
     }
@@ -747,7 +769,8 @@ function DashFinanciero({
       <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-4">
         <KpiCard icon="🧾" label="Facturado" value={`Gs. ${formatGsM(facturado)}`} color="text-[#0EA5E9]"
           sub={`${facturasPeriodo.length} facturas`} variation={15} />
-        <KpiCard icon="💵" label="Cobrado" value={`Gs. ${formatGsM(cobrado)}`} color="text-[#0EA5E9]" variation={8} />
+        <KpiCard icon="💵" label="Cobrado" value={`Gs. ${formatGsM(cobrado)}`} color="text-[#0EA5E9]" variation={8}
+          sub={`Suma de ${pagosPeriodo.length} pago(s) por fecha de pago en el período`} />
         <KpiCard icon="⏳" label="Saldo pendiente" value={`Gs. ${formatGsM(saldoPendiente)}`}
           color={saldoPendiente > 0 ? "text-amber-600" : "text-[#0EA5E9]"} />
         <KpiCard icon="🚨" label="Facturas vencidas" value={String(cntVencidas)}
@@ -759,18 +782,52 @@ function DashFinanciero({
           sub="Por suscripciones canceladas" color={montoPerdidoBajas > 0 ? "text-amber-600" : "text-[#0EA5E9]"} />
       </div>
 
+      {/* Trazabilidad: pagos que suman "Cobrado" en el período */}
+      <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-6">
+        <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
+          Desglose cobrado (período: {periodo})
+        </h3>
+        <p className="text-xs text-slate-500 mb-3">
+          Registros incluidos: pagos cuya <strong>fecha de pago</strong> cae en el rango del filtro superior. La suma de montos coincide con la tarjeta &quot;Cobrado&quot; (Gs. {formatGs(cobrado)}).
+        </p>
+        {cobradoDetalle.length === 0 ? (
+          <p className="text-sm text-slate-600">No hay pagos en este período.</p>
+        ) : (
+          <div className="overflow-x-auto rounded-lg border border-slate-200 max-h-52 overflow-y-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-slate-50 sticky top-0 border-b border-slate-200">
+                <tr>
+                  <th className="text-left px-3 py-2 text-xs font-semibold text-slate-500 uppercase tracking-wide">Factura</th>
+                  <th className="text-left px-3 py-2 text-xs font-semibold text-slate-500 uppercase tracking-wide">Fecha pago</th>
+                  <th className="text-right px-3 py-2 text-xs font-semibold text-slate-500 uppercase tracking-wide">Monto</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {cobradoDetalle.map((row) => (
+                  <tr key={row.id} className="hover:bg-slate-50/80">
+                    <td className="px-3 py-2 font-mono text-xs text-slate-800">{row.numero_factura}</td>
+                    <td className="px-3 py-2 text-slate-700">{formatFecha(row.fecha_pago)}</td>
+                    <td className="px-3 py-2 text-right tabular-nums text-slate-800">Gs. {formatGs(row.monto)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
       {/* Metas financieras */}
       <div className="bg-white border border-slate-200 rounded-xl shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 p-6">
         <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-4">Progreso de metas</h3>
         <div className="grid grid-cols-2 gap-6">
           <ProgressBar label="Facturación mensual"
             value={facturasValidas
-              .filter(f => { const d = new Date(f.fecha); const n = new Date(); return d.getMonth() === n.getMonth() && d.getFullYear() === n.getFullYear(); })
+              .filter((f) => enMesCalendarioActual(f.fecha))
               .reduce((s, f) => s + f.monto, 0)}
             meta={config.meta_facturacion_mensual} format="gs" />
           <ProgressBar label="Ventas mensuales"
             value={ventas
-              .filter(v => { const d = new Date(v.fecha); const n = new Date(); return d.getMonth() === n.getMonth() && d.getFullYear() === n.getFullYear(); })
+              .filter((v) => enMesCalendarioActual(v.fecha.slice(0, 10)))
               .reduce((s, v) => s + v.total, 0)}
             meta={config.meta_ventas_mensuales} format="gs" />
         </div>

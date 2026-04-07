@@ -4,6 +4,7 @@ import { getUserAndEmpresa } from "@/lib/middleware/auth";
 import { successResponse, errorResponse } from "@/lib/api/response";
 import { API_ERRORS } from "@/lib/api/errors";
 import { emitEvent, EVENT_TYPES } from "@/lib/integrations/events";
+import { toCalendarDateStr } from "@/lib/fechas/calendario";
 
 function getSupabase() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -99,6 +100,10 @@ export async function POST(request: NextRequest) {
     if (!fecha_pago) {
       return NextResponse.json(errorResponse("fecha_pago es obligatoria"), { status: 400 });
     }
+    const fechaPagoNorm = toCalendarDateStr(String(fecha_pago));
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(fechaPagoNorm)) {
+      return NextResponse.json(errorResponse("fecha_pago inválida"), { status: 400 });
+    }
 
     const supabase = getSupabase();
 
@@ -141,7 +146,7 @@ export async function POST(request: NextRequest) {
       empresa_id: auth.empresa_id,
       factura_id: factura_id.trim(),
       monto: montoNum,
-      fecha_pago: fecha_pago,
+      fecha_pago: fechaPagoNorm,
       metodo_pago: metodo,
       referencia: referencia?.trim() || null,
       cliente_id: factura.cliente_id ?? null,

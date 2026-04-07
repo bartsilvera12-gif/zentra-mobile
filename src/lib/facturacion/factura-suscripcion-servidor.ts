@@ -4,6 +4,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { montosFacturaItemParaInsert } from "./factura-item-montos";
 import { emitEvent, EVENT_TYPES } from "@/lib/integrations/events";
+import { fechaVencimientoSuscripcion, hoyYmdLocal } from "@/lib/fechas/calendario";
 
 export async function obtenerSiguienteNumeroFacturaEmpresa(
   supabase: SupabaseClient,
@@ -45,7 +46,7 @@ export async function crearFacturaInicialSuscripcionSiCorresponde(opts: {
   suscripcion: SuscripcionFacturaRow;
 }): Promise<void> {
   const { supabase, empresaId, suscripcion } = opts;
-  const hoy = new Date().toISOString().slice(0, 10);
+  const hoy = hoyYmdLocal();
   const y = new Date().getFullYear();
   const m = new Date().getMonth() + 1;
   const mesActual = `${y}-${String(m).padStart(2, "0")}`;
@@ -70,11 +71,8 @@ export async function crearFacturaInicialSuscripcionSiCorresponde(opts: {
 
   const numeroFactura = await obtenerSiguienteNumeroFacturaEmpresa(supabase, empresaId);
   const moneda = suscripcion.moneda === "USD" ? "USD" : "GS";
-  const diaVenc = Math.min(Number(suscripcion.dia_vencimiento) || 10, 28);
-  const venc = new Date();
-  venc.setMonth(venc.getMonth() + 1);
-  venc.setDate(diaVenc);
-  const fechaVenc = venc.toISOString().slice(0, 10);
+  const diaVencCfg = Math.min(Math.max(1, Number(suscripcion.dia_vencimiento) || 10), 31);
+  const fechaVenc = fechaVencimientoSuscripcion(hoy, diaVencCfg);
 
   const { data: factura, error: errFact } = await supabase
     .from("facturas")

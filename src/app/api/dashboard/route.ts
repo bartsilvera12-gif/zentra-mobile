@@ -22,7 +22,9 @@ export async function GET(request: NextRequest) {
     const y = now.getFullYear();
     const m = now.getMonth();
     const inicioMes = `${y}-${String(m + 1).padStart(2, "0")}-01`;
-    const finMes = `${y}-${String(m + 1).padStart(2, "0")}-31`;
+    const nextM = m === 11 ? 0 : m + 1;
+    const nextY = m === 11 ? y + 1 : y;
+    const inicioMesSiguiente = `${nextY}-${String(nextM + 1).padStart(2, "0")}-01`;
 
     const supabase = getSupabase();
 
@@ -33,13 +35,13 @@ export async function GET(request: NextRequest) {
         .eq("empresa_id", auth.empresa_id)
         .neq("estado", "Anulado")
         .gte("fecha", inicioMes)
-        .lte("fecha", finMes),
+        .lt("fecha", inicioMesSiguiente),
       supabase
         .from("pagos")
         .select("monto, fecha_pago")
         .eq("empresa_id", auth.empresa_id)
         .gte("fecha_pago", inicioMes)
-        .lte("fecha_pago", finMes),
+        .lt("fecha_pago", inicioMesSiguiente),
       supabase.from("clientes").select("id").eq("empresa_id", auth.empresa_id).eq("estado", "inactivo"),
     ]);
 

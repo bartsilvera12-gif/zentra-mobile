@@ -4,6 +4,7 @@ import { getUserAndEmpresa } from "@/lib/middleware/auth";
 import { successResponse, errorResponse } from "@/lib/api/response";
 import { API_ERRORS } from "@/lib/api/errors";
 import { emitEvent, EVENT_TYPES } from "@/lib/integrations/events";
+import { fechaMasDiasCalendario, toCalendarDateStr } from "@/lib/fechas/calendario";
 
 function getSupabase() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -69,17 +70,29 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(errorResponse("monto debe ser >= 0"), { status: 400 });
     }
 
-    const fechaVenc = fecha_vencimiento || fecha;
+    const tipoFac = tipo === "contado" || tipo === "credito" || tipo === "suscripcion" ? tipo : "credito";
+    const fechaNorm = toCalendarDateStr(String(fecha)) || String(fecha).slice(0, 10);
+    let fechaVenc: string;
+    if (fecha_vencimiento) {
+      fechaVenc = toCalendarDateStr(String(fecha_vencimiento)) || String(fecha_vencimiento).slice(0, 10);
+    } else if (tipoFac === "contado") {
+      fechaVenc = fechaNorm;
+    } else if (tipoFac === "credito") {
+      const diasCred = Number(process.env.FACTURA_DIAS_CREDITO_DEFAULT ?? 30);
+      fechaVenc = fechaMasDiasCalendario(fechaNorm, Number.isFinite(diasCred) ? diasCred : 30);
+    } else {
+      fechaVenc = fechaNorm;
+    }
     const insert = {
       empresa_id: auth.empresa_id,
       cliente_id: cliente_id.trim(),
       numero_factura: numero_factura.trim(),
-      fecha,
+      fecha: fechaNorm,
       fecha_vencimiento: fechaVenc,
       monto: Number(monto),
       saldo: Number(monto),
       estado: "Pendiente",
-      tipo: tipo === "contado" || tipo === "credito" || tipo === "suscripcion" ? tipo : "credito",
+      tipo: tipoFac,
       moneda: moneda === "USD" ? "USD" : "GS",
     };
 
