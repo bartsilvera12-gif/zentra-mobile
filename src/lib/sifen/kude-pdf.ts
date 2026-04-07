@@ -22,6 +22,10 @@ const NEURA_BLUE_FILL: RGB = rgb(0.93, 0.97, 1);
 const BLACK: RGB = rgb(0, 0, 0);
 const GRAY: RGB = rgb(0.35, 0.35, 0.35);
 
+/** Contacto Neura en el KuDE (puede diferir del XML del emisor). */
+const NEURA_KUDE_TEL = "0973989068";
+const NEURA_KUDE_EMAIL = "neurautomations@gmail.com";
+
 /** Distancia desde el borde superior de la página hasta la línea base del texto (pt). */
 function baselineFromTop(page: PDFPage, fromTop: number): number {
   return page.getHeight() - fromTop;
@@ -108,6 +112,22 @@ function wrapByChars(text: string, maxChars: number): string[] {
     rest = rest.slice(cut).trim();
   }
   return out.filter(Boolean);
+}
+
+function drawLabelValue(
+  page: PDFPage,
+  x: number,
+  fromTop: number,
+  label: string,
+  value: string,
+  fontBold: PDFFont,
+  font: PDFFont,
+  size: number
+) {
+  const y = baselineFromTop(page, fromTop);
+  page.drawText(label, { x, y, size, font: fontBold, color: NEURA_BLUE });
+  const w = fontBold.widthOfTextAtSize(label, size);
+  page.drawText(value, { x: x + w + 1.5, y, size, font, color: BLACK });
 }
 
 function drawTableChunk(
@@ -233,28 +253,18 @@ export async function buildKudePdfBuffer(input: BuildKudePdfInput): Promise<Buff
   const leftChunks: { lines: string[]; size: number; bold: boolean; col: RGB }[] = [
     { lines: wrapByChars(parsed.emisor.dNomEmi, leftMaxChars), size: 9, bold: true, col: BLACK },
     { lines: wrapByChars(parsed.emisor.dDirEmi, leftMaxChars), size: 7.5, bold: false, col: BLACK },
-    {
-      lines: wrapByChars(
-        `Tel.: ${parsed.emisor.dTelEmi}  |  Email: ${parsed.emisor.dEmailE}`,
-        leftMaxChars
-      ),
-      size: 7.5,
-      bold: false,
-      col: BLACK,
-    },
-    { lines: [`RUC: ${rucEmisor}`], size: 8.5, bold: true, col: BLACK },
-    { lines: [`Timbrado Nº: ${parsed.timbrado.dNumTim}`], size: 7.5, bold: false, col: BLACK },
-    { lines: [`Vigencia desde: ${parsed.timbrado.dFeIniT}`], size: 7.5, bold: false, col: BLACK },
+    { lines: [`Tel.: ${NEURA_KUDE_TEL}`], size: 7.5, bold: false, col: BLACK },
+    { lines: [`Email: ${NEURA_KUDE_EMAIL}`], size: 7.5, bold: false, col: BLACK },
   ];
 
-  const rightLeadTitle = 13;
-  const rightLead = 11;
+  const rightLines = 6;
+  const rightLineLead = 11;
   let leftBottom = cursorTop + headerPad + 9;
   for (const ch of leftChunks) {
     const lead = ch.size + 3;
     leftBottom += ch.lines.length * lead;
   }
-  const rightBottom = cursorTop + headerPad + 11 + rightLeadTitle + rightLead + rightLead;
+  const rightBottom = cursorTop + headerPad + 9 + rightLines * rightLineLead + 4;
   const logoBottom = cursorTop + headerPad + logoH;
   const headerBottom = Math.max(leftBottom, rightBottom, logoBottom) + 10;
   const headerH = headerBottom - cursorTop;
@@ -286,12 +296,18 @@ export async function buildKudePdfBuffer(input: BuildKudePdfInput): Promise<Buff
     }
   }
 
-  let rightBaseline = cursorTop + headerPad + 11;
-  drawTextRight(page, "Factura electrónica", rightEdge, rightBaseline, 10, fontBold, NEURA_BLUE);
-  rightBaseline += rightLeadTitle;
-  drawTextRight(page, `Nº: ${nroTimbrado}`, rightEdge, rightBaseline, 9, font, BLACK);
-  rightBaseline += rightLead;
-  drawTextRight(page, `Ref. ERP: ${numeroFactura}`, rightEdge, rightBaseline, 7.5, font, GRAY);
+  let rightBaseline = cursorTop + headerPad + 9;
+  drawTextRight(page, `RUC: ${rucEmisor}`, rightEdge, rightBaseline, 8.5, fontBold, BLACK);
+  rightBaseline += rightLineLead;
+  drawTextRight(page, `Timbrado Nº: ${parsed.timbrado.dNumTim}`, rightEdge, rightBaseline, 8, font, BLACK);
+  rightBaseline += rightLineLead;
+  drawTextRight(page, `Vigencia: ${parsed.timbrado.dFeIniT}`, rightEdge, rightBaseline, 8, font, BLACK);
+  rightBaseline += rightLineLead;
+  drawTextRight(page, "Tipo de documento: Factura electrónica", rightEdge, rightBaseline, 8, font, BLACK);
+  rightBaseline += rightLineLead;
+  drawTextRight(page, `Nº: ${nroTimbrado}`, rightEdge, rightBaseline, 9, fontBold, BLACK);
+  rightBaseline += rightLineLead;
+  drawTextRight(page, `Ref. ERP: ${numeroFactura}`, rightEdge, rightBaseline, 7, font, GRAY);
 
   cursorTop += headerH + 10;
 
@@ -306,50 +322,82 @@ export async function buildKudePdfBuffer(input: BuildKudePdfInput): Promise<Buff
     cursorTop += 13;
   };
 
-  /* Operación */
-  sectionTitle("DATOS DE LA OPERACIÓN");
-  const opH = 62;
-  drawRectFromTop(page, margin, cursorTop, innerW, opH, { fill: rgb(1, 1, 1), border: NEURA_BLUE });
-  let lo = cursorTop + 11;
-  const opLines = [
-    `Fecha de emisión: ${parsed.dFeEmiDE}`,
-    `Condición de venta: ${parsed.operacion.condicionVenta}`,
-    `Moneda: ${parsed.monedaDescripcion || parsed.monedaCodigo} (${parsed.monedaCodigo})`,
-    `Tipo de cambio: ${tipoCambio}`,
-    `Tipo de operación: ${parsed.operacion.tipoOperacion}`,
-  ];
-  for (const s of opLines) {
-    page.drawText(s, {
-      x: margin + 10,
-      y: baselineFromTop(page, lo),
-      size: 8,
+  /* Operación + cliente (un cuadro, dos columnas como modelo KuDE) */
+  sectionTitle("DATOS DE LA OPERACIÓN Y DEL CLIENTE");
+  const opCliH = 102;
+  drawRectFromTop(page, margin, cursorTop, innerW, opCliH, { fill: rgb(1, 1, 1), border: NEURA_BLUE });
+  const col1X = margin + 8;
+  const col2X = margin + innerW * 0.48;
+  const labSz = 7.5;
+  let yOp = cursorTop + 10;
+  drawLabelValue(page, col1X, yOp, "Fecha de emisión: ", parsed.dFeEmiDE, fontBold, font, labSz);
+  yOp += 11;
+  drawLabelValue(
+    page,
+    col1X,
+    yOp,
+    "Condición de venta: ",
+    parsed.operacion.condicionVenta,
+    fontBold,
+    font,
+    labSz
+  );
+  yOp += 11;
+  drawLabelValue(
+    page,
+    col1X,
+    yOp,
+    "Moneda: ",
+    `${parsed.monedaDescripcion || parsed.monedaCodigo} (${parsed.monedaCodigo})`,
+    fontBold,
+    font,
+    labSz
+  );
+  yOp += 11;
+  drawLabelValue(page, col1X, yOp, "Tipo de cambio: ", tipoCambio, fontBold, font, labSz);
+  yOp += 11;
+  drawLabelValue(page, col1X, yOp, "Tipo de operación: ", parsed.operacion.tipoOperacion, fontBold, font, labSz);
+
+  let yRec = cursorTop + 10;
+  drawLabelValue(
+    page,
+    col2X,
+    yRec,
+    `${parsed.receptor.docLabel}: `,
+    parsed.receptor.docValue,
+    fontBold,
+    font,
+    labSz
+  );
+  yRec += 11;
+  const nomLines = wrapByChars(parsed.receptor.nombre, 34);
+  drawLabelValue(page, col2X, yRec, "Razón social: ", nomLines[0] ?? "—", fontBold, font, labSz);
+  yRec += 11;
+  const indent = fontBold.widthOfTextAtSize("Razón social: ", labSz) + col2X + 1.5;
+  for (let i = 1; i < nomLines.length; i++) {
+    page.drawText(nomLines[i]!, {
+      x: indent,
+      y: baselineFromTop(page, yRec),
+      size: labSz,
       font,
       color: BLACK,
     });
-    lo += 11;
+    yRec += 11;
   }
-  cursorTop += opH + 10;
+  drawLabelValue(
+    page,
+    col2X,
+    yRec,
+    "Dirección: ",
+    (parsed.receptor.direccion || "—").replace(/\s+/g, " ").trim(),
+    fontBold,
+    font,
+    labSz
+  );
+  yRec += 11;
+  drawLabelValue(page, col2X, yRec, "Tel.: ", parsed.receptor.telefono || "—", fontBold, font, labSz);
 
-  /* Cliente */
-  sectionTitle("DATOS DEL CLIENTE");
-  const cliH = 62;
-  drawRectFromTop(page, margin, cursorTop, innerW, cliH, { fill: rgb(1, 1, 1), border: NEURA_BLUE });
-  let lc = cursorTop + 11;
-  const cliDraw = (s: string, sz: number, bold: boolean) => {
-    page.drawText(s, {
-      x: margin + 10,
-      y: baselineFromTop(page, lc),
-      size: sz,
-      font: bold ? fontBold : font,
-      color: BLACK,
-    });
-    lc += bold ? 12 : 11;
-  };
-  cliDraw(`${parsed.receptor.docLabel}: ${parsed.receptor.docValue}`, 8, false);
-  cliDraw(trunc(parsed.receptor.nombre, 72), 9, true);
-  cliDraw(`Dirección: ${parsed.receptor.direccion || "—"}`, 8, false);
-  cliDraw(`Teléfono: ${parsed.receptor.telefono || "—"}`, 8, false);
-  cursorTop += cliH + 10;
+  cursorTop += opCliH + 10;
 
   /* Tabla */
   sectionTitle("DETALLE DE LA MERCADERÍA / SERVICIOS");
@@ -394,7 +442,7 @@ export async function buildKudePdfBuffer(input: BuildKudePdfInput): Promise<Buff
     cursorTop = margin;
   }
   sectionTitle("TOTALES Y LIQUIDACIÓN DEL IVA");
-  const totH = 140;
+  const totH = 152;
   drawRectFromTop(page, margin, cursorTop, innerW, totH, { fill: rgb(1, 1, 1), border: NEURA_BLUE });
 
   const xL = margin + 10;
@@ -485,6 +533,17 @@ export async function buildKudePdfBuffer(input: BuildKudePdfInput): Promise<Buff
     font: fontBold,
     color: BLACK,
   });
+  rt += 13;
+  const liq5 = formatMonto(parsed.totales.dIVA5, parsed.monedaCodigo);
+  const liq10 = formatMonto(parsed.totales.dIVA10, parsed.monedaCodigo);
+  const liqTot = formatMonto(parsed.totales.dTotIVA, parsed.monedaCodigo);
+  page.drawText(`LIQUIDACIÓN DEL IVA  (5%) ${liq5}    (10%) ${liq10}    TOTAL IVA: ${liqTot}`, {
+    x: xR,
+    y: baselineFromTop(page, rt),
+    size: 7.5,
+    font: fontBold,
+    color: BLACK,
+  });
 
   cursorTop += totH + 12;
 
@@ -504,15 +563,15 @@ export async function buildKudePdfBuffer(input: BuildKudePdfInput): Promise<Buff
   const cdcLines = wrapByChars(`CDC: ${parsed.cdc}`, 52);
   const footTextW = innerW - footPad * 2 - qSz - 16;
   const footTextX = margin + footPad + qSz + 14;
+  const validacionFootLines = wrapByChars(
+    "Este comprobante puede verificarse en el portal e-kuatia de la SET. Escanee el código QR o ingrese el CDC.",
+    Math.max(28, Math.floor(footTextW / 3.5))
+  ).length;
+  const protAutLines = dProtAut ? wrapByChars(`dProtAut: ${dProtAut}`, 52).length : 0;
 
   let footTextBaseline = cursorTop + footPad + 9;
-  const textBlockLines =
-    1 +
-    cdcLines.length +
-    (dProtAut ? 1 : 0) +
-    wrapByChars("Escanee el código QR o consulte el CDC en el portal e-kuatia.", Math.max(30, Math.floor(footTextW / 3.4)))
-      .length;
-  const textBlockHeight = textBlockLines * 10 + 6;
+  const textBlockLines = 1 + validacionFootLines + 2 + cdcLines.length + protAutLines;
+  const textBlockHeight = textBlockLines * 10 + 12;
   const legendBlockHeight = legendLead * 3 + 8;
   const footBoxH = footPad + Math.max(qSz, textBlockHeight) + gapAfterQr + legendBlockHeight + footPad;
 
@@ -528,17 +587,31 @@ export async function buildKudePdfBuffer(input: BuildKudePdfInput): Promise<Buff
   page.drawText("Consulta de validez (e-kuatia / SET)", {
     x: footTextX,
     y: baselineFromTop(page, footTextBaseline),
-    size: 8,
+    size: 8.5,
     font: fontBold,
     color: NEURA_BLUE,
   });
-  footTextBaseline += 12;
+  footTextBaseline += 13;
+  for (const line of wrapByChars(
+    "Este comprobante puede verificarse en el portal e-kuatia de la SET. Escanee el código QR o ingrese el CDC.",
+    Math.max(28, Math.floor(footTextW / 3.5))
+  )) {
+    page.drawText(line, {
+      x: footTextX,
+      y: baselineFromTop(page, footTextBaseline),
+      size: 7,
+      font,
+      color: GRAY,
+    });
+    footTextBaseline += 9.5;
+  }
+  footTextBaseline += 4;
   for (const line of cdcLines) {
     page.drawText(line, {
       x: footTextX,
       y: baselineFromTop(page, footTextBaseline),
       size: 7.5,
-      font,
+      font: fontBold,
       color: BLACK,
     });
     footTextBaseline += 10;
@@ -554,19 +627,6 @@ export async function buildKudePdfBuffer(input: BuildKudePdfInput): Promise<Buff
       });
       footTextBaseline += 10;
     }
-  }
-  for (const line of wrapByChars(
-    "Escanee el código QR o consulte el CDC en el portal e-kuatia.",
-    Math.max(30, Math.floor(footTextW / 3.4))
-  )) {
-    page.drawText(line, {
-      x: footTextX,
-      y: baselineFromTop(page, footTextBaseline),
-      size: 7,
-      font,
-      color: GRAY,
-    });
-    footTextBaseline += 9;
   }
 
   const legendTop = cursorTop + footPad + qSz + gapAfterQr;

@@ -257,6 +257,8 @@ export function parseKudeFromSignedRdeXml(xmlUtf8: string): KudeParsedFromXml {
   }
 
   const items: KudeItemRow[] = [];
+  let sumLiqIva5 = 0;
+  let sumLiqIva10 = 0;
   if (gDtipDE) {
     const nodes = gDtipDE.getElementsByTagNameNS(NS, "gCamItem");
     for (let i = 0; i < nodes.length; i++) {
@@ -271,6 +273,14 @@ export function parseKudeFromSignedRdeXml(xmlUtf8: string): KudeParsedFromXml {
       const totalLinea = textOf(firstNs(gVr ?? gVi ?? it, "dTotOpeItem"));
       const gIva = firstNs(it, "gCamIVA");
       const cols = columnasMontosPorItem(totalLinea, gIva);
+      if (gIva) {
+        const liq = parseNumLoose(textOf(firstNs(gIva, "dLiqIVAItem")));
+        const tasa = parseNumLoose(textOf(firstNs(gIva, "dTasaIVA")));
+        if (liq > 0) {
+          if (Math.abs(tasa - 5) < 0.6) sumLiqIva5 += liq;
+          else if (Math.abs(tasa - 10) < 0.6 || tasa >= 9) sumLiqIva10 += liq;
+        }
+      }
       items.push({
         codigo: codigo || `L${i + 1}`,
         descripcion,
@@ -285,7 +295,7 @@ export function parseKudeFromSignedRdeXml(xmlUtf8: string): KudeParsedFromXml {
     }
   }
 
-  return {
+  const baseParsed: KudeParsedFromXml = {
     cdc,
     dFeEmiDE,
     dCarQR: dCarQR && dCarQR.length > 0 ? dCarQR : null,
@@ -301,6 +311,106 @@ export function parseKudeFromSignedRdeXml(xmlUtf8: string): KudeParsedFromXml {
     totales,
     items,
   };
+
+  return reconcileKudeFiscalDisplay(baseParsed, sumLiqIva5, sumLiqIva10);
+}
+
+/**
+ * Alinea totales e ítems del KuDE cuando el XML trae IVA/base mal o ítems marcados como exentos
+ * pero `gTotSub` indica gravado (p. ej. dSub10 / dBaseGrav10). No modifica el XML firmado.
+ */
+function reconcileKudeFiscalDisplay(
+  p: KudeParsedFromXml,
+  sumLiqIva5: number,
+  sumLiqIva10: number
+): KudeParsedFromXml {
+  const tot = { ...p.totales };
+  const items = p.items.map((i) => ({ ...i }));
+
+  let iv5 = parseNumLoose(tot.dIVA5);
+  let iv10 = parseNumLoose(tot.dIVA10);
+  if (iv10 <= 0 && sumLiqIva10 > 0.25) {
+    iv10 = Math.round(sumLiqIva10);
+  }
+  if (iv5 <= 0 && sumLiqIva5 > 0.25) {
+    iv5 = Math.round(sumLiqIva5);
+  }
+
+  let b5 = parseNumLoose(tot.dBaseGrav5);
+  let b10 = parseNumLoose(tot.dBaseGrav10);
+  let sub5 = parseNumLoose(tot.dSub5);
+  let sub10 = parseNumLoose(tot.dSub10);
+
+  if (sub10 <= 0 && sumLiqIva10 > 0.25) {
+    iv10 = Math.round(sumLiqIva10);
+    b10 = Math.round(iv10 * 10);
+    sub10 = b10 + iv10;
+    tot.dSub10 = String(sub10);
+  }
+  if (sub5 <= 0 && sumLiqIva5 > 0.25) {
+    iv5 = Math.round(sumLiqIva5);
+    b5 = Math.round(iv5 * 20);
+    sub5 = b5 + iv5;
+    tot.dSub5 = String(sub5);
+  }
+
+  if (sub10 > 0) {
+    if (b10 <= 0) {
+      b10 = Math.round(sub10 / 1.1);
+      if (iv10 <= 0) {
+        iv10 = Math.max(0, sub10 - b10);
+      }
+    } else if (iv10 <= 0) {
+      iv10 = Math.max(0, Math.round(sub10 - b10));
+    }
+  }
+
+  if (sub5 > 0) {
+    if (b5 <= 0) {
+      b5 = Math.round(sub5 / 1.05);
+      if (iv5 <= 0) {
+        iv5 = Math.max(0, sub5 - b5);
+      }
+    } else if (iv5 <= 0) {
+      iv5 = Math.max(0, Math.round(sub5 - b5));
+    }
+  }
+
+  tot.dIVA5 = String(Math.round(iv5));
+  tot.dIVA10 = String(Math.round(iv10));
+  tot.dBaseGrav5 = String(Math.round(b5));
+  tot.dBaseGrav10 = String(Math.round(b10));
+  tot.dTBasGraIVA = String(Math.round(b5 + b10));
+  tot.dTotIVA = String(Math.round(iv5 + iv10));
+
+  const sumG10 = items.reduce((s, i) => s + parseNumLoose(i.montoGrav10), 0);
+  const sumG5 = items.reduce((s, i) => s + parseNumLoose(i.montoGrav5), 0);
+  const sumEx = items.reduce((s, i) => s + parseNumLoose(i.montoExenta), 0);
+
+  if (sub10 > 0.5 && sumG10 < 1 && sumEx > sub10 * 0.85) {
+    if (items.length === 1) {
+      const it = items[0]!;
+      items[0] = { ...it, montoExenta: "0", montoGrav10: it.totalLinea };
+    } else {
+      const exTotal = sumEx;
+      for (let i = 0; i < items.length; i++) {
+        const it = items[i]!;
+        const ex = parseNumLoose(it.montoExenta);
+        if (ex <= 0) continue;
+        const share = exTotal > 0 ? (sub10 * ex) / exTotal : 0;
+        items[i] = { ...it, montoExenta: "0", montoGrav10: String(Math.round(share)) };
+      }
+    }
+  }
+
+  if (sub5 > 0.5 && sumG5 < 1 && sumEx > sub5 * 0.85 && sub10 <= 0) {
+    if (items.length === 1) {
+      const it = items[0]!;
+      items[0] = { ...it, montoExenta: "0", montoGrav5: it.totalLinea };
+    }
+  }
+
+  return { ...p, totales: tot, items };
 }
 
 export function kudeFallbackQrUrl(cdc: string): string {
