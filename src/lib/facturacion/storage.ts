@@ -1,4 +1,5 @@
 import { supabase } from "@/lib/supabase";
+import { montosFacturaItemParaInsert } from "@/lib/facturacion/factura-item-montos";
 import { getCurrentUser } from "@/lib/auth";
 import { getConfig, saveConfig } from "@/lib/config/storage";
 import type { Suscripcion, FacturaItem, Pago } from "./types";
@@ -189,15 +190,21 @@ async function generarFacturaDesdeSuscripcion(
 
   if (!factura) return null;
 
+  const lineaSusc = montosFacturaItemParaInsert({
+    totalLinea: total,
+    moneda: suscripcion.moneda,
+    cantidad: 1,
+    precioUnitario: total,
+  });
   const { error: errItem } = await supabase.from("factura_items").insert({
     factura_id: factura.id,
     empresa_id: usuario.empresa_id,
     descripcion: planNombre,
     cantidad: 1,
-    precio_unitario: total,
-    subtotal: total,
-    iva: 0,
-    total,
+    precio_unitario: lineaSusc.precio_unitario,
+    subtotal: lineaSusc.subtotal,
+    iva: lineaSusc.iva,
+    total: lineaSusc.total,
   });
 
   if (errItem) console.error("[facturacion] factura_items:", errItem.message);
@@ -246,15 +253,21 @@ export async function crearFacturaContado(
 
   if (!factura) return null;
 
+  const lineaCont = montosFacturaItemParaInsert({
+    totalLinea: monto,
+    moneda,
+    cantidad: 1,
+    precioUnitario: monto,
+  });
   const { error: errItem } = await supabase.from("factura_items").insert({
     factura_id: factura.id,
     empresa_id: usuario.empresa_id,
     descripcion: descripcion || "Venta al contado",
     cantidad: 1,
-    precio_unitario: monto,
-    subtotal: monto,
-    iva: 0,
-    total: monto,
+    precio_unitario: lineaCont.precio_unitario,
+    subtotal: lineaCont.subtotal,
+    iva: lineaCont.iva,
+    total: lineaCont.total,
   });
 
   if (errItem) console.error("[facturacion] factura_items contado:", errItem.message);

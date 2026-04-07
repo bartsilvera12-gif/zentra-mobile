@@ -12,6 +12,7 @@ import { getPlanes } from "@/lib/planes/storage";
 import type { TipoCliente, OrigenCliente, TipoServicioCliente } from "@/lib/clientes/types";
 import { TIPOS_SERVICIO_CLIENTE } from "@/lib/clientes/types";
 import type { Plan } from "@/lib/planes/types";
+import { montosFacturaItemParaInsert } from "@/lib/facturacion/factura-item-montos";
 
 // ── Estilos ────────────────────────────────────────────────────────────────────
 
@@ -206,15 +207,21 @@ function NuevoClienteForm() {
         if (factura) {
           const usuario = await getCurrentUser();
           if (usuario?.empresa_id) {
+            const lineaNuevo = montosFacturaItemParaInsert({
+              totalLinea: monto,
+              moneda: form.moneda_preferida,
+              cantidad: 1,
+              precioUnitario: monto,
+            });
             await supabase.from("factura_items").insert({
               factura_id: factura.id,
               empresa_id: usuario.empresa_id,
               descripcion: formContado.descripcion.trim() || "Venta al contado",
               cantidad: 1,
-              precio_unitario: monto,
-              subtotal: monto,
-              iva: 0,
-              total: monto,
+              precio_unitario: lineaNuevo.precio_unitario,
+              subtotal: lineaNuevo.subtotal,
+              iva: lineaNuevo.iva,
+              total: lineaNuevo.total,
             });
           }
           saveConfig({ ...config, numeracion_inicial: config.numeracion_inicial + 1 });

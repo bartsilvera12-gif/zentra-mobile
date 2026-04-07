@@ -30,6 +30,7 @@ import type { Suscripcion } from "@/lib/facturacion/types";
 import type { Plan } from "@/lib/planes/types";
 import type { MarketingTask } from "@/lib/marketing/types";
 import { TIPOS_CONTENIDO, ESTADOS_TASK } from "@/lib/marketing/types";
+import { montosFacturaItemParaInsert } from "@/lib/facturacion/factura-item-montos";
 
 // ── Estilos ────────────────────────────────────────────────────────────────────
 
@@ -321,15 +322,21 @@ export default function ClienteDetailPage() {
         if (factura) {
           const usuario = await getCurrentUser();
           if (usuario?.empresa_id) {
+            const lineaUi = montosFacturaItemParaInsert({
+              totalLinea: monto,
+              moneda: form.moneda_preferida,
+              cantidad: 1,
+              precioUnitario: monto,
+            });
             await supabase.from("factura_items").insert({
               factura_id: factura.id,
               empresa_id: usuario.empresa_id,
               descripcion: formContadoEdit.descripcion.trim() || "Venta al contado",
               cantidad: 1,
-              precio_unitario: monto,
-              subtotal: monto,
-              iva: 0,
-              total: monto,
+              precio_unitario: lineaUi.precio_unitario,
+              subtotal: lineaUi.subtotal,
+              iva: lineaUi.iva,
+              total: lineaUi.total,
             });
           }
           saveConfig({ ...config, numeracion_inicial: config.numeracion_inicial + 1 });

@@ -4,6 +4,7 @@ import { getUserAndEmpresa } from "@/lib/middleware/auth";
 import { successResponse, errorResponse } from "@/lib/api/response";
 import { API_ERRORS } from "@/lib/api/errors";
 import { emitEvent, EVENT_TYPES } from "@/lib/integrations/events";
+import { montosFacturaItemParaInsert } from "@/lib/facturacion/factura-item-montos";
 
 function getSupabase() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -149,15 +150,21 @@ export async function POST(
         .single();
       if (plan?.nombre) planNombre = plan.nombre;
     }
+    const linea = montosFacturaItemParaInsert({
+      totalLinea: monto,
+      moneda,
+      cantidad: 1,
+      precioUnitario: monto,
+    });
     const { error: errItem } = await supabase.from("factura_items").insert({
       factura_id: factura.id,
       empresa_id: auth.empresa_id,
       descripcion: planNombre,
       cantidad: 1,
-      precio_unitario: monto,
-      subtotal: monto,
-      iva: 0,
-      total: monto,
+      precio_unitario: linea.precio_unitario,
+      subtotal: linea.subtotal,
+      iva: linea.iva,
+      total: linea.total,
     });
 
     if (errItem) {
