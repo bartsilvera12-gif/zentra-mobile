@@ -25,6 +25,9 @@ export interface ClienteRaw {
   origen: string;
   created_at: string;
   vendedor_asignado?: string;
+  /** Para distribución en dashboard (prioridad: tipo servicio → condición → origen) */
+  tipo_servicio_cliente?: string;
+  condicion_pago?: string;
 }
 
 export interface FacturaRaw {
@@ -255,6 +258,8 @@ export async function getDashboardData(): Promise<DashboardData> {
       origen: (r.origen as string) ?? "MANUAL",
       created_at: toIsoTimestampStr(r.created_at as string),
       vendedor_asignado: r.vendedor_asignado as string | undefined,
+      tipo_servicio_cliente: (r.tipo_servicio_cliente as string) ?? undefined,
+      condicion_pago: (r.condicion_pago as string) ?? undefined,
     }));
 
     facturas = (facturasQ.data ?? []).map((r: Record<string, unknown>) => ({

@@ -18,7 +18,38 @@ import type {
   CompraRaw,
   GastoRaw,
 } from "@/lib/dashboard/data";
-import { enRangoCalendario, enMesCalendarioActual, ymdAnioMes } from "@/lib/fechas/calendario";
+import { enRangoCalendario, enMesCalendarioActual } from "@/lib/fechas/calendario";
+
+// ── ZENTRA (solo dashboard / esta página) ─────────────────────────────────────
+const Z = {
+  bg:       "#0B1C3D",
+  surface:  "#111F4A",
+  card:     "#14235A",
+  accent:   "#2563EB",
+  text:     "#FFFFFF",
+  muted:    "#AAB4D6",
+  success:  "#22C55E",
+  error:    "#EF4444",
+} as const;
+
+function ZentraMark({ className = "" }: { className?: string }) {
+  return (
+    <div
+      className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-white/10 shadow-inner ${className}`}
+      style={{ backgroundColor: Z.card }}
+    >
+      <span className="text-xl font-extrabold leading-none tracking-tight" style={{ color: Z.accent }}>
+        Z
+      </span>
+    </div>
+  );
+}
+
+function labelClienteDimension(raw: string): string {
+  const s = raw.trim();
+  if (!s) return "Sin clasificar";
+  return s.charAt(0).toUpperCase() + s.slice(1).toLowerCase().replace(/_/g, " ");
+}
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -58,11 +89,6 @@ function formatFecha(s: string): string {
   return dt.toLocaleDateString("es-PY", { day: "2-digit", month: "2-digit", year: "numeric" });
 }
 
-function hoyStr(): string {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
-}
-
 function getRango(periodo: Periodo): { desde: Date; hasta: Date } {
   const hasta = new Date(); hasta.setHours(23, 59, 59, 999);
   const desde = new Date();
@@ -85,11 +111,6 @@ function enRango(fechaStr: string, desde: Date, hasta: Date): boolean {
   }
   const f = new Date(fechaStr);
   return !isNaN(f.getTime()) && f >= desde && f <= hasta;
-}
-
-function estadoEfectivo(f: FacturaRaw, hoy: string): string {
-  if (f.saldo > 0 && f.fecha_vencimiento < hoy) return "Vencido";
-  return f.estado;
 }
 
 // ── Componentes de gráficos ───────────────────────────────────────────────────
@@ -206,75 +227,152 @@ function DonutChart({
   segments,
   centerLabel = "total",
   formatValue = (v: number) => String(v),
+  variant = "light",
+  legendDetail = false,
 }: {
   segments: { label: string; value: number; color: string }[];
   centerLabel?: string;
   formatValue?: (v: number) => string;
+  variant?: "light" | "zentra";
+  /** Muestra cantidad y % sobre el total en la leyenda */
+  legendDetail?: boolean;
 }) {
   const total = segments.reduce((s, g) => s + g.value, 0);
-  if (total === 0) return (
-    <div className="flex items-center gap-6">
-      <div className="w-32 h-32 rounded-full bg-gray-100 flex items-center justify-center shrink-0">
-        <span className="text-xs text-gray-400">Sin datos</span>
+  const isZ = variant === "zentra";
+  if (total === 0) {
+    return (
+      <div className="flex items-center gap-6">
+        <div
+          className={`flex h-32 w-32 shrink-0 items-center justify-center rounded-full ${isZ ? "border border-white/10" : "bg-gray-100"}`}
+          style={isZ ? { backgroundColor: Z.surface } : undefined}
+        >
+          <span className={`text-xs ${isZ ? "" : "text-gray-400"}`} style={isZ ? { color: Z.muted } : undefined}>
+            Sin datos
+          </span>
+        </div>
       </div>
-    </div>
-  );
+    );
+  }
   const R = 50, CX = 80, CY = 80, C = 2 * Math.PI * R;
   let cum = 0;
+  const fillCenter = isZ ? Z.text : "#1f2937";
+  const fillSub = isZ ? Z.muted : "#9ca3af";
   return (
-    <div className="flex items-center gap-6">
-      <svg viewBox="0 0 160 160" className="w-32 h-32 shrink-0">
+    <div className="flex flex-col items-stretch gap-6 sm:flex-row sm:items-center">
+      <svg viewBox="0 0 160 160" className="mx-auto h-36 w-36 shrink-0 sm:mx-0">
         {segments.map((seg, i) => {
           if (seg.value === 0) return null;
-          const pct  = seg.value / total;
+          const pct = seg.value / total;
           const dash = pct * C;
-          const rot  = cum * 360 - 90;
+          const rot = cum * 360 - 90;
           cum += pct;
           return (
-            <circle key={i} cx={CX} cy={CY} r={R} fill="none"
-              stroke={seg.color} strokeWidth="22"
+            <circle
+              key={i}
+              cx={CX}
+              cy={CY}
+              r={R}
+              fill="none"
+              stroke={seg.color}
+              strokeWidth="22"
               strokeDasharray={`${dash} ${C - dash}`}
               transform={`rotate(${rot} ${CX} ${CY})`}
             />
           );
         })}
-        <text x={CX} y={CY + 6} textAnchor="middle" fontSize="16" fontWeight="bold" fill="#1f2937">{formatValue(total)}</text>
-        <text x={CX} y={CY + 18} textAnchor="middle" fontSize="9" fill="#9ca3af">{centerLabel}</text>
+        <text x={CX} y={CY + 5} textAnchor="middle" fontSize="17" fontWeight="bold" fill={fillCenter}>
+          {formatValue(total)}
+        </text>
+        <text x={CX} y={CY + 20} textAnchor="middle" fontSize="9" fill={fillSub}>
+          {centerLabel}
+        </text>
       </svg>
-      <div className="space-y-2.5">
-        {segments.map((seg, i) => (
-          <div key={i} className="flex items-center gap-2">
-            <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: seg.color }} />
-            <span className="text-xs text-gray-600 min-w-[60px] truncate" title={seg.label}>{seg.label}</span>
-            <span className="text-xs font-bold text-gray-800 tabular-nums">{formatValue(seg.value)}</span>
-          </div>
-        ))}
+      <div className="min-w-0 flex-1 space-y-2.5">
+        {segments.map((seg, i) => {
+          const pct = total > 0 ? (seg.value / total) * 100 : 0;
+          return (
+            <div key={i} className="flex items-center gap-2.5">
+              <div className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: seg.color }} />
+              <span
+                className={`min-w-0 flex-1 truncate text-xs ${isZ ? "" : "text-gray-600"}`}
+                style={isZ ? { color: Z.text } : undefined}
+                title={seg.label}
+              >
+                {seg.label}
+              </span>
+              {legendDetail ? (
+                <span
+                  className="shrink-0 text-xs font-semibold tabular-nums"
+                  style={{ color: isZ ? Z.muted : "#1f2937" }}
+                >
+                  {formatValue(seg.value)} · {pct.toFixed(1)}%
+                </span>
+              ) : (
+                <span className={`shrink-0 text-xs font-bold tabular-nums ${isZ ? "" : "text-gray-800"}`} style={isZ ? { color: Z.muted } : undefined}>
+                  {formatValue(seg.value)}
+                </span>
+              )}
+            </div>
+          );
+        })}
       </div>
     </div>
   );
 }
 
-function ProgressBar({ label, value, meta, format = "number" }: {
-  label: string; value: number; meta: number; format?: "number" | "gs" | "pct";
+function ProgressBar({
+  label,
+  value,
+  meta,
+  format = "number",
+  variant = "light",
+}: {
+  label: string;
+  value: number;
+  meta: number;
+  format?: "number" | "gs" | "pct";
+  variant?: "light" | "zentra";
 }) {
   const pct = meta > 0 ? Math.min((value / meta) * 100, 100) : 0;
-  const color = pct >= 100 ? "bg-green-500" : pct >= 70 ? "bg-amber-400" : "bg-blue-500";
+  const color =
+    variant === "zentra"
+      ? pct >= 100
+        ? Z.success
+        : pct >= 70
+          ? "#F59E0B"
+          : Z.accent
+      : null;
+  const barClass =
+    variant === "light"
+      ? pct >= 100
+        ? "bg-green-500"
+        : pct >= 70
+          ? "bg-amber-400"
+          : "bg-blue-500"
+      : "";
   const fmt = (n: number) =>
-    format === "gs"  ? `Gs. ${formatGsM(n)}` :
-    format === "pct" ? `${n.toFixed(1)}%`    : String(n);
+    format === "gs" ? `Gs. ${formatGsM(n)}` : format === "pct" ? `${n.toFixed(1)}%` : String(n);
+  const isZ = variant === "zentra";
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-1.5">
-        <span className="text-xs font-semibold text-gray-700">{label}</span>
-        <span className="text-xs text-gray-500 tabular-nums">
-          {fmt(value)} <span className="text-gray-300">/</span> {fmt(meta)}
+      <div className="mb-1.5 flex items-center justify-between">
+        <span className={`text-xs font-semibold ${isZ ? "" : "text-gray-700"}`} style={isZ ? { color: Z.text } : undefined}>
+          {label}
+        </span>
+        <span className={`text-xs tabular-nums ${isZ ? "" : "text-gray-500"}`} style={isZ ? { color: Z.muted } : undefined}>
+          {fmt(value)} <span style={{ color: isZ ? "rgba(255,255,255,0.2)" : "#d1d5db" }}>/</span> {fmt(meta)}
         </span>
       </div>
-      <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
-        <div className={`h-full rounded-full transition-all ${color}`} style={{ width: `${pct}%` }} />
+      <div className={`h-2 overflow-hidden rounded-full ${isZ ? "" : "bg-gray-100"}`} style={isZ ? { backgroundColor: "rgba(255,255,255,0.08)" } : undefined}>
+        <div
+          className={`h-full rounded-full transition-all ${barClass}`}
+          style={isZ ? { width: `${pct}%`, backgroundColor: color ?? Z.accent } : { width: `${pct}%` }}
+        />
       </div>
-      <p className="text-xs text-gray-400 mt-1">{pct.toFixed(0)}% de la meta</p>
+      <p className={`mt-1 text-xs ${isZ ? "" : "text-gray-400"}`} style={isZ ? { color: Z.muted } : undefined}>
+        {pct.toFixed(0)}% de la meta
+      </p>
     </div>
   );
 }
@@ -659,7 +757,6 @@ function DashFinanciero({
   config:    ConfigGlobal;
 }) {
   const { desde, hasta } = useMemo(() => getRango(periodo), [periodo]);
-  const hoy = hoyStr();
 
   // Bloque principal: métricas del período (misma ventana que el filtro superior: enRango + fechas calendario)
   const facturasValidas = facturas.filter(f => f.estado !== "Anulado");
@@ -690,219 +787,208 @@ function DashFinanciero({
     [pagosPeriodo, facturaNumById]
   );
 
-  // Facturación mensual (últimos 12 meses, excluir anuladas)
-  const mensual = useMemo(() => {
-    const result: { label: string; value: number }[] = [];
-    const now = new Date();
-    for (let i = 11; i >= 0; i--) {
-      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-      const y = d.getFullYear(), m = d.getMonth() + 1;
-      const value = facturasValidas
-        .filter((f) => {
-          const am = ymdAnioMes(f.fecha);
-          return am && am.y === y && am.m === m;
-        })
-        .reduce((s, f) => s + f.monto, 0);
-      result.push({ label: `${String(m).padStart(2,"0")}/${String(y).slice(2)}`, value });
+  /** Prioridad: tipo de servicio → condición de pago → origen */
+  const { dimCliente, segmentosClientes } = useMemo(() => {
+    const list = clientes;
+    const hasServicio = list.some((c) => (c.tipo_servicio_cliente ?? "").trim() !== "");
+    const hasCondicion = list.some((c) => (c.condicion_pago ?? "").trim() !== "");
+    const dim: "tipo_servicio" | "condicion" | "origen" = hasServicio
+      ? "tipo_servicio"
+      : hasCondicion
+        ? "condicion"
+        : "origen";
+    const map = new Map<string, number>();
+    for (const c of list) {
+      let raw = "";
+      if (dim === "tipo_servicio") raw = (c.tipo_servicio_cliente ?? "").trim();
+      else if (dim === "condicion") raw = (c.condicion_pago ?? "").trim();
+      else raw = (c.origen ?? "").trim();
+      const key = raw || "__sin__";
+      map.set(key, (map.get(key) ?? 0) + 1);
     }
-    return result;
-  }, [facturasValidas]);
+    const PALETTE = [Z.accent, "#3B82F6", "#60A5FA", Z.success, "#A78BFA", "#F59E0B", "#EC4899", "#38BDF8"];
+    const entries = [...map.entries()].sort((a, b) => b[1] - a[1]);
+    return {
+      dimCliente: dim,
+      segmentosClientes: entries.map(([k, count], i) => ({
+        label: k === "__sin__" ? "Sin clasificar" : labelClienteDimension(k),
+        value: count,
+        color: PALETTE[i % PALETTE.length],
+      })),
+    };
+  }, [clientes]);
 
-  // Distribución facturas (todo el tiempo, excluir anuladas)
-  const pagadas    = facturasValidas.filter(f => estadoEfectivo(f, hoy) === "Pagado").length;
-  const pendientes = facturasValidas.filter(f => estadoEfectivo(f, hoy) === "Pendiente").length;
-  const vencidas   = facturasValidas.filter(f => estadoEfectivo(f, hoy) === "Vencido").length;
-
-  // Mapa de clientes para join
-  const clienteMap = useMemo(() =>
-    Object.fromEntries(clientes.map(c => [c.id, c.empresa ?? c.nombre_contacto])),
-    [clientes]
-  );
-
-  // Facturas críticas (mayor saldo vencido, excluir anuladas)
-  const criticas = useMemo(() =>
-    facturasValidas
-      .filter(f => estadoEfectivo(f, hoy) === "Vencido")
-      .sort((a, b) => b.saldo - a.saldo)
-      .slice(0, 10),
-    [facturasValidas, hoy]
-  );
+  const cardBase =
+    "rounded-2xl border border-white/10 p-8 shadow-lg shadow-black/20 transition-colors";
+  const cardStyle = { backgroundColor: Z.card } as const;
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-8">
 
-      {/* Bloque principal: cobranza del período (sin saldo histórico ni mezcla con gastos) */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-        <motion.div
-          whileHover={{ y: -2 }}
-          className="rounded-2xl border border-slate-200 bg-white p-8 shadow-sm"
-        >
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">A cobrar del período</p>
-          <p className="mt-3 text-3xl font-bold tabular-nums text-slate-900">Gs. {formatGsM(aCobrarPeriodo)}</p>
-          <p className="mt-2 text-xs text-slate-500">
-            Suma del monto de facturas emitidas en el período · {facturasPeriodo.length} factura{facturasPeriodo.length === 1 ? "" : "s"}
+      <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-4">
+        <motion.div whileHover={{ y: -3 }} className={cardBase} style={cardStyle}>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.12em]" style={{ color: Z.muted }}>
+            A cobrar del período
+          </p>
+          <p className="mt-4 text-3xl font-bold tabular-nums tracking-tight" style={{ color: Z.text }}>
+            Gs. {formatGsM(aCobrarPeriodo)}
+          </p>
+          <div className="mt-4 h-px w-12 rounded-full opacity-60" style={{ backgroundColor: Z.accent }} />
+          <p className="mt-4 text-xs leading-relaxed" style={{ color: Z.muted }}>
+            Facturas emitidas en el período seleccionado · {facturasPeriodo.length} factura{facturasPeriodo.length === 1 ? "" : "s"}
           </p>
         </motion.div>
-        <motion.div
-          whileHover={{ y: -2 }}
-          className="rounded-2xl border border-slate-200 bg-white p-8 shadow-sm"
-        >
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Cobrado del período</p>
-          <p className="mt-3 text-3xl font-bold tabular-nums text-[#0EA5E9]">Gs. {formatGsM(cobradoPeriodo)}</p>
-          <p className="mt-2 text-xs text-slate-500">
-            Suma de pagos por fecha de pago en el período · {pagosPeriodo.length} pago{pagosPeriodo.length === 1 ? "" : "s"}
+        <motion.div whileHover={{ y: -3 }} className={cardBase} style={cardStyle}>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.12em]" style={{ color: Z.muted }}>
+            Cobrado del período
+          </p>
+          <p className="mt-4 text-3xl font-bold tabular-nums tracking-tight" style={{ color: Z.accent }}>
+            Gs. {formatGsM(cobradoPeriodo)}
+          </p>
+          <div className="mt-4 h-px w-12 rounded-full opacity-60" style={{ backgroundColor: Z.accent }} />
+          <p className="mt-4 text-xs leading-relaxed" style={{ color: Z.muted }}>
+            Pagos con fecha de pago en el período · {pagosPeriodo.length} pago{pagosPeriodo.length === 1 ? "" : "s"}
           </p>
         </motion.div>
-        <motion.div
-          whileHover={{ y: -2 }}
-          className="rounded-2xl border border-slate-200 bg-white p-8 shadow-sm"
-        >
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Pendiente del período</p>
+        <motion.div whileHover={{ y: -3 }} className={cardBase} style={cardStyle}>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.12em]" style={{ color: Z.muted }}>
+            Pendiente del período
+          </p>
           <p
-            className={`mt-3 text-3xl font-bold tabular-nums ${
-              pendientePeriodo > 0 ? "text-amber-600" : pendientePeriodo < 0 ? "text-emerald-700" : "text-slate-900"
-            }`}
+            className="mt-4 text-3xl font-bold tabular-nums tracking-tight"
+            style={{
+              color:
+                pendientePeriodo > 0 ? "#FBBF24" : pendientePeriodo < 0 ? Z.success : Z.text,
+            }}
           >
             {pendientePeriodo < 0 ? "− " : ""}Gs. {formatGsM(Math.abs(pendientePeriodo))}
           </p>
-          <p className="mt-2 text-xs text-slate-500">A cobrar del período menos cobrado del período</p>
+          <div className="mt-4 h-px w-12 rounded-full opacity-60" style={{ backgroundColor: Z.accent }} />
+          <p className="mt-4 text-xs leading-relaxed" style={{ color: Z.muted }}>
+            A cobrar menos cobrado (solo este período)
+          </p>
+        </motion.div>
+        <motion.div whileHover={{ y: -3 }} className={cardBase} style={cardStyle}>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.12em]" style={{ color: Z.muted }}>
+            % de cobranza
+          </p>
+          <p className="mt-4 text-3xl font-bold tabular-nums tracking-tight" style={{ color: Z.text }}>
+            {pctCobranza == null ? "—" : `${pctCobranza.toFixed(1)}%`}
+          </p>
+          <div className="mt-4 h-px w-12 rounded-full opacity-60" style={{ backgroundColor: Z.accent }} />
+          <p className="mt-4 text-xs leading-relaxed" style={{ color: Z.muted }}>
+            Cobrado ÷ A cobrar · {aCobrarPeriodo <= 0 ? "sin emisión en el período" : "mismo filtro de fechas"}
+          </p>
+        </motion.div>
+      </div>
+
+      <div className="rounded-2xl border border-white/10 p-6 sm:p-8" style={{ backgroundColor: Z.card }}>
+        <h3 className="text-xs font-bold uppercase tracking-wider" style={{ color: Z.muted }}>
+          Desglose cobrado · {periodo}
+        </h3>
+        <p className="mt-2 max-w-3xl text-xs leading-relaxed" style={{ color: Z.muted }}>
+          Pagos cuya <strong style={{ color: Z.text }}>fecha de pago</strong> está en el rango del filtro. Total:{" "}
+          <span style={{ color: Z.text }}>Gs. {formatGs(cobradoPeriodo)}</span> (coincide con Cobrado del período).
+        </p>
+        {cobradoDetalle.length === 0 ? (
+          <p className="mt-6 text-sm" style={{ color: Z.muted }}>
+            No hay pagos en este período.
+          </p>
+        ) : (
+          <div
+            className="mt-5 max-h-56 overflow-auto rounded-xl border border-white/10"
+            style={{ backgroundColor: Z.surface }}
+          >
+            <table className="w-full text-sm">
+              <thead className="sticky top-0 border-b border-white/10" style={{ backgroundColor: Z.surface }}>
+                <tr>
+                  <th className="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wide" style={{ color: Z.muted }}>
+                    Factura
+                  </th>
+                  <th className="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wide" style={{ color: Z.muted }}>
+                    Fecha pago
+                  </th>
+                  <th className="px-4 py-3 text-right text-[10px] font-semibold uppercase tracking-wide" style={{ color: Z.muted }}>
+                    Monto
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-white/5">
+                {cobradoDetalle.map((row) => (
+                  <tr key={row.id} className="transition-colors hover:bg-white/[0.04]">
+                    <td className="px-4 py-2.5 font-mono text-xs" style={{ color: Z.text }}>
+                      {row.numero_factura}
+                    </td>
+                    <td className="px-4 py-2.5 text-xs" style={{ color: Z.muted }}>
+                      {formatFecha(row.fecha_pago)}
+                    </td>
+                    <td className="px-4 py-2.5 text-right text-xs font-medium tabular-nums" style={{ color: Z.text }}>
+                      Gs. {formatGs(row.monto)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-5 lg:gap-8">
+        <motion.div
+          whileHover={{ y: -2 }}
+          className="rounded-2xl border border-white/10 p-6 sm:p-8 lg:col-span-3"
+          style={{ backgroundColor: Z.card }}
+        >
+          <h3 className="text-xs font-bold uppercase tracking-wider" style={{ color: Z.muted }}>
+            Progreso de metas
+          </h3>
+          <div className="mt-6 grid grid-cols-1 gap-8 sm:grid-cols-2">
+            <ProgressBar
+              variant="zentra"
+              label="Facturación mensual"
+              value={facturasValidas.filter((f) => enMesCalendarioActual(f.fecha)).reduce((s, f) => s + f.monto, 0)}
+              meta={config.meta_facturacion_mensual}
+              format="gs"
+            />
+            <ProgressBar
+              variant="zentra"
+              label="Ventas mensuales"
+              value={ventas
+                .filter((v) => enMesCalendarioActual(v.fecha.slice(0, 10)))
+                .reduce((s, v) => s + v.total, 0)}
+              meta={config.meta_ventas_mensuales}
+              format="gs"
+            />
+          </div>
         </motion.div>
         <motion.div
           whileHover={{ y: -2 }}
-          className="rounded-2xl border border-slate-200 bg-white p-8 shadow-sm"
+          className="rounded-2xl border border-white/10 p-6 sm:p-8 lg:col-span-2"
+          style={{ backgroundColor: Z.card }}
         >
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">% de cobranza</p>
-          <p className="mt-3 text-3xl font-bold tabular-nums text-slate-900">
-            {pctCobranza == null ? "—" : `${pctCobranza.toFixed(1)}%`}
-          </p>
-          <p className="mt-2 text-xs text-slate-500">
-            Cobrado ÷ A cobrar · {aCobrarPeriodo <= 0 ? "sin emisión en el período" : "del período seleccionado"}
-          </p>
-        </motion.div>
-      </div>
-
-      {/* Trazabilidad: pagos que suman "Cobrado" en el período */}
-      <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-6">
-        <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
-          Desglose cobrado (período: {periodo})
-        </h3>
-        <p className="text-xs text-slate-500 mb-3">
-          Registros incluidos: pagos cuya <strong>fecha de pago</strong> cae en el rango del filtro superior. La suma de montos coincide con &quot;Cobrado del período&quot; (Gs. {formatGs(cobradoPeriodo)}).
-        </p>
-        {cobradoDetalle.length === 0 ? (
-          <p className="text-sm text-slate-600">No hay pagos en este período.</p>
-        ) : (
-          <div className="overflow-x-auto rounded-lg border border-slate-200 max-h-52 overflow-y-auto">
-            <table className="w-full text-sm">
-              <thead className="bg-slate-50 sticky top-0 border-b border-slate-200">
-                <tr>
-                  <th className="text-left px-3 py-2 text-xs font-semibold text-slate-500 uppercase tracking-wide">Factura</th>
-                  <th className="text-left px-3 py-2 text-xs font-semibold text-slate-500 uppercase tracking-wide">Fecha pago</th>
-                  <th className="text-right px-3 py-2 text-xs font-semibold text-slate-500 uppercase tracking-wide">Monto</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {cobradoDetalle.map((row) => (
-                  <tr key={row.id} className="hover:bg-slate-50/80">
-                    <td className="px-3 py-2 font-mono text-xs text-slate-800">{row.numero_factura}</td>
-                    <td className="px-3 py-2 text-slate-700">{formatFecha(row.fecha_pago)}</td>
-                    <td className="px-3 py-2 text-right tabular-nums text-slate-800">Gs. {formatGs(row.monto)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
-
-      {/* Metas financieras */}
-      <div className="bg-white border border-slate-200 rounded-xl shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 p-6">
-        <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-4">Progreso de metas</h3>
-        <div className="grid grid-cols-2 gap-6">
-          <ProgressBar label="Facturación mensual"
-            value={facturasValidas
-              .filter((f) => enMesCalendarioActual(f.fecha))
-              .reduce((s, f) => s + f.monto, 0)}
-            meta={config.meta_facturacion_mensual} format="gs" />
-          <ProgressBar label="Ventas mensuales"
-            value={ventas
-              .filter((v) => enMesCalendarioActual(v.fecha.slice(0, 10)))
-              .reduce((s, v) => s + v.total, 0)}
-            meta={config.meta_ventas_mensuales} format="gs" />
-        </div>
-      </div>
-
-      {/* Gráfico mensual + Distribución */}
-      <div className="grid grid-cols-3 gap-4">
-        <motion.div whileHover={{ y: -2 }} className="col-span-2 bg-white border border-slate-200 rounded-xl shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 p-6 transition-shadow hover:shadow-md">
-          <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-4">
-            Facturación mensual — últimos 12 meses
+          <h3 className="text-xs font-bold uppercase tracking-wider" style={{ color: Z.muted }}>
+            Distribución de clientes
           </h3>
-          <AreaChart data={mensual} color="#0EA5E9" />
-        </motion.div>
-        <motion.div whileHover={{ y: -2 }} className="bg-white border border-slate-200 rounded-xl shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 p-6">
-          <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-4">
-            Distribución de facturas
-          </h3>
-          <DonutChart segments={[
-            { label: "Pagadas",   value: pagadas,    color: "#22c55e" },
-            { label: "Pendientes",value: pendientes,  color: "#f59e0b" },
-            { label: "Vencidas",  value: vencidas,    color: "#ef4444" },
-          ]} centerLabel="facturas" />
+          <p className="mt-1 text-[11px] leading-relaxed" style={{ color: Z.muted }}>
+            Por{" "}
+            {dimCliente === "tipo_servicio"
+              ? "tipo de servicio"
+              : dimCliente === "condicion"
+                ? "condición de pago"
+                : "origen"}
+            .
+          </p>
+          <div className="mt-6">
+            <DonutChart
+              variant="zentra"
+              legendDetail
+              segments={segmentosClientes}
+              centerLabel="clientes"
+              formatValue={(v) => String(v)}
+            />
+          </div>
         </motion.div>
       </div>
-
-      {/* Tabla facturas críticas */}
-      <div className="bg-white border border-slate-200 rounded-xl shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 p-6">
-        <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-4">
-          Facturas críticas — mayor saldo vencido
-        </h3>
-        {criticas.length === 0 ? (
-          <div className="flex items-center gap-2 text-[var(--badge-success-text)] bg-[var(--badge-success-bg)] rounded-lg px-4 py-3 text-sm">
-            <span>✅</span> No hay facturas vencidas. ¡Todo al día!
-          </div>
-        ) : (
-          <div className="overflow-x-auto rounded-lg border border-slate-200">
-            <table className="w-full text-sm">
-              <thead className="bg-slate-50 border-b border-slate-200">
-                <tr>
-                  <th className="w-10 px-3 py-3">
-                    <input type="checkbox" className="rounded border-slate-300 text-[#0EA5E9] focus:ring-[#0EA5E9]" />
-                  </th>
-                  {["Cliente", "Nro. Factura", "Fecha venc.", "Estado", "Saldo"].map(h => (
-                    <th key={h} className="text-left text-xs font-semibold text-slate-500 px-3 py-3 uppercase tracking-wide">
-                      {h}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-200">
-                {criticas.map((f) => (
-                  <tr key={f.id} className="bg-red-50/30 dark:bg-red-900/10 hover:bg-red-50/60 dark:hover:bg-red-900/20 transition-colors">
-                    <td className="px-3 py-2.5">
-                      <input type="checkbox" className="rounded border-slate-300 text-[#0EA5E9] focus:ring-[#0EA5E9]" />
-                    </td>
-                    <td className="px-3 py-2.5 text-xs font-medium text-slate-800 dark:text-slate-200 truncate max-w-[180px]">
-                      {clienteMap[f.cliente_id] ?? `Cliente #${f.cliente_id}`}
-                    </td>
-                    <td className="px-3 py-2.5 font-mono text-xs text-slate-700 dark:text-slate-300">{f.numero_factura}</td>
-                    <td className="px-3 py-2.5 text-xs font-medium">{formatFecha(f.fecha_vencimiento)}</td>
-                    <td className="px-3 py-2.5">
-                      <span className="inline-flex items-center gap-1 rounded-full bg-[var(--badge-error-bg)] px-2 py-0.5 text-xs font-semibold text-[var(--badge-error-text)]">
-                        Vencido
-                      </span>
-                    </td>
-                    <td className="px-3 py-2.5 text-xs font-bold text-red-700 dark:text-red-400 tabular-nums">
-                      Gs. {formatGs(f.saldo)}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
-
     </div>
   );
 }
@@ -1344,7 +1430,14 @@ export default function DashboardPage() {
   const nivel = usuarioActivo?.nivel ?? "administrador";
 
   if (!config) {
-    return <div className="flex items-center justify-center py-24 text-sm text-gray-400">Cargando…</div>;
+    return (
+      <div
+        className="flex min-h-[40vh] items-center justify-center rounded-2xl py-24 text-sm"
+        style={{ backgroundColor: Z.bg, color: Z.muted }}
+      >
+        Cargando…
+      </div>
+    );
   }
 
   // Control de acceso
@@ -1370,68 +1463,94 @@ export default function DashboardPage() {
   }
 
   return (
-    <div className="space-y-6">
-
-      {/* Encabezado */}
-      <div className="flex items-center justify-between gap-4 flex-wrap">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
-          <p className="text-sm text-gray-500 mt-0.5">
-            Vista {nivel === "supervisor" ? "de tu área" : "global"} del sistema
-          </p>
+    <div
+      className="space-y-8 rounded-2xl border border-white/10 px-4 py-8 sm:px-6 md:px-8"
+      style={{ backgroundColor: Z.bg, color: Z.muted }}
+    >
+      <header className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
+        <div className="flex items-start gap-4">
+          <ZentraMark />
+          <div>
+            <p className="text-[10px] font-semibold uppercase tracking-[0.2em]" style={{ color: Z.accent }}>
+              Zentra
+            </p>
+            <h1 className="mt-1 text-2xl font-bold tracking-tight sm:text-3xl" style={{ color: Z.text }}>
+              Dashboard
+            </h1>
+            <p className="mt-1 max-w-md text-sm leading-relaxed" style={{ color: Z.muted }}>
+              Neura ERP · Vista {nivel === "supervisor" ? "de tu área" : "global"} · período alineado al filtro
+            </p>
+          </div>
         </div>
 
-        <div className="flex items-center gap-3 flex-wrap">
-          {/* Sesión simulada */}
+        <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
           {usuarios.length > 0 && (
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-gray-400">Viendo como:</span>
+            <div className="flex flex-col gap-1.5 sm:items-end">
+              <span className="text-[10px] uppercase tracking-wide" style={{ color: Z.muted }}>
+                Viendo como
+              </span>
               <select
                 value={usuarioId ?? ""}
                 onChange={(e) => handleUsuarioChange(parseInt(e.target.value, 10))}
-                className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-gray-900/20"
+                className="rounded-lg border border-white/15 px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-offset-0"
+                style={{ backgroundColor: Z.surface, color: Z.text, borderColor: "rgba(255,255,255,0.12)" }}
               >
-                {usuarios.map(u => (
-                  <option key={u.id} value={u.id}>
+                {usuarios.map((u) => (
+                  <option key={u.id} value={u.id} style={{ backgroundColor: Z.surface }}>
                     {u.nombre} ({u.nivel})
                   </option>
                 ))}
               </select>
             </div>
           )}
-
-          {/* Periodo */}
-          <div className="flex gap-0.5 bg-gray-100 rounded-lg p-0.5">
-            {PERIODO_OPTS.map(p => (
-              <button key={p.id} type="button" onClick={() => setPeriodo(p.id)}
-                className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all ${
+          <div className="flex flex-wrap gap-1 rounded-xl border border-white/10 p-1" style={{ backgroundColor: Z.surface }}>
+            {PERIODO_OPTS.map((p) => (
+              <button
+                key={p.id}
+                type="button"
+                onClick={() => setPeriodo(p.id)}
+                className="rounded-lg px-3 py-2 text-xs font-medium transition-all"
+                style={
                   periodo === p.id
-                    ? "bg-white text-gray-900 shadow-sm"
-                    : "text-gray-500 hover:text-gray-700"
-                }`}>
+                    ? { backgroundColor: Z.accent, color: Z.text }
+                    : { color: Z.muted, backgroundColor: "transparent" }
+                }
+              >
                 {p.label}
               </button>
             ))}
           </div>
         </div>
-      </div>
+      </header>
 
-      {/* Tabs */}
-      <div className="flex gap-1 bg-white dark:bg-slate-900 rounded-full shadow-sm border border-slate-200 p-1.5 w-fit flex-wrap">
-        {([
-          { id: "comercial",   label: "Comercial",   icon: "📊" },
-          { id: "financiero",  label: "Financiero",  icon: "💰" },
-          { id: "inventario",  label: "Inventario",  icon: "📦" },
-          { id: "ventas",      label: "Ventas",      icon: "🛒" },
-        ] as { id: TabDash; label: string; icon: string }[]).map(t => (
-          <button key={t.id} type="button" onClick={() => { setTab(t.id); if (typeof window !== "undefined") window.history.replaceState(null, "", `?tab=${t.id}`); }}
-            className={`flex items-center gap-1.5 px-5 py-2.5 text-sm font-medium rounded-full transition-all ${
-              tab === t.id ? "bg-[#0EA5E9] text-white shadow-sm" : "text-slate-500 hover:text-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800"
-            }`}>
-            <span>{t.icon}</span>{t.label}
+      <nav className="flex w-full flex-wrap gap-1 rounded-2xl border border-white/10 p-1.5 sm:w-fit" style={{ backgroundColor: Z.surface }}>
+        {(
+          [
+            { id: "comercial" as const, label: "Comercial", icon: "📊" },
+            { id: "financiero" as const, label: "Financiero", icon: "💰" },
+            { id: "inventario" as const, label: "Inventario", icon: "📦" },
+            { id: "ventas" as const, label: "Ventas", icon: "🛒" },
+          ] as { id: TabDash; label: string; icon: string }[]
+        ).map((t) => (
+          <button
+            key={t.id}
+            type="button"
+            onClick={() => {
+              setTab(t.id);
+              if (typeof window !== "undefined") window.history.replaceState(null, "", `?tab=${t.id}`);
+            }}
+            className="flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium transition-all"
+            style={
+              tab === t.id
+                ? { backgroundColor: Z.accent, color: Z.text, boxShadow: "0 8px 24px rgba(37,99,235,0.35)" }
+                : { color: Z.muted }
+            }
+          >
+            <span aria-hidden>{t.icon}</span>
+            {t.label}
           </button>
         ))}
-      </div>
+      </nav>
 
       {/* Contenido */}
       {tab === "comercial" && (
