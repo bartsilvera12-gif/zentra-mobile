@@ -2,33 +2,10 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ComprobanteValidationConfigSection } from "@/components/chat/ComprobanteValidationConfigSection";
-import {
-  comprobanteValidationSettingsForForm,
-  defaultComprobanteValidationSettings,
-  parseComprobanteValidationConfig,
-  type ComprobanteValidationSettings,
-} from "@/lib/chat/comprobante-validation-types";
-import {
-  deleteChatChannel,
-  fetchChatChannels,
-  saveChatChannel,
-  type ChatChannelRow,
-  type ChatChannelFormInput,
-} from "@/lib/chat/actions";
+import { WhatsAppChannelForm } from "@/components/chat/WhatsAppChannelForm";
+import { deleteChatChannel, fetchChatChannels, type ChatChannelRow } from "@/lib/chat/actions";
 
 type PanelMode = "list" | "create" | "edit";
-
-function emptyForm(): ChatChannelFormInput {
-  return {
-    nombre: "WhatsApp principal",
-    meta_phone_number_id: "",
-    provider_channel_id: "",
-    activo: true,
-    display_phone_number: "",
-    whatsapp_access_token: "",
-  };
-}
 
 function displayPhoneFromRow(row: ChatChannelRow): string {
   const v = row.config?.display_phone_number;
@@ -40,13 +17,9 @@ export default function ConfiguracionCanalesPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const [form, setForm] = useState<ChatChannelFormInput>(emptyForm());
   const [panelMode, setPanelMode] = useState<PanelMode>("list");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
-  const [cvSettings, setCvSettings] = useState<ComprobanteValidationSettings>(() =>
-    defaultComprobanteValidationSettings()
-  );
   const formAnchorRef = useRef<HTMLDivElement>(null);
 
   const reload = useCallback(async () => {
@@ -70,7 +43,6 @@ export default function ConfiguracionCanalesPage() {
     if (panelMode === "edit" && editingId && !rows.some((r) => r.id === editingId)) {
       setPanelMode("list");
       setEditingId(null);
-      setForm(emptyForm());
     }
   }, [rows, panelMode, editingId]);
 
@@ -84,8 +56,6 @@ export default function ConfiguracionCanalesPage() {
     setError(null);
     setSuccess(null);
     setEditingId(null);
-    setForm(emptyForm());
-    setCvSettings(defaultComprobanteValidationSettings());
     setPanelMode("create");
   }
 
@@ -93,18 +63,6 @@ export default function ConfiguracionCanalesPage() {
     setError(null);
     setSuccess(null);
     setEditingId(row.id);
-    setCvSettings(parseComprobanteValidationConfig(row.config));
-    setForm({
-      nombre: row.nombre ?? "WhatsApp",
-      meta_phone_number_id: row.meta_phone_number_id,
-      provider_channel_id: row.provider_channel_id ?? row.meta_phone_number_id,
-      activo: row.activo,
-      display_phone_number:
-        typeof row.config?.display_phone_number === "string"
-          ? row.config.display_phone_number
-          : "",
-      whatsapp_access_token: "",
-    });
     setPanelMode("edit");
   }
 
@@ -112,43 +70,7 @@ export default function ConfiguracionCanalesPage() {
     setError(null);
     setSuccess(null);
     setEditingId(null);
-    setForm(emptyForm());
-    setCvSettings(defaultComprobanteValidationSettings());
     setPanelMode("list");
-  }
-
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    setSaving(true);
-    setError(null);
-    setSuccess(null);
-    try {
-      if (panelMode === "edit") {
-        if (!editingId) {
-          throw new Error("No hay canal seleccionado para editar. Volvé al listado y elegí «Editar».");
-        }
-        await saveChatChannel({
-          ...form,
-          id: editingId,
-          comprobante_validation: comprobanteValidationSettingsForForm(cvSettings),
-        });
-        setSuccess("Canal actualizado correctamente.");
-      } else {
-        await saveChatChannel({
-          ...form,
-          comprobante_validation: comprobanteValidationSettingsForForm(cvSettings),
-        });
-        setSuccess("Canal creado correctamente.");
-      }
-      await reload();
-      setEditingId(null);
-      setForm(emptyForm());
-      setPanelMode("list");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Error al guardar");
-    } finally {
-      setSaving(false);
-    }
   }
 
   async function handleDelete(id: string) {
@@ -169,6 +91,7 @@ export default function ConfiguracionCanalesPage() {
 
   const hasChannels = rows.length > 0;
   const showForm = panelMode === "create" || panelMode === "edit";
+  const editingRow = editingId ? rows.find((r) => r.id === editingId) : undefined;
 
   return (
     <div className="space-y-6 max-w-3xl">
@@ -178,6 +101,13 @@ export default function ConfiguracionCanalesPage() {
         </Link>
         <span>/</span>
         <span className="text-slate-800 font-medium">Conversaciones / WhatsApp</span>
+      </div>
+
+      <div className="rounded-xl border border-sky-100 bg-sky-50/80 px-4 py-3 text-sm text-sky-900">
+        <span className="font-medium">Nueva vista de canales: </span>
+        <Link href="/configuracion/canales" className="font-semibold text-[#0284C7] hover:underline">
+          Canales y comunicación
+        </Link>
       </div>
 
       <div>
@@ -229,101 +159,29 @@ export default function ConfiguracionCanalesPage() {
             </button>
           </div>
 
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
-              <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Nombre en el ERP</label>
-              <input
-                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm"
-                value={form.nombre}
-                onChange={(e) => setForm((p) => ({ ...p, nombre: e.target.value }))}
-                placeholder="Ej: WhatsApp ventas"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">
-                Phone number ID (Graph API) *
-              </label>
-              <input
-                required
-                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono"
-                value={form.meta_phone_number_id}
-                onChange={(e) => setForm((p) => ({ ...p, meta_phone_number_id: e.target.value }))}
-                placeholder="Ej: 123456789012345"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">
-                Provider channel ID (opcional)
-              </label>
-              <input
-                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono"
-                value={form.provider_channel_id}
-                onChange={(e) => setForm((p) => ({ ...p, provider_channel_id: e.target.value }))}
-                placeholder="Por defecto se usa el mismo Phone number ID"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">
-                Número visible (opcional)
-              </label>
-              <input
-                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm"
-                value={form.display_phone_number ?? ""}
-                onChange={(e) => setForm((p) => ({ ...p, display_phone_number: e.target.value }))}
-                placeholder="+595 981 000000"
-              />
-              <p className="text-xs text-slate-400 mt-1">Se guarda en config para referencia; no afecta el webhook.</p>
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">
-                Token de acceso Meta (enviar mensajes)
-              </label>
-              <input
-                type="password"
-                autoComplete="off"
-                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono"
-                value={form.whatsapp_access_token ?? ""}
-                onChange={(e) => setForm((p) => ({ ...p, whatsapp_access_token: e.target.value }))}
-                placeholder={
-                  panelMode === "edit"
-                    ? "Dejar vacío para no cambiar el token guardado"
-                    : "Pegá el token permanente de la app (WhatsApp)"
-                }
-              />
-              <p className="text-xs text-slate-400 mt-1">
-                Necesario para el botón Enviar en Conversaciones. Alternativa: variable{" "}
-                <code className="text-[10px] bg-slate-100 px-1 rounded">WHATSAPP_TOKEN</code> en Vercel.
-              </p>
-            </div>
-            <label className="flex items-center gap-2 text-sm text-slate-700">
-              <input
-                type="checkbox"
-                checked={form.activo}
-                onChange={(e) => setForm((p) => ({ ...p, activo: e.target.checked }))}
-              />
-              Canal activo (recibe mensajes del webhook)
-            </label>
-
-            <ComprobanteValidationConfigSection value={cvSettings} onChange={setCvSettings} />
-
-            <div className="flex flex-wrap gap-2 pt-1">
-              <button
-                type="submit"
-                disabled={saving}
-                className="bg-[#0EA5E9] hover:bg-[#0284C7] disabled:opacity-50 text-white px-5 py-2.5 rounded-lg text-sm font-medium"
-              >
-                {saving ? "Guardando…" : panelMode === "edit" ? "Actualizar canal" : "Crear canal"}
-              </button>
-              <button
-                type="button"
-                disabled={saving}
-                onClick={cancelForm}
-                className="border border-slate-200 text-slate-700 hover:bg-slate-50 px-5 py-2.5 rounded-lg text-sm font-medium"
-              >
-                Cancelar
-              </button>
-            </div>
-          </form>
+          {panelMode === "edit" && editingRow ? (
+            <WhatsAppChannelForm
+              mode="edit"
+              channelId={editingId ?? undefined}
+              initialRow={editingRow}
+              onCancel={cancelForm}
+              onSaved={() => {
+                void reload();
+                cancelForm();
+              }}
+              submitLabelEdit="Actualizar canal"
+            />
+          ) : panelMode === "create" ? (
+            <WhatsAppChannelForm
+              mode="create"
+              onCancel={cancelForm}
+              onSaved={() => {
+                void reload();
+                cancelForm();
+              }}
+              submitLabelCreate="Crear canal"
+            />
+          ) : null}
         </section>
       )}
 

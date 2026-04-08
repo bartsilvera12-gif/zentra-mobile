@@ -737,6 +737,18 @@ export default function ConfiguracionPage() {
         {tab === "conversaciones" && hasConversacionesModulo && (
           <div className="space-y-5">
             <Card>
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 -mt-1 mb-4">
+                <p className="text-sm text-gray-600">
+                  <span className="font-medium text-gray-800">Canales omnicanal: </span>
+                  usá la nueva vista en cards para conectar y editar canales.
+                </p>
+                <Link
+                  href="/configuracion/canales"
+                  className="shrink-0 inline-flex items-center justify-center px-4 py-2 rounded-lg text-sm font-semibold bg-[#0EA5E9] text-white hover:bg-[#0284C7]"
+                >
+                  Abrir Canales y comunicación
+                </Link>
+              </div>
               <SectionTitle>Configuración del canal WhatsApp</SectionTitle>
               <ConfiguracionCanalesPage />
             </Card>

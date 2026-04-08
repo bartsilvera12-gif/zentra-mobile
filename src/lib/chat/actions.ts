@@ -217,17 +217,8 @@ export type ChatChannelRow = {
   updated_at?: string;
 };
 
-export async function fetchChatChannels(): Promise<ChatChannelRow[]> {
-  const { supabase } = await requireEmpresaUsuarioSession();
-  const { data, error } = await supabase
-    .from("chat_channels")
-    .select(
-      "id, empresa_id, type, meta_phone_number_id, nombre, provider, provider_channel_id, activo, config, created_at, updated_at"
-    )
-    .order("created_at", { ascending: true });
-
-  if (error) throw new Error(error.message);
-  return (data ?? []).map((r) => ({
+function mapChatChannelRow(r: Record<string, unknown>): ChatChannelRow {
+  return {
     id: r.id as string,
     empresa_id: r.empresa_id as string,
     type: (r.type as string) ?? "whatsapp",
@@ -239,7 +230,38 @@ export async function fetchChatChannels(): Promise<ChatChannelRow[]> {
     config: (typeof r.config === "object" && r.config !== null ? r.config : {}) as Record<string, unknown>,
     created_at: (r.created_at as string) ?? "",
     updated_at: r.updated_at as string | undefined,
-  }));
+  };
+}
+
+export async function fetchChatChannels(): Promise<ChatChannelRow[]> {
+  const { supabase } = await requireEmpresaUsuarioSession();
+  const { data, error } = await supabase
+    .from("chat_channels")
+    .select(
+      "id, empresa_id, type, meta_phone_number_id, nombre, provider, provider_channel_id, activo, config, created_at, updated_at"
+    )
+    .order("created_at", { ascending: true });
+
+  if (error) throw new Error(error.message);
+  return (data ?? []).map((r) => mapChatChannelRow(r as Record<string, unknown>));
+}
+
+export async function fetchChatChannelById(channelId: string): Promise<ChatChannelRow | null> {
+  const { supabase, empresa_id } = await requireEmpresaUsuarioSession();
+  const id = channelId.trim();
+  if (!id) return null;
+  const { data, error } = await supabase
+    .from("chat_channels")
+    .select(
+      "id, empresa_id, type, meta_phone_number_id, nombre, provider, provider_channel_id, activo, config, created_at, updated_at"
+    )
+    .eq("id", id)
+    .eq("empresa_id", empresa_id)
+    .maybeSingle();
+
+  if (error) throw new Error(error.message);
+  if (!data) return null;
+  return mapChatChannelRow(data as Record<string, unknown>);
 }
 
 export type ChatChannelFormInput = {
@@ -255,7 +277,8 @@ export type ChatChannelFormInput = {
   comprobante_validation?: Record<string, unknown>;
 };
 
-export async function saveChatChannel(input: ChatChannelFormInput): Promise<void> {
+/** Crea o actualiza canal WhatsApp (Meta). Devuelve el id del canal. */
+export async function saveChatChannel(input: ChatChannelFormInput): Promise<string> {
   const { supabase, empresa_id } = await requireEmpresaUsuarioSession();
   const pid = input.meta_phone_number_id.trim();
   if (!pid) throw new Error("Phone Number ID es obligatorio");
@@ -322,16 +345,23 @@ export async function saveChatChannel(input: ChatChannelFormInput): Promise<void
     if (!updated) {
       throw new Error("No se pudo actualizar el canal (¿pertenece a tu empresa?).");
     }
-    return;
+    return existingId;
   }
 
-  const { error } = await supabase.from("chat_channels").insert({
-    empresa_id,
-    ...base,
-    whatsapp_access_token: tokenPatch || null,
-  });
+  const { data: inserted, error } = await supabase
+    .from("chat_channels")
+    .insert({
+      empresa_id,
+      ...base,
+      whatsapp_access_token: tokenPatch || null,
+    })
+    .select("id")
+    .single();
 
   if (error) throw new Error(error.message);
+  const newId = inserted?.id as string | undefined;
+  if (!newId) throw new Error("No se pudo obtener el id del canal creado.");
+  return newId;
 }
 
 export type ComprobanteValidacionListRow = {
