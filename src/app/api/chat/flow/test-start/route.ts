@@ -1,18 +1,12 @@
-import { createClient } from "@supabase/supabase-js";
 import { NextRequest, NextResponse } from "next/server";
+import { getChatServiceClientForEmpresa } from "@/app/api/chat/_chat-service-client";
 import { createFlowEngine } from "@/lib/chat/flow-engine-service";
+import { createServiceRoleClient } from "@/lib/supabase/service-admin";
 import {
   getFirstActiveNodeCodeForFlow,
   listActiveWhatsappFlowsForEmpresa,
 } from "@/lib/chat/resolve-whatsapp-active-flow";
 import { getAuthWithRol } from "@/lib/middleware/auth";
-
-function getSupabaseAdmin() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url || !key) throw new Error("Supabase no configurado");
-  return createClient(url, key, { auth: { autoRefreshToken: false, persistSession: false } });
-}
 
 /**
  * Endpoint temporal de prueba para disparar el nodo inicial del flujo.
@@ -56,9 +50,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const supabase = getSupabaseAdmin();
     if (!empresaId) {
-      const { data: convEmpresa, error: convEmpresaErr } = await supabase
+      const catalog = createServiceRoleClient();
+      const { data: convEmpresa, error: convEmpresaErr } = await catalog
         .from("chat_conversations")
         .select("empresa_id")
         .eq("id", conversationId)
@@ -68,12 +62,18 @@ export async function POST(request: NextRequest) {
       }
       if (!convEmpresa?.empresa_id) {
         return NextResponse.json(
-          { ok: false, error: "Conversación no encontrada" },
+          {
+            ok: false,
+            error:
+              "En test_mode no se encontró la conversación en zentra_erp. Autenticate o pasá una conversación del catálogo.",
+          },
           { status: 404 }
         );
       }
       empresaId = convEmpresa.empresa_id as string;
     }
+
+    const supabase = await getChatServiceClientForEmpresa(empresaId);
 
     let flowCode = body.flow_code?.trim() ?? "";
     let nodeCode = body.node_code?.trim() ?? "";

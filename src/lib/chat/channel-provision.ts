@@ -1,4 +1,6 @@
 import type { SupabaseAdmin } from "@/lib/chat/types";
+import { createServiceRoleClientWithDbSchema } from "@/lib/supabase/empresa-data-schema";
+import { SUPABASE_APP_SCHEMA } from "@/lib/supabase/schema";
 
 export type WebhookProvisionEnv = {
   /** UUID empresa donde crear el canal si coincide el número de Meta */
@@ -10,9 +12,10 @@ export type WebhookProvisionEnv = {
 /**
  * Si no hay fila en chat_channels, crea una usando variables de entorno (demo / single-tenant).
  * Solo actúa cuando phoneNumberId === expectedPhoneNumberId y defaultEmpresaId está definido.
+ * El canal se crea en `empresas.data_schema` (tenant) o en zentra_erp; si es tenant, registra `omnichannel_routes` en catálogo.
  */
 export async function provisionChannelFromWebhookEnv(
-  supabase: SupabaseAdmin,
+  catalogSupabase: SupabaseAdmin,
   phoneNumberId: string,
   env: WebhookProvisionEnv
 ): Promise<{ id: string; empresa_id: string; meta_phone_number_id: string } | null> {
@@ -22,7 +25,21 @@ export async function provisionChannelFromWebhookEnv(
     return null;
   }
 
-  const { data: dup } = await supabase
+  const { data: emp } = await catalogSupabase
+    .from("empresas")
+    .select("data_schema")
+    .eq("id", empresaId)
+    .maybeSingle();
+
+  const dsRaw = (emp as { data_schema?: string | null } | null)?.data_schema?.trim();
+  const dataSchema = dsRaw && dsRaw.length > 0 ? dsRaw : SUPABASE_APP_SCHEMA;
+
+  const target: SupabaseAdmin =
+    dataSchema === SUPABASE_APP_SCHEMA
+      ? catalogSupabase
+      : (createServiceRoleClientWithDbSchema(dataSchema) as SupabaseAdmin);
+
+  const { data: dup } = await target
     .from("chat_channels")
     .select("id, empresa_id, meta_phone_number_id")
     .eq("meta_phone_number_id", phoneNumberId)
@@ -42,7 +59,7 @@ export async function provisionChannelFromWebhookEnv(
     provisioned_at: new Date().toISOString(),
   };
 
-  const { data: row, error } = await supabase
+  const { data: row, error } = await target
     .from("chat_channels")
     .insert({
       empresa_id: empresaId,
@@ -60,6 +77,21 @@ export async function provisionChannelFromWebhookEnv(
   if (error || !row) {
     console.error("[channel-provision] insert:", error?.message);
     return null;
+  }
+
+  if (dataSchema !== SUPABASE_APP_SCHEMA) {
+    const { error: rErr } = await catalogSupabase.from("omnichannel_routes").upsert(
+      {
+        meta_phone_number_id: phoneNumberId,
+        empresa_id: empresaId,
+        channel_id: row.id as string,
+        data_schema: dataSchema,
+      },
+      { onConflict: "meta_phone_number_id" }
+    );
+    if (rErr) {
+      console.error("[channel-provision] omnichannel_routes:", rErr.message);
+    }
   }
 
   return {

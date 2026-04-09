@@ -1,16 +1,10 @@
-import { createClient } from "@supabase/supabase-js";
 import { NextRequest, NextResponse } from "next/server";
+import { getChatServiceClientForEmpresa } from "@/app/api/chat/_chat-service-client";
 import { getAuthWithRol } from "@/lib/middleware/auth";
-
-function getSupabaseAdmin() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url || !key) throw new Error("Supabase no configurado");
-  return createClient(url, key, { auth: { autoRefreshToken: false, persistSession: false } });
-}
+import type { AppSupabaseClient } from "@/lib/supabase/schema";
 
 async function resolveNodeId(
-  supabase: ReturnType<typeof getSupabaseAdmin>,
+  supabase: AppSupabaseClient,
   empresaId: string,
   flowCode: string,
   nodeCode: string
@@ -48,7 +42,7 @@ export async function POST(
     if (!label || !metaButtonId) {
       return NextResponse.json({ ok: false, error: "label y meta_button_id requeridos" }, { status: 400 });
     }
-    const supabase = getSupabaseAdmin();
+    const supabase = await getChatServiceClientForEmpresa(auth.empresa_id);
     const node = await resolveNodeId(supabase, auth.empresa_id, params.flowCode, params.nodeCode);
     if (!node) return NextResponse.json({ ok: false, error: "Nodo no encontrado" }, { status: 404 });
     const nextNodeCode = body.next_node_code?.trim() || null;

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   approveComprobanteValidacion,
@@ -35,7 +35,7 @@ import {
   getMetaInboundDocumentFilename,
   isImageMimeHint,
 } from "@/lib/chat/message-erp-display";
-import { supabase } from "@/lib/supabase";
+import { createBrowserClientForSchema } from "@/lib/supabase";
 import { ChannelBadge } from "@/components/chat/ChannelBadge";
 
 type ChatMessage = {
@@ -158,7 +158,18 @@ function badgePrioridadClass(p: string) {
 
 export type ConversacionesClientMode = "inbox" | "historial";
 
-export function ConversacionesClient({ mode }: { mode: ConversacionesClientMode }) {
+export function ConversacionesClient({
+  mode,
+  chatDataSchema,
+}: {
+  mode: ConversacionesClientMode;
+  /** Esquema Postgres de tablas chat_* (zentra_erp o `er_…`). */
+  chatDataSchema: string;
+}) {
+  const supabaseChat = useMemo(
+    () => createBrowserClientForSchema(chatDataSchema),
+    [chatDataSchema]
+  );
   const searchParams = useSearchParams();
   const router = useRouter();
   const vistaParam = searchParams?.get("vista") ?? "";
@@ -238,7 +249,7 @@ export function ConversacionesClient({ mode }: { mode: ConversacionesClientMode 
     const silent = opts?.silent ?? false;
     if (!silent) setLoadingMsg(true);
     try {
-      const { data, error: err } = await supabase
+      const { data, error: err } = await supabaseChat
         .from("chat_messages")
         .select("id, from_me, message_type, content, raw_payload, created_at")
         .eq("conversation_id", conversationId)
@@ -251,7 +262,7 @@ export function ConversacionesClient({ mode }: { mode: ConversacionesClientMode 
     } finally {
       if (!silent) setLoadingMsg(false);
     }
-  }, []);
+  }, [supabaseChat]);
 
   loadConversationsRef.current = loadConversations;
 
@@ -326,11 +337,11 @@ export function ConversacionesClient({ mode }: { mode: ConversacionesClientMode 
 
   /** Lista: actualizar con Realtime (sin polling). */
   useEffect(() => {
-    const channel = supabase
+    const channel = supabaseChat
       .channel("conversaciones-inbox-list")
       .on(
         "postgres_changes",
-        { event: "*", schema: "public", table: "chat_conversations" },
+        { event: "*", schema: chatDataSchema, table: "chat_conversations" },
         () => {
           void loadConversationsRef.current?.({ silent: true });
         }
@@ -338,21 +349,21 @@ export function ConversacionesClient({ mode }: { mode: ConversacionesClientMode 
       .subscribe();
 
     return () => {
-      void supabase.removeChannel(channel);
+      void supabaseChat.removeChannel(channel);
     };
-  }, []);
+  }, [chatDataSchema, supabaseChat]);
 
   /** Mensajes del hilo abierto: INSERT en tiempo real. */
   useEffect(() => {
     if (!selectedId) return;
 
-    const channel = supabase
+    const channel = supabaseChat
       .channel(`conversaciones-msg-${selectedId}`)
       .on(
         "postgres_changes",
         {
           event: "INSERT",
-          schema: "public",
+          schema: chatDataSchema,
           table: "chat_messages",
           filter: `conversation_id=eq.${selectedId}`,
         },
@@ -371,9 +382,9 @@ export function ConversacionesClient({ mode }: { mode: ConversacionesClientMode 
       .subscribe();
 
     return () => {
-      void supabase.removeChannel(channel);
+      void supabaseChat.removeChannel(channel);
     };
-  }, [selectedId]);
+  }, [selectedId, chatDataSchema, supabaseChat]);
 
   const onMessagesScroll = useCallback(() => {
     const el = messagesScrollRef.current;

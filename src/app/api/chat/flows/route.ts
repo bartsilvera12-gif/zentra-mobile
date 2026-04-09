@@ -1,13 +1,6 @@
-import { createClient } from "@supabase/supabase-js";
 import { NextRequest, NextResponse } from "next/server";
+import { getChatServiceClientForEmpresa } from "@/app/api/chat/_chat-service-client";
 import { getAuthWithRol } from "@/lib/middleware/auth";
-
-function getSupabaseAdmin() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url || !key) throw new Error("Supabase no configurado");
-  return createClient(url, key, { auth: { autoRefreshToken: false, persistSession: false } });
-}
 
 export async function GET() {
   try {
@@ -15,7 +8,7 @@ export async function GET() {
     if (!auth?.empresa_id) {
       return NextResponse.json({ ok: false, error: "No autenticado" }, { status: 401 });
     }
-    const supabase = getSupabaseAdmin();
+    const supabase = await getChatServiceClientForEmpresa(auth.empresa_id);
 
     const { data: flows, error: fErr } = await supabase
       .from("chat_flows")
@@ -82,7 +75,7 @@ export async function POST(request: NextRequest) {
     if (!flowCode) {
       return NextResponse.json({ ok: false, error: "flow_code requerido" }, { status: 400 });
     }
-    const supabase = getSupabaseAdmin();
+    const supabase = await getChatServiceClientForEmpresa(auth.empresa_id);
 
     const { error: iErr } = await supabase.from("chat_flows").insert({
       empresa_id: auth.empresa_id,

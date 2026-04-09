@@ -1,13 +1,6 @@
-import { createClient } from "@supabase/supabase-js";
 import { NextRequest, NextResponse } from "next/server";
+import { getChatServiceClientForEmpresa } from "@/app/api/chat/_chat-service-client";
 import { getAuthWithRol } from "@/lib/middleware/auth";
-
-function getSupabaseAdmin() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url || !key) throw new Error("Supabase no configurado");
-  return createClient(url, key, { auth: { autoRefreshToken: false, persistSession: false } });
-}
 
 export async function PATCH(
   request: NextRequest,
@@ -42,7 +35,7 @@ export async function PATCH(
           : {};
     }
 
-    const supabase = getSupabaseAdmin();
+    const supabase = await getChatServiceClientForEmpresa(auth.empresa_id);
     const { data: currentOption, error: currentErr } = await supabase
       .from("chat_flow_options")
       .select("node_id, next_node_code")
@@ -96,7 +89,7 @@ export async function DELETE(
       return NextResponse.json({ ok: false, error: "No autenticado" }, { status: 401 });
     }
     const params = await context.params;
-    const supabase = getSupabaseAdmin();
+    const supabase = await getChatServiceClientForEmpresa(auth.empresa_id);
     const { error } = await supabase.from("chat_flow_options").delete().eq("id", params.optionId);
     if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 400 });
     return NextResponse.json({ ok: true });

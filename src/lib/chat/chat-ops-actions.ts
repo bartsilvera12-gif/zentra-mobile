@@ -1,15 +1,15 @@
 "use server";
 
 import {
-  requireEmpresaUsuarioSession,
-  type EmpresaUsuarioSession,
+  requireEmpresaChatSession,
+  type EmpresaChatSession,
 } from "@/lib/chat/empresa-session";
 
 const STATUSES = new Set(["open", "pending", "closed"]);
 const PRIORITIES = new Set(["low", "medium", "high"]);
 
 async function loadConversationForEmpresa(
-  supabase: EmpresaUsuarioSession["supabase"],
+  supabase: EmpresaChatSession["supabase"],
   empresaId: string,
   conversationId: string
 ) {
@@ -30,7 +30,7 @@ async function loadConversationForEmpresa(
 }
 
 async function loadAgentForEmpresa(
-  supabase: EmpresaUsuarioSession["supabase"],
+  supabase: EmpresaChatSession["supabase"],
   empresaId: string,
   agentId: string
 ) {
@@ -50,7 +50,7 @@ async function loadAgentForEmpresa(
 }
 
 async function loadQueueForEmpresa(
-  supabase: EmpresaUsuarioSession["supabase"],
+  supabase: EmpresaChatSession["supabase"],
   empresaId: string,
   queueId: string
 ) {
@@ -71,7 +71,7 @@ export async function assignConversationToAgent(
   conversationId: string,
   agentId: string
 ): Promise<void> {
-  const { supabase, empresa_id } = await requireEmpresaUsuarioSession();
+  const { supabase, empresa_id } = await requireEmpresaChatSession();
   const conv = await loadConversationForEmpresa(supabase, empresa_id, conversationId);
   if (!conv) throw new Error("Conversación no encontrada");
   const agent = await loadAgentForEmpresa(supabase, empresa_id, agentId);
@@ -94,7 +94,7 @@ export async function assignConversationToAgent(
  * Cola de la conversación (no limpia asignación; el supervisor puede reasignar después).
  */
 export async function changeConversationQueue(conversationId: string, queueId: string): Promise<void> {
-  const { supabase, empresa_id } = await requireEmpresaUsuarioSession();
+  const { supabase, empresa_id } = await requireEmpresaChatSession();
   const conv = await loadConversationForEmpresa(supabase, empresa_id, conversationId);
   if (!conv) throw new Error("Conversación no encontrada");
   const queue = await loadQueueForEmpresa(supabase, empresa_id, queueId);
@@ -120,7 +120,7 @@ export async function changeConversationPriority(
   if (!PRIORITIES.has(p)) {
     throw new Error("Prioridad inválida");
   }
-  const { supabase, empresa_id } = await requireEmpresaUsuarioSession();
+  const { supabase, empresa_id } = await requireEmpresaChatSession();
   const conv = await loadConversationForEmpresa(supabase, empresa_id, conversationId);
   if (!conv) throw new Error("Conversación no encontrada");
 
@@ -141,7 +141,7 @@ export async function changeConversationStatus(conversationId: string, status: s
   if (!STATUSES.has(s)) {
     throw new Error("Estado inválido");
   }
-  const { supabase, empresa_id } = await requireEmpresaUsuarioSession();
+  const { supabase, empresa_id } = await requireEmpresaChatSession();
   const conv = await loadConversationForEmpresa(supabase, empresa_id, conversationId);
   if (!conv) throw new Error("Conversación no encontrada");
 
@@ -161,7 +161,7 @@ export async function changeConversationStatus(conversationId: string, status: s
  * Asigna al usuario actual si existe `chat_agents` para la cola de la conversación (o cualquier cola de la empresa si la conversación no tiene cola).
  */
 export async function assignConversationToMe(conversationId: string): Promise<void> {
-  const { supabase, empresa_id, usuario_id } = await requireEmpresaUsuarioSession();
+  const { supabase, empresa_id, usuario_id } = await requireEmpresaChatSession();
   const conv = await loadConversationForEmpresa(supabase, empresa_id, conversationId);
   if (!conv) throw new Error("Conversación no encontrada");
 
@@ -206,7 +206,7 @@ export type ChatQueueListRow = {
 };
 
 export async function listChatQueues(): Promise<ChatQueueListRow[]> {
-  const { supabase, empresa_id } = await requireEmpresaUsuarioSession();
+  const { supabase, empresa_id } = await requireEmpresaChatSession();
   const { data, error } = await supabase
     .from("chat_queues")
     .select("id, nombre, is_active, channel_type")
@@ -229,7 +229,7 @@ export type ChatAgentDirectoryRow = {
 
 /** Agentes con nombre para reasignación y vistas de supervisor. */
 export async function listChatAgentsDirectory(): Promise<ChatAgentDirectoryRow[]> {
-  const { supabase, empresa_id } = await requireEmpresaUsuarioSession();
+  const { supabase, catalogSupabase, empresa_id } = await requireEmpresaChatSession();
   const { data, error } = await supabase
     .from("chat_agents")
     .select(
@@ -239,8 +239,7 @@ export async function listChatAgentsDirectory(): Promise<ChatAgentDirectoryRow[]
       is_online,
       max_conversations,
       usuario_id,
-      chat_queues ( nombre ),
-      usuarios ( nombre, email )
+      chat_queues ( nombre )
     `
     )
     .eq("empresa_id", empresa_id)
@@ -248,15 +247,36 @@ export async function listChatAgentsDirectory(): Promise<ChatAgentDirectoryRow[]
 
   if (error) throw new Error(error.message);
 
-  return (data ?? []).map((row: Record<string, unknown>) => {
+  const rows = (data ?? []) as Record<string, unknown>[];
+  const uids = [...new Set(rows.map((row) => row.usuario_id as string).filter(Boolean))];
+  let usuarioById: Record<string, { nombre: string | null; email: string | null }> = {};
+  if (uids.length > 0) {
+    const { data: urows, error: uErr } = await catalogSupabase
+      .from("usuarios")
+      .select("id, nombre, email")
+      .in("id", uids);
+    if (uErr) throw new Error(uErr.message);
+    usuarioById = Object.fromEntries(
+      (urows ?? []).map((u) => [
+        u.id as string,
+        {
+          nombre: (u as { nombre?: string | null }).nombre ?? null,
+          email: (u as { email?: string | null }).email ?? null,
+        },
+      ])
+    );
+  }
+
+  return rows.map((row) => {
     const q = row.chat_queues as { nombre?: string } | null;
-    const u = row.usuarios as { nombre?: string | null; email?: string | null } | null;
-    const nombre = (u?.nombre?.trim() || u?.email || "—") as string;
+    const uid = row.usuario_id as string;
+    const u = usuarioById[uid];
+    const nombre = (u?.nombre?.trim() || u?.email?.trim() || "—") as string;
     return {
       id: row.id as string,
       queue_id: row.queue_id as string,
       queue_nombre: (q?.nombre as string) ?? "Cola",
-      usuario_id: row.usuario_id as string,
+      usuario_id: uid,
       nombre,
       email: (u?.email as string) ?? "",
       is_online: Boolean(row.is_online),
@@ -268,7 +288,7 @@ export async function listChatAgentsDirectory(): Promise<ChatAgentDirectoryRow[]
 export type SupervisorAgentLoadRow = ChatAgentDirectoryRow & { active_conversations: number };
 
 export async function fetchSupervisorAgentLoads(): Promise<SupervisorAgentLoadRow[]> {
-  const { supabase, empresa_id } = await requireEmpresaUsuarioSession();
+  const { supabase, empresa_id } = await requireEmpresaChatSession();
   const agents = await listChatAgentsDirectory();
   if (agents.length === 0) return [];
 
@@ -296,7 +316,7 @@ export async function fetchSupervisorAgentLoads(): Promise<SupervisorAgentLoadRo
 }
 
 export async function countUnassignedOpenConversations(): Promise<number> {
-  const { supabase, empresa_id } = await requireEmpresaUsuarioSession();
+  const { supabase, empresa_id } = await requireEmpresaChatSession();
   const { count, error } = await supabase
     .from("chat_conversations")
     .select("*", { count: "exact", head: true })

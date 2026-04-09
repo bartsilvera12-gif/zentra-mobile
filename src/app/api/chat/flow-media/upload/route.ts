@@ -1,17 +1,11 @@
-import { createClient } from "@supabase/supabase-js";
 import { NextRequest, NextResponse } from "next/server";
 import { getAuthWithRol } from "@/lib/middleware/auth";
+import { getChatServiceClientForEmpresa } from "@/app/api/chat/_chat-service-client";
+import type { AppSupabaseClient } from "@/lib/supabase/schema";
 
 const CHAT_MEDIA_BUCKET = "chat-media";
 
-function getSupabaseAdmin() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url || !key) throw new Error("Supabase no configurado");
-  return createClient(url, key, { auth: { autoRefreshToken: false, persistSession: false } });
-}
-
-async function ensureBucket(supabase: ReturnType<typeof getSupabaseAdmin>) {
+async function ensureBucket(supabase: AppSupabaseClient) {
   const { data, error } = await supabase.storage.listBuckets();
   if (error) throw new Error(error.message);
   const exists = (data ?? []).some((b) => b.name === CHAT_MEDIA_BUCKET);
@@ -41,7 +35,7 @@ export async function POST(request: NextRequest) {
     }
     const ext = file.name.includes(".") ? file.name.split(".").pop() : "jpg";
     const path = `${auth.empresa_id}/flow-editor/${Date.now()}-${crypto.randomUUID()}.${ext}`;
-    const supabase = getSupabaseAdmin();
+    const supabase = await getChatServiceClientForEmpresa(auth.empresa_id);
     await ensureBucket(supabase);
     const bytes = new Uint8Array(await file.arrayBuffer());
     const up = await supabase.storage.from(CHAT_MEDIA_BUCKET).upload(path, bytes, {

@@ -1,4 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
+import { supabaseServiceRoleClientOptions } from "@/lib/supabase/schema";
 import { NextResponse } from "next/server";
 
 export async function POST(req: Request) {
@@ -31,9 +32,7 @@ export async function POST(req: Request) {
       );
     }
 
-    const supabase = createClient(url, key, {
-      auth: { autoRefreshToken: false, persistSession: false },
-    });
+    const supabase = createClient(url, key, { ...supabaseServiceRoleClientOptions });
 
     // 1 — Insertar empresa
     const { data: empresa, error: errEmpresa } = await supabase
@@ -52,6 +51,28 @@ export async function POST(req: Request) {
     }
 
     const empresaId = empresa.id;
+
+    const { data: provisionJson, error: provErr } = await supabase.rpc(
+      "neura_provision_empresa_data_schema",
+      { p_empresa_id: empresaId }
+    );
+
+    if (provErr) {
+      await supabase.from("empresas").delete().eq("id", empresaId);
+      return NextResponse.json(
+        { error: `Provisión de esquema: ${provErr.message}` },
+        { status: 500 }
+      );
+    }
+
+    const prov = provisionJson as { ok?: boolean; status?: string } | null;
+    if (prov && prov.ok === false) {
+      await supabase.from("empresas").delete().eq("id", empresaId);
+      return NextResponse.json(
+        { error: "No se pudo provisionar el esquema de datos de la empresa." },
+        { status: 500 }
+      );
+    }
 
     // 2 — Crear usuario en Supabase Auth
     const { data: authData, error: errAuth } = await supabase.auth.admin.createUser({

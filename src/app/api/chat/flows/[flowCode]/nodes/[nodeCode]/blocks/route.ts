@@ -1,13 +1,7 @@
-import { createClient } from "@supabase/supabase-js";
 import { NextRequest, NextResponse } from "next/server";
+import { getChatServiceClientForEmpresa } from "@/app/api/chat/_chat-service-client";
 import { getAuthWithRol } from "@/lib/middleware/auth";
-
-function getSupabaseAdmin() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url || !key) throw new Error("Supabase no configurado");
-  return createClient(url, key, { auth: { autoRefreshToken: false, persistSession: false } });
-}
+import type { AppSupabaseClient } from "@/lib/supabase/schema";
 
 function isValidHttpUrl(value: string): boolean {
   try {
@@ -19,7 +13,7 @@ function isValidHttpUrl(value: string): boolean {
 }
 
 async function resolveNodeId(
-  supabase: ReturnType<typeof getSupabaseAdmin>,
+  supabase: AppSupabaseClient,
   empresaId: string,
   flowCode: string,
   nodeCode: string
@@ -45,7 +39,7 @@ export async function GET(
       return NextResponse.json({ ok: false, error: "No autenticado" }, { status: 401 });
     }
     const params = await context.params;
-    const supabase = getSupabaseAdmin();
+    const supabase = await getChatServiceClientForEmpresa(auth.empresa_id);
     const nodeId = await resolveNodeId(supabase, auth.empresa_id, params.flowCode, params.nodeCode);
     if (!nodeId) return NextResponse.json({ ok: false, error: "Nodo no encontrado" }, { status: 404 });
 
@@ -84,7 +78,7 @@ export async function POST(
     if (!["text", "image", "buttons"].includes(blockType)) {
       return NextResponse.json({ ok: false, error: "block_type inválido" }, { status: 400 });
     }
-    const supabase = getSupabaseAdmin();
+    const supabase = await getChatServiceClientForEmpresa(auth.empresa_id);
     if (blockType === "image") {
       const mediaUrl = (body.media_url ?? "").trim();
       if (mediaUrl && !isValidHttpUrl(mediaUrl)) {

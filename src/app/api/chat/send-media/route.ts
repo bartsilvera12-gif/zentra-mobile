@@ -1,17 +1,10 @@
-import { createClient } from "@supabase/supabase-js";
 import { NextRequest, NextResponse } from "next/server";
+import { getChatServiceClientForEmpresa } from "@/app/api/chat/_chat-service-client";
 import { getAuthWithRol } from "@/lib/middleware/auth";
 import { normalizeWaPhone } from "@/lib/chat/wa-phone";
 import { sendWhatsAppDocument, sendWhatsAppImage } from "@/lib/chat/whatsapp-send-service";
 
 const CHAT_MEDIA_BUCKET = "chat-media";
-
-function getSupabaseAdmin() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url || !key) throw new Error("Supabase no configurado");
-  return createClient(url, key, { auth: { autoRefreshToken: false, persistSession: false } });
-}
 
 function safeFileName(name: string): string {
   return name.replace(/[^a-zA-Z0-9._-]+/g, "_").slice(0, 120) || "archivo";
@@ -46,7 +39,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ ok: false, error: "Archivo demasiado grande (máx. 15 MB)" }, { status: 400 });
     }
 
-    const supabase = getSupabaseAdmin();
+    const supabase = await getChatServiceClientForEmpresa(auth.empresa_id);
 
     const { data: conv, error: cErr } = await supabase
       .from("chat_conversations")

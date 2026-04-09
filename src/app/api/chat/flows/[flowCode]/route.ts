@@ -1,13 +1,6 @@
-import { createClient } from "@supabase/supabase-js";
 import { NextRequest, NextResponse } from "next/server";
+import { getChatServiceClientForEmpresa } from "@/app/api/chat/_chat-service-client";
 import { getAuthWithRol } from "@/lib/middleware/auth";
-
-function getSupabaseAdmin() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url || !key) throw new Error("Supabase no configurado");
-  return createClient(url, key, { auth: { autoRefreshToken: false, persistSession: false } });
-}
 
 export async function GET(
   _request: NextRequest,
@@ -19,7 +12,7 @@ export async function GET(
       return NextResponse.json({ ok: false, error: "No autenticado" }, { status: 401 });
     }
     const params = await context.params;
-    const supabase = getSupabaseAdmin();
+    const supabase = await getChatServiceClientForEmpresa(auth.empresa_id);
     const { data, error } = await supabase
       .from("chat_flows")
       .select(
@@ -78,7 +71,7 @@ export async function PATCH(
     if (typeof body.label === "string") patch.label = body.label.trim();
     if (typeof body.channel === "string") patch.channel = body.channel.trim() || "whatsapp";
     if (typeof body.activo === "boolean") patch.activo = body.activo;
-    const supabase = getSupabaseAdmin();
+    const supabase = await getChatServiceClientForEmpresa(auth.empresa_id);
 
     if ("sorteo_id" in body) {
       if (body.sorteo_id === null || body.sorteo_id === "") {

@@ -28,6 +28,7 @@ import type {
 } from "@/lib/chat/types";
 import { normalizeWaPhone } from "@/lib/chat/wa-phone";
 import { applySorteoReferralToActiveSession } from "@/lib/sorteos/referral-attribution";
+import { createServiceRoleClientWithDbSchema } from "@/lib/supabase/empresa-data-schema";
 
 export { normalizeWaPhone } from "@/lib/chat/wa-phone";
 
@@ -183,7 +184,7 @@ async function resolveInitialCrmEtapaCodigo(
  * Procesa mensajes entrantes de un único `value` de Meta (un change).
  */
 export async function processInboundWebhookValue(
-  supabase: SupabaseAdmin,
+  catalogSupabase: SupabaseAdmin,
   value: MetaWebhookValue,
   provisionEnv?: WebhookProvisionEnv
 ): Promise<ProcessWebhookResult> {
@@ -201,24 +202,95 @@ export async function processInboundWebhookValue(
     };
   }
 
-  const { data: ch0, error: chErr } = await supabase
-    .from("chat_channels")
-    .select("id, empresa_id, meta_phone_number_id, activo")
+  type ChannelRow = {
+    id: string;
+    empresa_id: string;
+    meta_phone_number_id: string;
+    activo: boolean | null;
+  };
+
+  let dataSupabase: SupabaseAdmin = catalogSupabase;
+  let channel: ChannelRow | null = null;
+
+  const { data: routeRow } = await catalogSupabase
+    .from("omnichannel_routes")
+    .select("empresa_id, channel_id, data_schema")
     .eq("meta_phone_number_id", phoneNumberId)
     .maybeSingle();
 
-  if (chErr) {
-    return {
-      ok: false,
-      processed: 0,
-      skipped: 0,
-      errors: [chErr.message],
-    };
-  }
+  if (routeRow) {
+    const r = routeRow as { empresa_id: string; channel_id: string; data_schema: string };
+    dataSupabase = createServiceRoleClientWithDbSchema(r.data_schema) as SupabaseAdmin;
+    const { data: chT, error: errT } = await dataSupabase
+      .from("chat_channels")
+      .select("id, empresa_id, meta_phone_number_id, activo")
+      .eq("id", r.channel_id)
+      .maybeSingle();
+    if (errT) {
+      return {
+        ok: false,
+        processed: 0,
+        skipped: 0,
+        errors: [errT.message],
+      };
+    }
+    const row = chT as ChannelRow | null;
+    if (!row || row.empresa_id !== r.empresa_id) {
+      return {
+        ok: false,
+        processed: 0,
+        skipped: 0,
+        errors: ["Ruta omnicanal inconsistente: canal no encontrado o empresa distinta."],
+      };
+    }
+    channel = row;
+  } else {
+    const { data: ch0, error: chErr } = await catalogSupabase
+      .from("chat_channels")
+      .select("id, empresa_id, meta_phone_number_id, activo")
+      .eq("meta_phone_number_id", phoneNumberId)
+      .maybeSingle();
 
-  let channel = ch0 as
-    | { id: string; empresa_id: string; meta_phone_number_id: string; activo: boolean | null }
-    | null;
+    if (chErr) {
+      return {
+        ok: false,
+        processed: 0,
+        skipped: 0,
+        errors: [chErr.message],
+      };
+    }
+
+    channel = ch0 as ChannelRow | null;
+    dataSupabase = catalogSupabase;
+
+    if (!channel && provisionEnv) {
+      await provisionChannelFromWebhookEnv(catalogSupabase, phoneNumberId, provisionEnv);
+      const { data: routeAfter } = await catalogSupabase
+        .from("omnichannel_routes")
+        .select("empresa_id, channel_id, data_schema")
+        .eq("meta_phone_number_id", phoneNumberId)
+        .maybeSingle();
+
+      if (routeAfter) {
+        const r = routeAfter as { empresa_id: string; channel_id: string; data_schema: string };
+        dataSupabase = createServiceRoleClientWithDbSchema(r.data_schema) as SupabaseAdmin;
+        const { data: chTenant } = await dataSupabase
+          .from("chat_channels")
+          .select("id, empresa_id, meta_phone_number_id, activo")
+          .eq("id", r.channel_id)
+          .maybeSingle();
+        channel = chTenant as ChannelRow | null;
+      } else {
+        const { data: ch1 } = await catalogSupabase
+          .from("chat_channels")
+          .select("id, empresa_id, meta_phone_number_id, activo")
+          .eq("meta_phone_number_id", phoneNumberId)
+          .maybeSingle();
+        channel = ch1 as ChannelRow | null;
+        dataSupabase = catalogSupabase;
+      }
+    }
+  }
 
   if (channel && channel.activo === false) {
     return {
@@ -231,16 +303,6 @@ export async function processInboundWebhookValue(
     };
   }
 
-  if (!channel && provisionEnv) {
-    await provisionChannelFromWebhookEnv(supabase, phoneNumberId, provisionEnv);
-    const { data: ch1 } = await supabase
-      .from("chat_channels")
-      .select("id, empresa_id, meta_phone_number_id, activo")
-      .eq("meta_phone_number_id", phoneNumberId)
-      .maybeSingle();
-    channel = ch1 as typeof channel;
-  }
-
   if (!channel) {
     return {
       ok: false,
@@ -251,6 +313,9 @@ export async function processInboundWebhookValue(
       ],
     };
   }
+
+  /** Cliente PostgREST para tablas chat_* (tenant o zentra_erp). */
+  const supabase = dataSupabase;
 
   const empresaId = channel.empresa_id as string;
   const channelId = channel.id as string;
@@ -508,7 +573,7 @@ export async function processInboundWebhookValue(
         (contact as { crm_prospecto_id?: string | null }).crm_prospecto_id ?? null;
 
       if (!contactCrmProspectoId) {
-        const etapaCodigo = await resolveInitialCrmEtapaCodigo(supabase, empresaId);
+        const etapaCodigo = await resolveInitialCrmEtapaCodigo(catalogSupabase, empresaId);
         if (!etapaCodigo) {
           errors.push("CRM: no se pudo resolver etapa inicial para el lead whatsapp");
         } else {

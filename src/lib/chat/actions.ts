@@ -4,7 +4,11 @@ import {
   SORTEO_COMPROBANTE_ESTADO_VALIDACION_FIELD,
   SORTEO_COMPROBANTE_MOTIVO_VALIDACION_FIELD,
 } from "@/lib/chat/comprobante-validation-types";
-import { requireEmpresaUsuarioSession } from "@/lib/chat/empresa-session";
+import { requireEmpresaChatSession } from "@/lib/chat/empresa-session";
+import {
+  deleteOmnichannelRouteByMetaPhone,
+  syncOmnichannelRouteForWhatsappChannel,
+} from "@/lib/chat/omnichannel-route-sync";
 
 export type ConversacionesVista = "inbox" | "bot" | "historial";
 
@@ -48,7 +52,7 @@ export async function fetchChatConversations(
   vista: ConversacionesVista = "inbox",
   filters?: ChatInboxFilters
 ): Promise<InboxConversation[]> {
-  const { supabase, empresa_id, usuario_id } = await requireEmpresaUsuarioSession();
+  const { supabase, catalogSupabase, empresa_id, usuario_id } = await requireEmpresaChatSession();
   let q = supabase.from("chat_conversations").select(
     `
       id,
@@ -65,7 +69,7 @@ export async function fetchChatConversations(
       human_taken_over,
       chat_channels ( id, type, nombre ),
       chat_queues ( id, nombre ),
-      chat_agents ( id, usuario_id, usuarios ( nombre, email ) )
+      chat_agents ( id, usuario_id, queue_id, is_online, max_conversations )
     `
   );
 
@@ -121,6 +125,35 @@ export async function fetchChatConversations(
   if (e2) throw new Error(e2.message);
   const byId = Object.fromEntries((contacts ?? []).map((c) => [c.id, c]));
 
+  const agentUserIds = [
+    ...new Set(
+      list
+        .map((row) => {
+          const ag = row.chat_agents as { usuario_id?: string } | null | undefined;
+          return ag?.usuario_id as string | undefined;
+        })
+        .filter(Boolean) as string[]
+    ),
+  ];
+
+  let usuarioNombreById: Record<string, { nombre: string | null; email: string | null }> = {};
+  if (agentUserIds.length > 0) {
+    const { data: urows, error: uErr } = await catalogSupabase
+      .from("usuarios")
+      .select("id, nombre, email")
+      .in("id", agentUserIds);
+    if (uErr) throw new Error(uErr.message);
+    usuarioNombreById = Object.fromEntries(
+      (urows ?? []).map((u) => [
+        u.id as string,
+        {
+          nombre: (u as { nombre?: string | null }).nombre ?? null,
+          email: (u as { email?: string | null }).email ?? null,
+        },
+      ])
+    );
+  }
+
   return list.map((row) => {
     const c = byId[row.contact_id as string];
     const chRaw = row.chat_channels as
@@ -135,13 +168,15 @@ export async function fetchChatConversations(
       | {
           id?: string;
           usuario_id?: string;
-          usuarios?: { nombre?: string | null; email?: string | null } | null;
+          queue_id?: string;
+          chat_queues?: { nombre?: string | null } | null;
         }
       | null
       | undefined;
-    const u = ag?.usuarios;
+    const uid = ag?.usuario_id as string | undefined;
+    const uMeta = uid ? usuarioNombreById[uid] : undefined;
     const assignedName =
-      (u?.nombre?.trim() || u?.email?.trim() || null) as string | null;
+      (uMeta?.nombre?.trim() || uMeta?.email?.trim() || null) as string | null;
     return {
       id: row.id as string,
       status: row.status as string,
@@ -173,7 +208,7 @@ export async function fetchChatConversations(
 
 /** True si la empresa tiene al menos un flujo de chat activo (tab Bot en inbox). */
 export async function hasEmpresaActiveChatFlows(): Promise<boolean> {
-  const { supabase, empresa_id } = await requireEmpresaUsuarioSession();
+  const { supabase, empresa_id } = await requireEmpresaChatSession();
   const { count, error } = await supabase
     .from("chat_flows")
     .select("id", { count: "exact", head: true })
@@ -187,7 +222,7 @@ export async function hasEmpresaActiveChatFlows(): Promise<boolean> {
  * Vuelve a modo bot (solo operador). No reinicia el flujo ni la sesión.
  */
 export async function releaseConversationToBot(conversationId: string): Promise<void> {
-  const { supabase, empresa_id } = await requireEmpresaUsuarioSession();
+  const { supabase, empresa_id } = await requireEmpresaChatSession();
   const id = conversationId.trim();
   if (!id) throw new Error("ID inválido");
 
@@ -205,7 +240,7 @@ export async function releaseConversationToBot(conversationId: string): Promise<
 }
 
 export async function markConversationRead(conversationId: string): Promise<void> {
-  const { supabase, empresa_id } = await requireEmpresaUsuarioSession();
+  const { supabase, empresa_id } = await requireEmpresaChatSession();
   const { error } = await supabase
     .from("chat_conversations")
     .update({ unread_count: 0, updated_at: new Date().toISOString() })
@@ -246,7 +281,7 @@ function mapChatChannelRow(r: Record<string, unknown>): ChatChannelRow {
 }
 
 export async function fetchChatChannels(): Promise<ChatChannelRow[]> {
-  const { supabase } = await requireEmpresaUsuarioSession();
+  const { supabase } = await requireEmpresaChatSession();
   const { data, error } = await supabase
     .from("chat_channels")
     .select(
@@ -259,7 +294,7 @@ export async function fetchChatChannels(): Promise<ChatChannelRow[]> {
 }
 
 export async function fetchChatChannelById(channelId: string): Promise<ChatChannelRow | null> {
-  const { supabase, empresa_id } = await requireEmpresaUsuarioSession();
+  const { supabase, empresa_id } = await requireEmpresaChatSession();
   const id = channelId.trim();
   if (!id) return null;
   const { data, error } = await supabase
@@ -291,7 +326,7 @@ export type ChatChannelFormInput = {
 
 /** Crea o actualiza canal WhatsApp (Meta). Devuelve el id del canal. */
 export async function saveChatChannel(input: ChatChannelFormInput): Promise<string> {
-  const { supabase, empresa_id } = await requireEmpresaUsuarioSession();
+  const { supabase, empresa_id, dataSchema } = await requireEmpresaChatSession();
   const pid = input.meta_phone_number_id.trim();
   if (!pid) throw new Error("Phone Number ID es obligatorio");
 
@@ -301,10 +336,11 @@ export async function saveChatChannel(input: ChatChannelFormInput): Promise<stri
   const disp = input.display_phone_number?.trim();
 
   let config: Record<string, unknown> = { phone_number_id: pid };
+  let previousMetaPhone: string | null = null;
   if (existingId) {
     const { data: prevRow } = await supabase
       .from("chat_channels")
-      .select("config")
+      .select("config, meta_phone_number_id")
       .eq("id", existingId)
       .eq("empresa_id", empresa_id)
       .maybeSingle();
@@ -357,6 +393,16 @@ export async function saveChatChannel(input: ChatChannelFormInput): Promise<stri
     if (!updated) {
       throw new Error("No se pudo actualizar el canal (¿pertenece a tu empresa?).");
     }
+    if (previousMetaPhone && previousMetaPhone !== pid) {
+      await deleteOmnichannelRouteByMetaPhone(previousMetaPhone);
+    }
+    await syncOmnichannelRouteForWhatsappChannel({
+      metaPhoneNumberId: pid,
+      empresaId: empresa_id,
+      channelId: existingId,
+      activo: input.activo,
+      dataSchema,
+    });
     return existingId;
   }
 
@@ -373,6 +419,13 @@ export async function saveChatChannel(input: ChatChannelFormInput): Promise<stri
   if (error) throw new Error(error.message);
   const newId = inserted?.id as string | undefined;
   if (!newId) throw new Error("No se pudo obtener el id del canal creado.");
+  await syncOmnichannelRouteForWhatsappChannel({
+    metaPhoneNumberId: pid,
+    empresaId: empresa_id,
+    channelId: newId,
+    activo: input.activo,
+    dataSchema,
+  });
   return newId;
 }
 
@@ -403,7 +456,7 @@ export type ComprobanteValidacionListRow = {
 export async function fetchComprobanteValidacionesForConversation(
   conversationId: string
 ): Promise<ComprobanteValidacionListRow[]> {
-  const { supabase } = await requireEmpresaUsuarioSession();
+  const { supabase } = await requireEmpresaChatSession();
   const { data, error } = await supabase
     .from("chat_comprobante_validaciones")
     .select(
@@ -417,7 +470,7 @@ export async function fetchComprobanteValidacionesForConversation(
 }
 
 export async function approveComprobanteValidacion(validacionId: string): Promise<void> {
-  const { supabase, empresa_id } = await requireEmpresaUsuarioSession();
+  const { supabase, empresa_id } = await requireEmpresaChatSession();
   const id = validacionId.trim();
   if (!id) throw new Error("ID de validación inválido");
 
@@ -477,7 +530,15 @@ export async function approveComprobanteValidacion(validacionId: string): Promis
 }
 
 export async function deleteChatChannel(id: string): Promise<void> {
-  const { supabase, empresa_id } = await requireEmpresaUsuarioSession();
+  const { supabase, empresa_id } = await requireEmpresaChatSession();
+  const { data: prev } = await supabase
+    .from("chat_channels")
+    .select("meta_phone_number_id")
+    .eq("id", id)
+    .eq("empresa_id", empresa_id)
+    .maybeSingle();
   const { error } = await supabase.from("chat_channels").delete().eq("id", id).eq("empresa_id", empresa_id);
   if (error) throw new Error(error.message);
+  const mp = (prev as { meta_phone_number_id?: string } | null)?.meta_phone_number_id?.trim();
+  if (mp) await deleteOmnichannelRouteByMetaPhone(mp);
 }
