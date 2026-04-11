@@ -43,13 +43,20 @@ export function BusinessAutomationConfigSection({ value: s, onChange }: Props) {
         </span>
       </label>
 
-      <div className={`space-y-4 ${!s.master_enabled ? "opacity-50 pointer-events-none" : ""}`}>
+      <div className={`space-y-4 ${!s.master_enabled ? "opacity-[0.88]" : ""}`}>
+        {!s.master_enabled ? (
+          <p className="text-xs text-amber-800/90 bg-amber-50 border border-amber-200/80 rounded-lg px-3 py-2">
+            La capa liviana está desactivada: igual podés editar y guardar; el webhook solo usará estos mensajes
+            cuando actives el interruptor superior.
+          </p>
+        ) : null}
         <div className="rounded-lg border border-slate-200 bg-white p-4 space-y-3">
           <div className="flex items-center justify-between gap-3 flex-wrap">
             <div>
               <h4 className="text-sm font-semibold text-slate-800">Mensaje de bienvenida</h4>
               <p className="text-xs text-slate-500 mt-0.5">
                 Se envía tras el <strong>primer</strong> mensaje entrante del cliente en la conversación (nuevo hilo).
+                Podés editar el texto siempre; <strong>Activar</strong> solo define si se usa al recibir mensajes.
               </p>
             </div>
             <label className="flex items-center gap-2 text-sm text-slate-700 shrink-0">
@@ -58,14 +65,13 @@ export function BusinessAutomationConfigSection({ value: s, onChange }: Props) {
                 checked={s.welcome_enabled}
                 onChange={(e) => patch({ welcome_enabled: e.target.checked })}
               />
-              Activar
+              Usar mensaje
             </label>
           </div>
           <textarea
-            className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm min-h-[88px]"
+            className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm min-h-[88px] bg-white"
             value={s.welcome_message}
             onChange={(e) => patch({ welcome_message: e.target.value })}
-            disabled={!s.welcome_enabled}
             placeholder="Texto de bienvenida…"
           />
         </div>
@@ -177,10 +183,9 @@ export function BusinessAutomationConfigSection({ value: s, onChange }: Props) {
             </label>
           </div>
           <textarea
-            className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm min-h-[88px]"
+            className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm min-h-[88px] bg-white"
             value={s.away_message}
             onChange={(e) => patch({ away_message: e.target.value })}
-            disabled={!s.away_enabled || !s.hours_enabled}
             placeholder="Ej: Volvé a escribirnos de 8 a 18 hs…"
           />
           <div>
