@@ -76,6 +76,8 @@ export default function FacturacionElectronicaSifenPage() {
   const [puntoExpedicion, setPuntoExpedicion] = useState("");
   const [csc, setCsc] = useState("");
   const [activo, setActivo] = useState(true);
+  /** Horas desde aprobación SET para permitir cancelación del DE en ERP (config por empresa). */
+  const [plazoCancelacionHoras, setPlazoCancelacionHoras] = useState(48);
   const [certVenc, setCertVenc] = useState("");
   const [nuevaPassword, setNuevaPassword] = useState("");
   const [limpiarPassword, setLimpiarPassword] = useState(false);
@@ -112,6 +114,11 @@ export default function FacturacionElectronicaSifenPage() {
         setPuntoExpedicion(d.punto_expedicion);
         setCsc(d.csc ?? "");
         setActivo(d.activo);
+        setPlazoCancelacionHoras(
+          typeof d.sifen_plazo_cancelacion_horas === "number" && Number.isFinite(d.sifen_plazo_cancelacion_horas)
+            ? d.sifen_plazo_cancelacion_horas
+            : 48
+        );
         setCertVenc(isoToDateInput(d.certificado_vencimiento));
       }
     } catch {
@@ -183,6 +190,7 @@ export default function FacturacionElectronicaSifenPage() {
           punto_expedicion: puntoExpedicion.trim(),
           csc: csc.trim() || null,
           activo,
+          sifen_plazo_cancelacion_horas: Math.min(8760, Math.max(1, Math.floor(Number(plazoCancelacionHoras)) || 48)),
         };
         if (venc != null) body.certificado_vencimiento = venc;
         if (nuevaPassword.trim()) body.certificado_password = nuevaPassword.trim();
@@ -216,6 +224,7 @@ export default function FacturacionElectronicaSifenPage() {
           csc: csc.trim() || null,
           activo,
           certificado_vencimiento: venc,
+          sifen_plazo_cancelacion_horas: Math.min(8760, Math.max(1, Math.floor(Number(plazoCancelacionHoras)) || 48)),
         };
         if (limpiarPassword) body.certificado_password = null;
         else if (nuevaPassword.trim()) body.certificado_password = nuevaPassword.trim();
@@ -457,6 +466,20 @@ export default function FacturacionElectronicaSifenPage() {
                 />
                 SIFEN activo para esta empresa
               </label>
+            </div>
+            <div>
+              <label className={fLabel}>Plazo cancelación DE (horas)</label>
+              <input
+                type="number"
+                min={1}
+                max={8760}
+                className={fInput}
+                value={plazoCancelacionHoras}
+                onChange={(e) => setPlazoCancelacionHoras(parseInt(e.target.value, 10) || 1)}
+              />
+              <p className="text-xs text-slate-500 mt-1.5 leading-relaxed">
+                Ventana desde la marca de aprobación SET (<span className="font-mono">sifen_aprobado_at</span>) en la que se permite anular el DE en el ERP sin pagos registrados. Por defecto en base de datos: 48 h.
+              </p>
             </div>
             <div>
               <label className={fLabel}>RUC</label>

@@ -22,7 +22,7 @@ import type {
  * Solo `aprobado` bloquea regeneración. `enviado` permite corregir y volver a firmar si el lote falla
  * (p. ej. 1858) sin depender de que la consulta-lote haya actualizado ya el estado en BD.
  */
-const ESTADOS_BLOQUEADOS_XML = new Set<string>(["aprobado"]);
+const ESTADOS_BLOQUEADOS_XML = new Set<string>(["aprobado", "cancelado"]);
 
 /**
  * POST /api/facturas/[id]/sifen/xml

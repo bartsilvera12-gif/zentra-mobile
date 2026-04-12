@@ -93,7 +93,9 @@ export async function handleSifenConsultaLotePost(
 
   const { data: feRow, error: errFe } = await supabase
     .from("factura_electronica")
-    .select("id, factura_id, estado_sifen, cdc, error, sifen_d_prot_cons_lote, sifen_ultima_respuesta_consulta_lote")
+    .select(
+      "id, factura_id, estado_sifen, cdc, error, sifen_d_prot_cons_lote, sifen_ultima_respuesta_consulta_lote, sifen_aprobado_at"
+    )
     .eq("factura_id", fid)
     .eq("empresa_id", auth.empresa_id)
     .maybeSingle();
@@ -188,6 +190,10 @@ export async function handleSifenConsultaLotePost(
   const previousEstado = String(feRow.estado_sifen ?? "borrador");
   const previousError = feRow.error == null ? null : String(feRow.error);
   const previousConsulta = feRow.sifen_ultima_respuesta_consulta_lote;
+  const previousAprobadoAt =
+    (feRow as { sifen_aprobado_at?: string | null }).sifen_aprobado_at == null
+      ? null
+      : String((feRow as { sifen_aprobado_at?: string | null }).sifen_aprobado_at);
 
   let resp: ConsultaLoteRespuestaParsed;
   try {
@@ -225,13 +231,23 @@ export async function handleSifenConsultaLotePost(
     nuevoError = gr?.dMsgRes ?? infer.filaRelevante?.dEstRes ?? "Documento rechazado por SET.";
   }
 
+  const marcaAprobacion =
+    infer.nuevoEstado === "aprobado" && previousEstado !== "aprobado"
+      ? new Date().toISOString()
+      : undefined;
+
+  const updatePayload: Record<string, unknown> = {
+    estado_sifen: estadoFinal,
+    error: nuevoError,
+    sifen_ultima_respuesta_consulta_lote: ultimaJson,
+  };
+  if (marcaAprobacion != null) {
+    updatePayload.sifen_aprobado_at = marcaAprobacion;
+  }
+
   const { data: updatedRow, error: errUpdate } = await supabase
     .from("factura_electronica")
-    .update({
-      estado_sifen: estadoFinal,
-      error: nuevoError,
-      sifen_ultima_respuesta_consulta_lote: ultimaJson,
-    })
+    .update(updatePayload)
     .eq("id", feRow.id)
     .eq("empresa_id", auth.empresa_id)
     .select()
@@ -264,15 +280,15 @@ export async function handleSifenConsultaLotePost(
   });
 
   if (errEvento) {
-    await supabase
-      .from("factura_electronica")
-      .update({
-        estado_sifen: previousEstado,
-        error: previousError,
-        sifen_ultima_respuesta_consulta_lote: previousConsulta,
-      })
-      .eq("id", feRow.id)
-      .eq("empresa_id", auth.empresa_id);
+    const revert: Record<string, unknown> = {
+      estado_sifen: previousEstado,
+      error: previousError,
+      sifen_ultima_respuesta_consulta_lote: previousConsulta,
+    };
+    if (marcaAprobacion != null) {
+      revert.sifen_aprobado_at = previousAprobadoAt;
+    }
+    await supabase.from("factura_electronica").update(revert).eq("id", feRow.id).eq("empresa_id", auth.empresa_id);
     return NextResponse.json(
       errorResponse(`No se pudo registrar el evento; se revirtió el estado: ${errEvento.message}`),
       { status: 500 }

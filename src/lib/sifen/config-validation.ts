@@ -5,6 +5,7 @@ import type {
   EmpresaSifenConfigPatchResult,
   SifenCertificadoPasswordPatchAction,
 } from "./types";
+import { normalizePlazoCancelacionHoras } from "./sifen-cancelacion-rules";
 
 function trimStr(v: unknown): string {
   if (v == null) return "";
@@ -165,6 +166,16 @@ export function validateCreateBody(raw: unknown): EmpresaSifenConfigCreateResult
     activo: typeof b.activo === "boolean" ? b.activo : undefined,
   };
 
+  if ("sifen_plazo_cancelacion_horas" in b) {
+    if (b.sifen_plazo_cancelacion_horas === null) {
+      return { ok: false, error: "sifen_plazo_cancelacion_horas no puede ser null" };
+    }
+    if (typeof b.sifen_plazo_cancelacion_horas !== "number" || !Number.isFinite(b.sifen_plazo_cancelacion_horas)) {
+      return { ok: false, error: "sifen_plazo_cancelacion_horas debe ser un número entero de horas" };
+    }
+    data.sifen_plazo_cancelacion_horas = normalizePlazoCancelacionHoras(b.sifen_plazo_cancelacion_horas);
+  }
+
   return { ok: true, data };
 }
 
@@ -259,6 +270,15 @@ export function buildPatchUpdate(raw: unknown): EmpresaSifenConfigPatchResult {
     }
     patch.activo = b.activo;
   }
+  if ("sifen_plazo_cancelacion_horas" in b) {
+    if (b.sifen_plazo_cancelacion_horas === null) {
+      return { ok: false, error: "sifen_plazo_cancelacion_horas no puede ser null" };
+    }
+    if (typeof b.sifen_plazo_cancelacion_horas !== "number" || !Number.isFinite(b.sifen_plazo_cancelacion_horas)) {
+      return { ok: false, error: "sifen_plazo_cancelacion_horas debe ser un número entero de horas" };
+    }
+    patch.sifen_plazo_cancelacion_horas = normalizePlazoCancelacionHoras(b.sifen_plazo_cancelacion_horas);
+  }
 
   if (Object.keys(patch).length === 0 && password.kind === "omit") {
     return { ok: false, error: "No se envió ningún campo para actualizar" };
@@ -289,6 +309,9 @@ export function rowFromCreateBody(empresaId: string, body: EmpresaSifenConfigCre
   }
   if (body.direccion_fiscal !== undefined) {
     row.direccion_fiscal = body.direccion_fiscal;
+  }
+  if (body.sifen_plazo_cancelacion_horas !== undefined) {
+    row.sifen_plazo_cancelacion_horas = normalizePlazoCancelacionHoras(body.sifen_plazo_cancelacion_horas);
   }
   return row;
 }

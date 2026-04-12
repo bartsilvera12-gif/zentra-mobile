@@ -1,8 +1,14 @@
 "use client";
 
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Fragment, useCallback, useState } from "react";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
-import type { FacturaElectronicaDTO, SifenConsultaLoteUltimaPersistida } from "@/lib/sifen/types";
+import type {
+  FacturaElectronicaDTO,
+  SifenCancelacionPreviewDTO,
+  SifenConsultaLoteUltimaPersistida,
+} from "@/lib/sifen/types";
 import { decodeXmlNumericEntities } from "@/lib/sifen/decode-xml-entities";
 import { SifenEstadoBadge, labelSifenEstado } from "./SifenEstadoBadge";
 
@@ -10,7 +16,9 @@ type Resumen = {
   sifen_config_exists: boolean;
   sifen_config_activa: boolean;
   sifen_ambiente: string | null;
+  sifen_plazo_cancelacion_horas: number;
   factura_electronica: FacturaElectronicaDTO | null;
+  cancelacion: SifenCancelacionPreviewDTO | null;
 };
 
 type PasoEmisionKey = "comercial" | "borrador" | "xml" | "firma" | "set" | "aprobacion";
@@ -93,6 +101,18 @@ function resolverEstadoEmisionVisual(resumen: Resumen): {
     case "aprobado":
       return {
         mensaje: "Factura electrónica aprobada correctamente.",
+        pasos: {
+          comercial: "listo",
+          borrador: "listo",
+          xml: "listo",
+          firma: "listo",
+          set: "listo",
+          aprobacion: "listo",
+        },
+      };
+    case "cancelado":
+      return {
+        mensaje: "Documento electrónico cancelado en el ERP (trazabilidad conservada).",
         pasos: {
           comercial: "listo",
           borrador: "listo",
@@ -199,8 +219,8 @@ function EstadoEmisionElectronicaBlock({ resumen }: { resumen: Resumen }) {
 }
 
 /** Alineado a POST …/sifen/xml: se puede regenerar en `enviado` para corregir DE rechazado o pendiente. */
-const XML_BLOQUEADOS = new Set(["aprobado"]);
-const FIRMAR_BLOQUEADOS = new Set(["aprobado", "enviado"]);
+const XML_BLOQUEADOS = new Set(["aprobado", "cancelado"]);
+const FIRMAR_BLOQUEADOS = new Set(["aprobado", "enviado", "cancelado"]);
 
 /** Texto cuando consulta-lote no trae `gResProcLote` (0365 ≠ “sigue en cola”). */
 function mensajeConsultaSinFilasPorCdc(uc: SifenConsultaLoteUltimaPersistida): string {
@@ -230,21 +250,43 @@ async function readApiError(res: Response): Promise<string> {
   }
 }
 
+function formatLimiteCancelacion(iso: string | null): string {
+  if (iso == null || !iso.trim()) return "—";
+  try {
+    return new Date(iso).toLocaleString("es-PY", {
+      dateStyle: "short",
+      timeStyle: "short",
+    });
+  } catch {
+    return iso;
+  }
+}
+
 export function FacturaElectronicaPanel({
   facturaId,
+  clienteId,
   resumen,
   loadingResumen,
   onResumenLoaded,
+  onComercialUpdated,
 }: {
   facturaId: string;
+  /** Para atajo «cancelar y reemitir» (ficha cliente). */
+  clienteId: string;
   resumen: Resumen | null;
   loadingResumen: boolean;
   onResumenLoaded: (r: Resumen) => void;
+  /** Tras anular la factura comercial (cancelación DE). */
+  onComercialUpdated?: () => void | Promise<void>;
 }) {
+  const router = useRouter();
   const [action, setAction] = useState<
-    "borrador" | "xml" | "firmar" | "enviar" | "consulta-lote" | null
+    "borrador" | "xml" | "firmar" | "enviar" | "consulta-lote" | "cancelar-de" | null
   >(null);
   const [flash, setFlash] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
+  const [cancelModal, setCancelModal] = useState<"cancelar" | "reemitir" | null>(null);
+  const [motivoCancel, setMotivoCancel] = useState("");
+  const [ncOpen, setNcOpen] = useState(false);
 
   const refresh = useCallback(async (): Promise<Resumen | null> => {
     const res = await fetchWithSupabaseSession(`/api/facturas/${facturaId}/sifen/resumen`, {
@@ -252,11 +294,50 @@ export function FacturaElectronicaPanel({
     });
     const j = (await res.json()) as { success?: boolean; data?: Resumen };
     if (res.ok && j.success && j.data) {
-      onResumenLoaded(j.data);
-      return j.data;
+      const merged: Resumen = {
+        ...j.data,
+        sifen_plazo_cancelacion_horas: j.data.sifen_plazo_cancelacion_horas ?? j.data.cancelacion?.plazo_horas ?? 48,
+        cancelacion: j.data.cancelacion ?? null,
+      };
+      onResumenLoaded(merged);
+      return merged;
     }
     return null;
   }, [facturaId, onResumenLoaded]);
+
+  const ejecutarCancelacion = async (reemitirTrasOk: boolean) => {
+    setFlash(null);
+    const m = motivoCancel.trim();
+    if (m.length < 5) {
+      setFlash({ kind: "err", text: "Indicá un motivo de al menos 5 caracteres." });
+      return;
+    }
+    setAction("cancelar-de");
+    try {
+      const res = await fetchWithSupabaseSession(`/api/facturas/${facturaId}/sifen/cancelar`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ motivo: m }),
+      });
+      const j = (await res.json()) as { success?: boolean; error?: string };
+      if (!res.ok || !j.success) {
+        setFlash({ kind: "err", text: j.error ?? `Error ${res.status}` });
+        return;
+      }
+      setFlash({ kind: "ok", text: "Documento electrónico cancelado en el ERP. La factura comercial quedó anulada." });
+      setCancelModal(null);
+      setMotivoCancel("");
+      await refresh();
+      await onComercialUpdated?.();
+      if (reemitirTrasOk && clienteId.trim()) {
+        router.push(`/clientes/${encodeURIComponent(clienteId.trim())}`);
+      }
+    } catch (e) {
+      setFlash({ kind: "err", text: e instanceof Error ? e.message : "Error de red" });
+    } finally {
+      setAction(null);
+    }
+  };
 
   const run = async (kind: "borrador" | "xml" | "firmar") => {
     setFlash(null);
@@ -457,6 +538,74 @@ export function FacturaElectronicaPanel({
               <SifenEstadoBadge estadoSifen={fe ? estado : null} mostrarPistaEnvioSet={false} />
               {!fe && <span className="text-slate-400">({estadoLabel})</span>}
             </div>
+            {fe && resumen.cancelacion && estado === "aprobado" && (
+              <div className="flex flex-wrap items-center gap-2 pt-1">
+                {resumen.cancelacion.puede_cancelar ? (
+                  <span
+                    className="inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-semibold bg-emerald-50 text-emerald-900 ring-1 ring-emerald-200"
+                    title={`Plazo configurado: ${resumen.sifen_plazo_cancelacion_horas ?? resumen.cancelacion.plazo_horas} h desde aprobación SET`}
+                  >
+                    Cancelable hasta {formatLimiteCancelacion(resumen.cancelacion.cancelable_hasta)}
+                  </span>
+                ) : resumen.cancelacion.requiere_nota_credito ? (
+                  <span className="inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-semibold bg-amber-50 text-amber-900 ring-1 ring-amber-200">
+                    Requiere Nota de Crédito
+                  </span>
+                ) : (
+                  resumen.cancelacion.motivo_bloqueo && (
+                    <span className="inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-medium bg-slate-100 text-slate-700 ring-1 ring-slate-200">
+                      {resumen.cancelacion.motivo_bloqueo}
+                    </span>
+                  )
+                )}
+              </div>
+            )}
+            {fe && estado === "cancelado" && fe.sifen_cancelado_at && (
+              <p className="text-xs text-slate-600 pt-1">
+                <span className="font-semibold text-slate-700">Cancelado en ERP:</span>{" "}
+                {formatLimiteCancelacion(fe.sifen_cancelado_at)}
+                {fe.sifen_cancelacion_motivo?.trim() ? (
+                  <>
+                    {" "}
+                    — <span className="text-slate-500">Motivo:</span> {fe.sifen_cancelacion_motivo.trim()}
+                  </>
+                ) : null}
+              </p>
+            )}
+            {fe && estado === "aprobado" && resumen.cancelacion && (
+              <div className="flex flex-wrap gap-2 pt-2">
+                <button
+                  type="button"
+                  disabled={!resumen.cancelacion.puede_cancelar || action !== null}
+                  onClick={() => {
+                    setMotivoCancel("");
+                    setCancelModal("cancelar");
+                  }}
+                  className="px-3 py-2 text-xs font-semibold rounded-lg bg-rose-700 text-white disabled:opacity-40 disabled:cursor-not-allowed hover:bg-rose-800"
+                >
+                  Cancelar factura (DE)
+                </button>
+                <button
+                  type="button"
+                  disabled={action !== null}
+                  onClick={() => setNcOpen(true)}
+                  className="px-3 py-2 text-xs font-semibold rounded-lg border border-amber-300 text-amber-900 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-amber-50"
+                >
+                  Emitir Nota de Crédito
+                </button>
+                <button
+                  type="button"
+                  disabled={!resumen.cancelacion.puede_cancelar || action !== null}
+                  onClick={() => {
+                    setMotivoCancel("");
+                    setCancelModal("reemitir");
+                  }}
+                  className="px-3 py-2 text-xs font-semibold rounded-lg border border-slate-300 text-slate-800 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-50"
+                >
+                  Cancelar y reemitir
+                </button>
+              </div>
+            )}
             {fe && (
               <>
                 <p className="text-slate-600">
@@ -644,6 +793,95 @@ export function FacturaElectronicaPanel({
             </div>
           )}
         </>
+      )}
+
+      {cancelModal != null && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="sifen-cancel-title"
+        >
+          <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-5 space-y-4 border border-slate-200">
+            <h4 id="sifen-cancel-title" className="text-sm font-bold text-slate-900">
+              {cancelModal === "reemitir"
+                ? "Cancelar documento y continuar en cliente"
+                : "Cancelar documento electrónico (ERP)"}
+            </h4>
+            <p className="text-xs text-slate-600 leading-relaxed">
+              Se registrará la cancelación lógica del DE, la factura comercial pasará a{" "}
+              <span className="font-semibold">Anulado</span> y quedará trazabilidad. No se elimina ningún registro.
+              {cancelModal === "reemitir" ? " Luego podés emitir una nueva factura desde la ficha del cliente." : ""}
+            </p>
+            <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide">
+              Motivo (obligatorio)
+              <textarea
+                value={motivoCancel}
+                onChange={(e) => setMotivoCancel(e.target.value)}
+                rows={3}
+                className="mt-1 w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#0EA5E9]"
+                placeholder="Ej.: error en datos del cliente acordado verbalmente"
+              />
+            </label>
+            <div className="flex flex-wrap justify-end gap-2 pt-1">
+              <button
+                type="button"
+                disabled={action !== null}
+                onClick={() => {
+                  setCancelModal(null);
+                  setMotivoCancel("");
+                }}
+                className="px-3 py-2 text-xs font-semibold rounded-lg border border-slate-200 text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+              >
+                Cerrar
+              </button>
+              <button
+                type="button"
+                disabled={action !== null}
+                onClick={() => void ejecutarCancelacion(cancelModal === "reemitir")}
+                className="px-3 py-2 text-xs font-semibold rounded-lg bg-rose-700 text-white hover:bg-rose-800 disabled:opacity-50"
+              >
+                {action === "cancelar-de" ? "Procesando…" : "Confirmar cancelación"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {ncOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="sifen-nc-title"
+        >
+          <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-5 space-y-3 border border-slate-200">
+            <h4 id="sifen-nc-title" className="text-sm font-bold text-slate-900">
+              Nota de crédito electrónica
+            </h4>
+            <p className="text-xs text-slate-600 leading-relaxed">
+              Si venció el plazo de cancelación en ERP o hay pagos registrados, la corrección fiscal ante SET/DNIT se
+              documenta típicamente con una nota de crédito. Neura aún no emite NC automáticamente; podés registrar la
+              operatoria externa y mantener el comprobante en tus archivos de auditoría.
+            </p>
+            <p className="text-xs text-slate-600">
+              Configuración del plazo de cancelación:{" "}
+              <Link href="/configuracion/facturacion-electronica" className="text-[#0EA5E9] font-semibold hover:underline">
+                Facturación electrónica
+              </Link>
+              .
+            </p>
+            <div className="flex justify-end pt-1">
+              <button
+                type="button"
+                onClick={() => setNcOpen(false)}
+                className="px-3 py-2 text-xs font-semibold rounded-lg bg-slate-900 text-white hover:bg-slate-800"
+              >
+                Entendido
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

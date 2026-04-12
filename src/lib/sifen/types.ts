@@ -29,6 +29,8 @@ export interface EmpresaSifenConfigDTO {
   certificado_path: string | null;
   certificado_vencimiento: string | null;
   activo: boolean;
+  /** Horas desde `sifen_aprobado_at` para permitir cancelación del DE (1–8760). */
+  sifen_plazo_cancelacion_horas: number;
   has_certificado_password: boolean;
   created_at: string;
   updated_at: string;
@@ -53,6 +55,7 @@ export interface EmpresaSifenConfigCreateBody {
   certificado_password?: string | null;
   certificado_vencimiento?: string | null;
   activo?: boolean;
+  sifen_plazo_cancelacion_horas?: number;
 }
 
 /** Body PATCH /api/configuracion/sifen (campos parciales). */
@@ -72,6 +75,7 @@ export interface EmpresaSifenConfigPatchBody {
   certificado_password?: string | null;
   certificado_vencimiento?: string | null;
   activo?: boolean;
+  sifen_plazo_cancelacion_horas?: number;
 }
 
 export type EmpresaSifenConfigCreateResult =
@@ -96,7 +100,8 @@ export type EstadoSifen =
   | "enviado"
   | "aprobado"
   | "rechazado"
-  | "error_envio";
+  | "error_envio"
+  | "cancelado";
 
 /** Fila persistida en `sifen_ultima_respuesta_consulta_lote` (jsonb). */
 export interface SifenConsultaLoteDetallePersistido {
@@ -138,8 +143,22 @@ export interface FacturaElectronicaDTO {
   sifen_ultima_respuesta_recibe_lote: Record<string, unknown> | null;
   /** Última respuesta consulta-lote TEST (dCodResLot, detalle por CDC). */
   sifen_ultima_respuesta_consulta_lote: SifenConsultaLoteUltimaPersistida | null;
+  /** Marca de aprobación SET (consulta-lote); base del plazo de cancelación. */
+  sifen_aprobado_at: string | null;
+  sifen_cancelado_at: string | null;
+  sifen_cancelacion_motivo: string | null;
   created_at: string;
   updated_at: string;
+}
+
+/** Resumen + reglas de cancelación lógica (GET …/sifen/resumen). */
+export interface SifenCancelacionPreviewDTO {
+  puede_cancelar: boolean;
+  cancelable_hasta: string | null;
+  motivo_bloqueo: string | null;
+  requiere_nota_credito: boolean;
+  tiene_pagos: boolean;
+  plazo_horas: number;
 }
 
 /** Detalle JSON del evento de generación de borrador vía API. */

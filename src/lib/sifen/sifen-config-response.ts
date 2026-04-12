@@ -1,4 +1,5 @@
 import type { AmbienteSifen, EmpresaSifenConfigDTO } from "./types";
+import { normalizePlazoCancelacionHoras } from "./sifen-cancelacion-rules";
 
 /**
  * Convierte una fila de BD (con columna cifrada) al DTO expuesto por la API.
@@ -46,6 +47,7 @@ export function toEmpresaSifenConfigPublicDto(
     certificado_vencimiento:
       row.certificado_vencimiento == null ? null : String(row.certificado_vencimiento),
     activo: Boolean(row.activo),
+    sifen_plazo_cancelacion_horas: normalizePlazoCancelacionHoras(row.sifen_plazo_cancelacion_horas),
     has_certificado_password,
     created_at: String(row.created_at ?? ""),
     updated_at: String(row.updated_at ?? ""),

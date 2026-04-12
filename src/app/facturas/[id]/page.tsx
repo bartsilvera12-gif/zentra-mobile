@@ -5,7 +5,7 @@ import { useParams, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useState } from "react";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
 import { FacturaElectronicaPanel } from "@/components/sifen/FacturaElectronicaPanel";
-import type { FacturaElectronicaDTO } from "@/lib/sifen/types";
+import type { FacturaElectronicaDTO, SifenCancelacionPreviewDTO } from "@/lib/sifen/types";
 
 type FacturaApiRow = {
   id: string;
@@ -25,7 +25,9 @@ type SifenResumen = {
   sifen_config_exists: boolean;
   sifen_config_activa: boolean;
   sifen_ambiente: string | null;
+  sifen_plazo_cancelacion_horas: number;
   factura_electronica: FacturaElectronicaDTO | null;
+  cancelacion: SifenCancelacionPreviewDTO | null;
 };
 
 function formatFecha(str: string) {
@@ -49,6 +51,17 @@ function FacturaDetalleInner() {
   const onResumenLoaded = useCallback((r: SifenResumen) => {
     setResumen(r);
   }, []);
+
+  const reloadFacturaComercial = useCallback(async () => {
+    if (!id) return;
+    try {
+      const res = await fetchWithSupabaseSession(`/api/facturas/${id}`);
+      const j = (await res.json()) as { success?: boolean; data?: FacturaApiRow; error?: string };
+      if (res.ok && j.success && j.data) setFactura(j.data);
+    } catch {
+      /* ignorar */
+    }
+  }, [id]);
 
   useEffect(() => {
     if (!id) return;
@@ -210,9 +223,11 @@ function FacturaDetalleInner() {
 
       <FacturaElectronicaPanel
         facturaId={id}
+        clienteId={factura.cliente_id}
         resumen={resumen}
         loadingResumen={loadingS}
         onResumenLoaded={onResumenLoaded}
+        onComercialUpdated={reloadFacturaComercial}
       />
     </div>
   );

@@ -24,6 +24,10 @@ export function toFacturaElectronicaDto(row: Record<string, unknown>): FacturaEl
       typeof row.sifen_ultima_respuesta_consulta_lote !== "object"
         ? null
         : (row.sifen_ultima_respuesta_consulta_lote as SifenConsultaLoteUltimaPersistida),
+    sifen_aprobado_at: row.sifen_aprobado_at == null ? null : String(row.sifen_aprobado_at),
+    sifen_cancelado_at: row.sifen_cancelado_at == null ? null : String(row.sifen_cancelado_at),
+    sifen_cancelacion_motivo:
+      row.sifen_cancelacion_motivo == null ? null : String(row.sifen_cancelacion_motivo),
     created_at: String(row.created_at ?? ""),
     updated_at: String(row.updated_at ?? ""),
   };

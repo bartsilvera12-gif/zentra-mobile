@@ -3,7 +3,11 @@ import { getTenantSupabaseFromAuth } from "@/lib/supabase/tenant-api";
 import { successResponse, errorResponse } from "@/lib/api/response";
 import { API_ERRORS } from "@/lib/api/errors";
 import { toFacturaElectronicaDto } from "@/lib/sifen/to-factura-electronica-dto";
-import type { FacturaElectronicaDTO } from "@/lib/sifen/types";
+import type { FacturaElectronicaDTO, SifenCancelacionPreviewDTO } from "@/lib/sifen/types";
+import {
+  buildSifenCancelacionPreview,
+  normalizePlazoCancelacionHoras,
+} from "@/lib/sifen/sifen-cancelacion-rules";
 
 
 export type FacturaSifenResumenData = {
@@ -11,7 +15,10 @@ export type FacturaSifenResumenData = {
   sifen_config_activa: boolean;
   /** `test` | `prod` si hay fila de config; null si no. */
   sifen_ambiente: string | null;
+  /** Plazo vigente para cancelación (desde config SIFEN o default 48 h). */
+  sifen_plazo_cancelacion_horas: number;
   factura_electronica: FacturaElectronicaDTO | null;
+  cancelacion: SifenCancelacionPreviewDTO | null;
 };
 
 /**
@@ -50,14 +57,24 @@ export async function GET(
       return NextResponse.json(errorResponse("Factura no encontrada"), { status: 404 });
     }
 
-    const [{ data: cfg }, { data: fe }] = await Promise.all([
+    const [{ data: cfg }, { data: fe }, pagosRes] = await Promise.all([
       supabase
         .from("empresa_sifen_config")
-        .select("activo, ambiente")
+        .select("activo, ambiente, sifen_plazo_cancelacion_horas")
         .eq("empresa_id", auth.empresa_id)
         .maybeSingle(),
       supabase.from("factura_electronica").select("*").eq("factura_id", fid).eq("empresa_id", auth.empresa_id).maybeSingle(),
+      supabase
+        .from("pagos")
+        .select("id", { count: "exact", head: true })
+        .eq("factura_id", fid)
+        .eq("empresa_id", auth.empresa_id),
     ]);
+
+    if (pagosRes.error) {
+      return NextResponse.json(errorResponse(pagosRes.error.message), { status: 400 });
+    }
+    const pagosCount = pagosRes.count ?? 0;
 
     const sifen_config_exists = cfg != null;
     const sifen_config_activa = Boolean(cfg && (cfg as { activo?: boolean }).activo);
@@ -66,6 +83,9 @@ export async function GET(
         ? String((cfg as { ambiente?: string | null }).ambiente).trim()
         : "";
     const sifen_ambiente = ambienteRaw.length > 0 ? ambienteRaw : null;
+    const sifen_plazo_cancelacion_horas = normalizePlazoCancelacionHoras(
+      cfg != null ? (cfg as { sifen_plazo_cancelacion_horas?: unknown }).sifen_plazo_cancelacion_horas : 48
+    );
 
     let feOut = fe;
     if (fe) {
@@ -101,11 +121,26 @@ export async function GET(
       }
     }
 
+    const feDto = feOut ? toFacturaElectronicaDto(feOut as Record<string, unknown>) : null;
+    const cancelacion =
+      feDto != null
+        ? buildSifenCancelacionPreview({
+            estadoSifen: feDto.estado_sifen,
+            sifenAprobadoAtIso: feDto.sifen_aprobado_at,
+            sifenCanceladoAtIso: feDto.sifen_cancelado_at,
+            plazoHoras: sifen_plazo_cancelacion_horas,
+            pagosCount,
+            nowMs: Date.now(),
+          })
+        : null;
+
     const payload: FacturaSifenResumenData = {
       sifen_config_exists,
       sifen_config_activa,
       sifen_ambiente,
-      factura_electronica: feOut ? toFacturaElectronicaDto(feOut as Record<string, unknown>) : null,
+      sifen_plazo_cancelacion_horas,
+      factura_electronica: feDto,
+      cancelacion,
     };
 
     return NextResponse.json(successResponse(payload), {

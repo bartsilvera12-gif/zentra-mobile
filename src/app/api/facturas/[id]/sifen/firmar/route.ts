@@ -23,7 +23,7 @@ import type {
 } from "@/lib/sifen/types";
 
 
-const ESTADOS_BLOQUEADOS_FIRMAR = new Set<string>(["aprobado"]);
+const ESTADOS_BLOQUEADOS_FIRMAR = new Set<string>(["aprobado", "cancelado"]);
 
 /**
  * POST /api/facturas/[id]/sifen/firmar
