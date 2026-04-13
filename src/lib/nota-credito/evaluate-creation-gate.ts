@@ -3,6 +3,7 @@ import {
   buildSifenCancelacionPreview,
   normalizePlazoCancelacionHoras,
 } from "@/lib/sifen/sifen-cancelacion-rules";
+import { validarXmlFirmadoFacturaOrigenParaNc } from "@/lib/sifen/validar-factura-origen-xml-para-nc";
 
 function num(v: unknown): number {
   const n = typeof v === "number" ? v : Number(v);
@@ -39,7 +40,7 @@ export async function evaluateNotaCreditoCreationGate(
 
   const { data: feRow, error: errFe } = await supabase
     .from("factura_electronica")
-    .select("estado_sifen, sifen_aprobado_at, sifen_cancelado_at")
+    .select("id, factura_id, estado_sifen, sifen_aprobado_at, sifen_cancelado_at, cdc, xml_firmado_path")
     .eq("factura_id", facturaId)
     .eq("empresa_id", empresaId)
     .maybeSingle();
@@ -57,6 +58,49 @@ export async function evaluateNotaCreditoCreationGate(
       puede_crear: false,
       motivo_bloqueo: "El documento electrónico debe estar aprobado por SET para crear una nota de crédito.",
     };
+  }
+
+  const cdcGate =
+    (feRow as { cdc?: string | null }).cdc == null ? "" : String((feRow as { cdc?: string | null }).cdc).trim();
+  if (cdcGate.length !== 44) {
+    return {
+      puede_crear: false,
+      motivo_bloqueo:
+        "El documento electrónico no tiene CDC válido (44 dígitos); no se puede preparar nota de crédito.",
+    };
+  }
+
+  const { data: facturaNum, error: errNum } = await supabase
+    .from("facturas")
+    .select("numero_factura")
+    .eq("id", facturaId)
+    .eq("empresa_id", empresaId)
+    .maybeSingle();
+
+  if (errNum || !facturaNum) {
+    return { puede_crear: false, motivo_bloqueo: errNum?.message ?? "Factura no encontrada." };
+  }
+
+  const vGate = await validarXmlFirmadoFacturaOrigenParaNc(
+    supabase,
+    empresaId,
+    {
+      id: String((feRow as { id: string }).id),
+      factura_id: String((feRow as { factura_id: string }).factura_id),
+      cdc: cdcGate,
+      xml_firmado_path:
+        (feRow as { xml_firmado_path?: string | null }).xml_firmado_path == null
+          ? null
+          : String((feRow as { xml_firmado_path?: string | null }).xml_firmado_path).trim() || null,
+    },
+    {
+      cdcEsperado: cdcGate,
+      facturaIdEsperado: facturaId,
+      numeroFacturaErp: String((facturaNum as { numero_factura?: string }).numero_factura ?? ""),
+    }
+  );
+  if (!vGate.ok) {
+    return { puede_crear: false, motivo_bloqueo: vGate.message };
   }
 
   const [{ data: cfg }, pagosRes] = await Promise.all([

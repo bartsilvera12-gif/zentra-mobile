@@ -3,6 +3,7 @@ import {
   buildSifenCancelacionPreview,
   normalizePlazoCancelacionHoras,
 } from "@/lib/sifen/sifen-cancelacion-rules";
+import { validarXmlFirmadoFacturaOrigenParaNc } from "@/lib/sifen/validar-factura-origen-xml-para-nc";
 import type { NotaCreditoEventoTipo } from "./types";
 
 function trimMotivo(raw: unknown): string | null {
@@ -65,7 +66,7 @@ export async function createNotaCreditoBorrador(p: CreateNotaCreditoParams): Pro
 
   const { data: factura, error: errF } = await p.supabase
     .from("facturas")
-    .select("id, empresa_id, cliente_id, monto, saldo, estado, moneda")
+    .select("id, empresa_id, cliente_id, monto, saldo, estado, moneda, numero_factura")
     .eq("id", p.facturaId)
     .eq("empresa_id", p.empresaId)
     .maybeSingle();
@@ -93,7 +94,7 @@ export async function createNotaCreditoBorrador(p: CreateNotaCreditoParams): Pro
 
   const { data: feRow, error: errFe } = await p.supabase
     .from("factura_electronica")
-    .select("id, estado_sifen, sifen_aprobado_at, sifen_cancelado_at, cdc")
+    .select("id, factura_id, estado_sifen, sifen_aprobado_at, sifen_cancelado_at, cdc, xml_firmado_path")
     .eq("factura_id", p.facturaId)
     .eq("empresa_id", p.empresaId)
     .maybeSingle();
@@ -194,6 +195,36 @@ export async function createNotaCreditoBorrador(p: CreateNotaCreditoParams): Pro
     (feRow as { cdc?: string | null }).cdc == null || String((feRow as { cdc?: string | null }).cdc).trim() === ""
       ? null
       : String((feRow as { cdc?: string | null }).cdc).trim();
+
+  if (cdcOrigen == null || cdcOrigen.length !== 44) {
+    return {
+      ok: false,
+      status: 409,
+      error: "El documento electrónico no tiene CDC válido (44 dígitos); no se puede crear nota de crédito.",
+    };
+  }
+
+  const vXml = await validarXmlFirmadoFacturaOrigenParaNc(
+    p.supabase,
+    p.empresaId,
+    {
+      id: feId,
+      factura_id: String((feRow as { factura_id: string }).factura_id),
+      cdc: cdcOrigen,
+      xml_firmado_path:
+        (feRow as { xml_firmado_path?: string | null }).xml_firmado_path == null
+          ? null
+          : String((feRow as { xml_firmado_path?: string | null }).xml_firmado_path).trim() || null,
+    },
+    {
+      cdcEsperado: cdcOrigen,
+      facturaIdEsperado: p.facturaId,
+      numeroFacturaErp: String((factura as { numero_factura?: string }).numero_factura ?? ""),
+    }
+  );
+  if (!vXml.ok) {
+    return { ok: false, status: vXml.status, error: vXml.message };
+  }
 
   const clienteId = String((factura as { cliente_id: string }).cliente_id);
 

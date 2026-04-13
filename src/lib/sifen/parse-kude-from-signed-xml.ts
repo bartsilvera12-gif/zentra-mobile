@@ -162,6 +162,7 @@ export type OrigenFiscalDesdeRdeXml = {
     dNumTim: string;
     dEst: string;
     dPunExp: string;
+    dNumDoc: string;
     dFeIniT: string;
   };
   actividad: {
@@ -207,6 +208,7 @@ export function extractOrigenFiscalDesdeRdeXml(xmlUtf8: string): OrigenFiscalDes
     dNumTim: textOf(firstNs(gTimb, "dNumTim")),
     dEst: textOf(firstNs(gTimb, "dEst")),
     dPunExp: textOf(firstNs(gTimb, "dPunExp")),
+    dNumDoc: textOf(firstNs(gTimb, "dNumDoc")),
     dFeIniT: textOf(firstNs(gTimb, "dFeIniT")),
   };
 

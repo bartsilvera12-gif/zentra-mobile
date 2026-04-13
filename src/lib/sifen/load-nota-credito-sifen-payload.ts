@@ -1,15 +1,8 @@
 import type { AppSupabaseClient } from "@/lib/supabase/schema";
 import type { SifenNotaCreditoPayload } from "./types";
 import type { AmbienteSifen } from "./types";
-import { downloadSifenObject } from "./sifen-storage";
-import { extractOrigenFiscalDesdeRdeXml } from "./parse-kude-from-signed-xml";
-import {
-  MSG_CONFIG_TIMBRADO_INVALIDA,
-  feIniTimbradoAIso,
-  rucConfigCoincideConEmisorXml,
-  timbradoNumeroValido,
-  timbradoOrigenCoincideConCdc,
-} from "./validar-timbrado-origen-nc";
+import { MSG_CONFIG_TIMBRADO_INVALIDA } from "./validar-timbrado-origen-nc";
+import { validarXmlFirmadoFacturaOrigenParaNc } from "./validar-factura-origen-xml-para-nc";
 
 export type LoadNotaCreditoSifenPayloadOpts = {
   /** Si se define, el XML rDE usa este ambiente (p. ej. test con ALLOW_TEST_MODE + pipeline *-test). */
@@ -32,6 +25,7 @@ function ambienteDesdeConfigRow(raw: unknown): AmbienteSifen {
 
 /**
  * Carga NC, DE origen (CDC), factura, cliente y config SIFEN para armar el rDE de nota de crédito.
+ * Timbrado / establecimiento / punto: solo desde XML firmado validado (ver `validarXmlFirmadoFacturaOrigenParaNc`).
  */
 export async function loadValidatedNotaCreditoSifenPayload(
   supabase: AppSupabaseClient,
@@ -87,7 +81,7 @@ export async function loadValidatedNotaCreditoSifenPayload(
 
   const { data: feOrigen, error: errFe } = await supabase
     .from("factura_electronica")
-    .select("id, cdc, estado_sifen, xml_firmado_path, xml_path, factura_id")
+    .select("id, cdc, estado_sifen, xml_firmado_path, factura_id")
     .eq("id", String(feOrigenId))
     .eq("empresa_id", empresaId)
     .maybeSingle();
@@ -107,98 +101,6 @@ export async function loadValidatedNotaCreditoSifenPayload(
     };
   }
 
-  const xmlPathFirmado =
-    feOrigen.xml_firmado_path == null ? "" : String(feOrigen.xml_firmado_path).trim();
-  const xmlPathBorrador = feOrigen.xml_path == null ? "" : String(feOrigen.xml_path).trim();
-  const pathXmlOrigen = xmlPathFirmado || xmlPathBorrador;
-  if (!pathXmlOrigen) {
-    return {
-      ok: false,
-      error: {
-        status: 400,
-        message: `${MSG_CONFIG_TIMBRADO_INVALIDA}: no hay XML de la factura origen en storage (firmado o borrador).`,
-      },
-    };
-  }
-
-  const binOrigen = await downloadSifenObject(supabase, pathXmlOrigen);
-  if (!binOrigen.ok) {
-    return {
-      ok: false,
-      error: {
-        status: 400,
-        message: `${MSG_CONFIG_TIMBRADO_INVALIDA}: no se pudo descargar el XML de la factura origen (${binOrigen.message}).`,
-      },
-    };
-  }
-
-  let origenFiscal: ReturnType<typeof extractOrigenFiscalDesdeRdeXml>;
-  try {
-    origenFiscal = extractOrigenFiscalDesdeRdeXml(binOrigen.data.toString("utf8"));
-  } catch (e) {
-    const det = e instanceof Error ? e.message : String(e);
-    return {
-      ok: false,
-      error: {
-        status: 400,
-        message: `${MSG_CONFIG_TIMBRADO_INVALIDA}: no se pudo leer el timbrado del XML de la factura origen (${det}).`,
-      },
-    };
-  }
-
-  if (origenFiscal.cdcId.replace(/\D/g, "") !== cdcOrigen.replace(/\D/g, "")) {
-    return {
-      ok: false,
-      error: {
-        status: 400,
-        message: `${MSG_CONFIG_TIMBRADO_INVALIDA}: el CDC guardado no coincide con el XML origen (Id del DE).`,
-      },
-    };
-  }
-
-  const tipoOrigen = origenFiscal.iTiDE.replace(/\D/g, "").trim();
-  const iTiDeNum = Number.parseInt(tipoOrigen.replace(/^0+/, "") || "0", 10);
-  if (iTiDeNum !== 1) {
-    return {
-      ok: false,
-      error: {
-        status: 400,
-        message: `${MSG_CONFIG_TIMBRADO_INVALIDA}: el documento origen no es factura electrónica (iTiDE distinto de 1).`,
-      },
-    };
-  }
-
-  const t = origenFiscal.timbrado;
-  if (!t.dNumTim.trim() || !t.dEst.trim() || !t.dPunExp.trim() || !t.dFeIniT.trim()) {
-    return {
-      ok: false,
-      error: {
-        status: 400,
-        message: `${MSG_CONFIG_TIMBRADO_INVALIDA}: faltan datos de timbrado (dNumTim, dEst, dPunExp o dFeIniT) en el XML origen.`,
-      },
-    };
-  }
-
-  if (!timbradoNumeroValido(t)) {
-    return {
-      ok: false,
-      error: {
-        status: 400,
-        message: `${MSG_CONFIG_TIMBRADO_INVALIDA}: número de timbrado inválido en el XML de la factura origen.`,
-      },
-    };
-  }
-
-  if (!timbradoOrigenCoincideConCdc(cdcOrigen, t)) {
-    return {
-      ok: false,
-      error: {
-        status: 400,
-        message: `${MSG_CONFIG_TIMBRADO_INVALIDA}: establecimiento o punto de expedición del XML no coinciden con el CDC vinculado.`,
-      },
-    };
-  }
-
   const { data: factura, error: errF } = await supabase
     .from("facturas")
     .select("id, cliente_id, numero_factura, fecha, tipo, moneda, monto, saldo")
@@ -211,6 +113,38 @@ export async function loadValidatedNotaCreditoSifenPayload(
   }
   if (!factura) {
     return { ok: false, error: { status: 404, message: "Factura no encontrada." } };
+  }
+
+  const vOrigen = await validarXmlFirmadoFacturaOrigenParaNc(
+    supabase,
+    empresaId,
+    {
+      id: String((feOrigen as { id: string }).id),
+      factura_id: String((feOrigen as { factura_id: string }).factura_id),
+      cdc: cdcOrigen,
+      xml_firmado_path:
+        feOrigen.xml_firmado_path == null ? null : String(feOrigen.xml_firmado_path).trim() || null,
+    },
+    {
+      cdcEsperado: cdcOrigen,
+      facturaIdEsperado: facturaId,
+      numeroFacturaErp: String((factura as { numero_factura: string }).numero_factura ?? ""),
+    }
+  );
+
+  if (!vOrigen.ok) {
+    return { ok: false, error: { status: vOrigen.status, message: vOrigen.message } };
+  }
+
+  const fechaNc = String((factura as { fecha: string }).fecha).trim().slice(0, 10);
+  if (fechaNc < vOrigen.fiscal.timbrado_fecha_inicio_vigencia_iso) {
+    return {
+      ok: false,
+      error: {
+        status: 400,
+        message: `${MSG_CONFIG_TIMBRADO_INVALIDA}: la fecha de emisión es anterior al inicio de vigencia del timbrado de la factura origen.`,
+      },
+    };
   }
 
   const clienteId = factura.cliente_id as string;
@@ -261,81 +195,19 @@ export async function loadValidatedNotaCreditoSifenPayload(
     String(cli.empresa ?? "").trim() ||
     "Receptor";
 
-  if ((cfg as { activo?: unknown }).activo === false) {
-    return {
-      ok: false,
-      error: {
-        status: 400,
-        message: `${MSG_CONFIG_TIMBRADO_INVALIDA}: la configuración SIFEN de la empresa está inactiva.`,
-      },
-    };
-  }
-
-  if (!rucConfigCoincideConEmisorXml(String(cfg.ruc ?? ""), origenFiscal)) {
-    return {
-      ok: false,
-      error: {
-        status: 400,
-        message: `${MSG_CONFIG_TIMBRADO_INVALIDA}: el RUC del emisor en el XML de la factura origen no coincide con el RUC configurado.`,
-      },
-    };
-  }
-
-  let timIniIso: string;
-  try {
-    timIniIso = feIniTimbradoAIso(t.dFeIniT);
-  } catch (e) {
-    const det = e instanceof Error ? e.message : String(e);
-    return {
-      ok: false,
-      error: {
-        status: 400,
-        message: `${MSG_CONFIG_TIMBRADO_INVALIDA}: fecha de inicio de vigencia del timbrado en el XML origen no es válida (${det}).`,
-      },
-    };
-  }
-
-  const fechaNc = String((factura as { fecha: string }).fecha).trim().slice(0, 10);
-  if (fechaNc < timIniIso) {
-    return {
-      ok: false,
-      error: {
-        status: 400,
-        message: `${MSG_CONFIG_TIMBRADO_INVALIDA}: la fecha de emisión es anterior al inicio de vigencia del timbrado de la factura origen.`,
-      },
-    };
-  }
-
-  const cActOrigen = origenFiscal.actividad.cActEco.trim();
-  const dActOrigen = origenFiscal.actividad.dDesActEco.trim();
-  const cActCfg =
-    cfg.actividad_economica_codigo == null ? "" : String(cfg.actividad_economica_codigo).trim();
-  const dActCfg =
-    cfg.actividad_economica_descripcion == null ? "" : String(cfg.actividad_economica_descripcion).trim();
-  const cAct = cActOrigen || cActCfg;
-  const dAct = dActOrigen || dActCfg;
-  if (!cAct || !dAct) {
-    return {
-      ok: false,
-      error: {
-        status: 400,
-        message: `${MSG_CONFIG_TIMBRADO_INVALIDA}: falta actividad económica (código y descripción) en el XML origen y en la configuración SIFEN.`,
-      },
-    };
-  }
+  const fx = vOrigen.fiscal;
 
   const payload: SifenNotaCreditoPayload = {
     emisor: {
       ruc: String(cfg.ruc ?? "").trim(),
       razon_social: String(cfg.razon_social ?? "").trim(),
       direccion_fiscal: String(cfg.direccion_fiscal ?? "").trim(),
-      /** Timbrado y sucursales tomados del DE origen (XML), no de la fila global de configuración. */
-      timbrado_numero: t.dNumTim.trim(),
-      timbrado_fecha_inicio_vigencia: timIniIso,
-      actividad_economica_codigo: cAct,
-      actividad_economica_descripcion: dAct,
-      establecimiento: t.dEst.trim(),
-      punto_expedicion: t.dPunExp.trim(),
+      timbrado_numero: fx.timbrado_numero,
+      timbrado_fecha_inicio_vigencia: fx.timbrado_fecha_inicio_vigencia_iso,
+      actividad_economica_codigo: fx.actividad_codigo,
+      actividad_economica_descripcion: fx.actividad_descripcion,
+      establecimiento: fx.establecimiento,
+      punto_expedicion: fx.punto_expedicion,
       csc: cfg.csc == null ? null : String(cfg.csc).trim(),
     },
     receptor: {

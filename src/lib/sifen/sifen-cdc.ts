@@ -134,6 +134,31 @@ export interface CdcFacturaElectronicaInput {
 /**
  * Arma la base de 43 dígitos y el CDC de 44 (incluye DV).
  */
+/**
+ * Desglose de la base de 43 dígitos del CDC (conformación SET) a partir del CDC de 44 dígitos.
+ * Posiciones: tipo 2, RUC emisor 8, DV 1, establecimiento 3, punto 3, número documento 7, …
+ */
+export function parseBase43DesdeCdc44(cdc44: string): {
+  tipoDoc2: string;
+  rucEm8: string;
+  dvEmi: string;
+  dEst3: string;
+  dPunExp3: string;
+  dNumDoc7: string;
+} | null {
+  const c = cdc44.replace(/\D/g, "");
+  if (c.length !== 44) return null;
+  const b43 = c.slice(0, 43);
+  return {
+    tipoDoc2: b43.slice(0, 2),
+    rucEm8: b43.slice(2, 10),
+    dvEmi: b43.slice(10, 11),
+    dEst3: b43.slice(11, 14),
+    dPunExp3: b43.slice(14, 17),
+    dNumDoc7: b43.slice(17, 24),
+  };
+}
+
 export function generarCdcFacturaElectronica(inp: CdcFacturaElectronicaInput): { cdc: string; dDVId: string; base43: string } {
   const tipoDoc = padDigits(inp.iTiDE.replace(/\D/g, ""), 2);
   const ruc = padDigits(inp.dRucEm.replace(/\D/g, ""), 8);
