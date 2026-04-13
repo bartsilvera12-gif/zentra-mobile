@@ -28,6 +28,7 @@ import {
   MessageCircle,
   History,
   Headphones,
+  ScrollText,
 } from "lucide-react";
 import type { Session } from "@supabase/supabase-js";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
@@ -100,14 +101,7 @@ const MENU_STRUCTURE: MenuItem[] = [
     href: "/dashboard/colas-agentes",
     icon: Headphones,
   },
-  {
-    key: "ventas",
-    slug: "ventas",
-    label: "Ventas",
-    href: "/ventas",
-    icon: ShoppingCart,
-    children: [{ label: "Notas de crédito", href: "/notas-credito", exactMatch: false }],
-  },
+  { key: "ventas", slug: "ventas", label: "Ventas", href: "/ventas", icon: ShoppingCart },
   { key: "inventario", slug: "inventario", label: "Inventario", href: "/inventario", icon: Package, children: [
     { label: "Productos", href: "/inventario" },
     { label: "Movimientos", href: "/inventario/movimientos" },
@@ -116,6 +110,13 @@ const MENU_STRUCTURE: MenuItem[] = [
   { key: "compras", slug: "compras", label: "Compras", href: "/compras", icon: Package },
   { key: "gastos", slug: "gastos", label: "Gastos", href: "/gastos", icon: Receipt },
   { key: "pagos", slug: "pagos", label: "Pagos", href: "/pagos", icon: Banknote },
+  {
+    key: "notas_credito",
+    slug: "notas_credito",
+    label: "Notas de crédito",
+    href: "/notas-credito",
+    icon: ScrollText,
+  },
   { key: "usuarios", slug: "usuarios", label: "Usuarios", href: "/usuarios", icon: UserCog },
   { key: "configuracion", slug: "configuracion", label: "Configuración", href: "/configuracion", icon: Settings },
   { key: "planes", slug: "planes", label: "Planes", href: "/planes", icon: FileText },
@@ -263,7 +264,6 @@ export default function Sidebar() {
   const [expandedItems, setExpandedItems] = useState<Record<string, boolean>>({
     inventario: true,
     sorteos: true,
-    ventas: true,
   });
   const [cargando, setCargando] = useState(true);
   const [esSuperAdmin, setEsSuperAdmin] = useState(false);

@@ -23,7 +23,7 @@ Endpoints: ver `docs/API.md` — sección **Notas de crédito — SIFEN**.
 
 - Pantalla **`/notas-credito`**: listado con filtros (fechas, cliente, estados ERP/SIFEN, usuario, factura, motivo, CDC, con/sin error).
 - Detalle **`/notas-credito/[id]`**: datos generales, DE SIFEN (paths, CDC, respuestas JSON) e **historial de eventos** (`nota_credito_evento`).
-- Menú: **Ventas → Notas de crédito** (requiere módulo `ventas`).
+- Menú: **Notas de crédito** (entrada principal del sidebar; acceso con módulo `ventas` o `notas_credito` según `empresa_modulos`).
 - Pruebas SET con empresa en producción: variable de servidor **`ALLOW_TEST_MODE=true`**; ver `docs/API.md`.
 
 ## Reglas de prioridad
