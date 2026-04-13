@@ -33,7 +33,8 @@
     "db:apply-nota-credito-fase1": "tsx scripts/apply-nota-credito-fase1-remote.ts",
     "db:verify-nota-credito-db": "tsx scripts/verify-nota-credito-fase1-db.ts",
     "db:verify-nota-credito-flow": "tsx scripts/verify-nota-credito-fase1-flow.ts",
-    "db:diagnose-migrations": "tsx scripts/diagnose-migration-history.ts"
+    "db:diagnose-migrations": "tsx scripts/diagnose-migration-history.ts",
+    "verify:admin-catalog-nc": "tsx scripts/verify-admin-catalog-notas-credito.ts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.9.0",

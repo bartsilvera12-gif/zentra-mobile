@@ -3,6 +3,7 @@ import { supabaseServiceRoleClientOptions } from "@/lib/supabase/schema";
 import { getAuthUserForApiRoute } from "@/lib/auth/get-auth-user-for-api-route";
 import { resolveUsuarioErpFromAuthUser } from "@/lib/auth/resolve-usuario-erp";
 import { isBootstrapSuperAdminEmail } from "@/lib/auth/super-admin-bootstrap-email";
+import { ensureNotasCreditoModuloInCatalog } from "@/lib/modulos/ensure-notas-credito-modulo-catalog";
 import { NextResponse } from "next/server";
 
 export async function GET(request: Request) {
@@ -27,7 +28,15 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "No autorizado" }, { status: 403 });
     }
 
-    const { data, error } = await supabaseSr.from("modulos").select("*");
+    const ensured = await ensureNotasCreditoModuloInCatalog(supabaseSr);
+    if (!ensured.ok) {
+      return NextResponse.json({ error: ensured.message }, { status: 500 });
+    }
+
+    const { data, error } = await supabaseSr
+      .from("modulos")
+      .select("*")
+      .order("nombre", { ascending: true });
 
     if (error) return NextResponse.json({ error: error.message }, { status: 400 });
     return NextResponse.json(data);
