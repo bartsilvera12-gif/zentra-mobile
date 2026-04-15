@@ -10,7 +10,10 @@ import {
   syncOmnichannelRouteForWhatsappChannel,
 } from "@/lib/chat/omnichannel-route-sync";
 import { createWhatsappConversationWithActiveFlow } from "@/lib/chat/whatsapp-conversation-bootstrap";
-import { getConversationWhatsAppSendContext } from "@/lib/chat/conversation-send-context";
+import {
+  resolveOutboundTextContextFromConversationId,
+  sendOutboundTextMessage,
+} from "@/lib/chat/conversation-send-context";
 import { attachInboundMessageMedia } from "@/lib/chat/inbound-media-attach";
 import {
   CONV_LOG,
@@ -887,13 +890,8 @@ export async function processInboundWebhookValue(
         const handoffText =
           "Te derivamos con un asesor humano. En breve te vamos a escribir desde este mismo número.";
         try {
-          const ctx = await getConversationWhatsAppSendContext(supabase, conversationId);
-          const sendC = await sendWhatsAppText({
-            toDigits: ctx.toDigits,
-            phoneNumberId: ctx.phoneNumberId,
-            accessToken: ctx.token,
-            text: handoffText,
-          });
+          const ctx = await resolveOutboundTextContextFromConversationId(supabase, conversationId);
+          const sendC = await sendOutboundTextMessage(ctx, handoffText);
           if (sendC.ok) {
             const nowH = new Date().toISOString();
             await supabase.from("chat_messages").insert({

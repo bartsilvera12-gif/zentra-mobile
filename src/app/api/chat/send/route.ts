@@ -1,13 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAuthWithRol } from "@/lib/middleware/auth";
-import { sendWhatsAppText } from "@/lib/chat/whatsapp-send-service";
-import { normalizeWaPhone } from "@/lib/chat/whatsapp-webhook-service";
 import { getChatServiceClientForEmpresa } from "@/app/api/chat/_chat-service-client";
 import { markFirstHumanOperatorReply } from "@/lib/chat/conversation-sla-markers";
+import {
+  resolveOutboundTextContextFromIds,
+  sendOutboundTextMessage,
+} from "@/lib/chat/outbound-send-dispatch";
 
 /**
  * POST /api/chat/send
- * Envía texto por WhatsApp y persiste mensaje saliente.
+ * Envía texto por WhatsApp (Meta Graph o YCloud) y persiste mensaje saliente.
  */
 export async function POST(request: NextRequest) {
   try {
@@ -59,60 +61,25 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ ok: false, error: "No autorizado" }, { status: 403 });
     }
 
-    const { data: contact } = await supabase
-      .from("chat_contacts")
-      .select("phone_number")
-      .eq("id", conv.contact_id as string)
-      .maybeSingle();
-
-    const { data: channel } = await supabase
-      .from("chat_channels")
-      .select("meta_phone_number_id, activo, whatsapp_access_token")
-      .eq("id", conv.channel_id as string)
-      .maybeSingle();
-
-    if (channel && (channel as { activo?: boolean }).activo === false) {
-      return NextResponse.json(
-        { ok: false, error: "El canal WhatsApp está desactivado. Activalo en Configuración." },
-        { status: 403 }
-      );
+    let outbound;
+    try {
+      outbound = await resolveOutboundTextContextFromIds(supabase, {
+        contactId: conv.contact_id as string,
+        channelId: conv.channel_id as string,
+      });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Datos de envío incompletos";
+      let status = 400;
+      if (msg.includes("desactivado")) status = 403;
+      else if (msg.includes("token") || msg.includes("ycloud_api_key")) status = 500;
+      return NextResponse.json({ ok: false, error: msg }, { status });
     }
 
-    const toDigits = contact?.phone_number ? normalizeWaPhone(contact.phone_number) : "";
-    const phoneNumberId =
-      (channel as { meta_phone_number_id?: string } | null)?.meta_phone_number_id ??
-      process.env.WHATSAPP_PHONE_NUMBER_ID?.trim();
-
-    if (!toDigits || !phoneNumberId) {
-      return NextResponse.json(
-        { ok: false, error: "Falta teléfono del contacto o phone_number_id del canal" },
-        { status: 400 }
-      );
+    if (outbound.provider === "ycloud") {
+      console.info("[api/chat/send] ycloud_outbound", { conversationId });
     }
 
-    const rowToken =
-      typeof (channel as { whatsapp_access_token?: string } | null)?.whatsapp_access_token ===
-        "string"
-        ? (channel as { whatsapp_access_token: string }).whatsapp_access_token.trim()
-        : "";
-    const token = rowToken || process.env.WHATSAPP_TOKEN?.trim();
-    if (!token) {
-      return NextResponse.json(
-        {
-          ok: false,
-          error:
-            "Falta token de Meta para enviar: configurá WHATSAPP_TOKEN en Vercel o el token del canal en Conversaciones → Configuración.",
-        },
-        { status: 500 }
-      );
-    }
-
-    const sendResult = await sendWhatsAppText({
-      toDigits,
-      text: message,
-      phoneNumberId,
-      accessToken: token,
-    });
+    const sendResult = await sendOutboundTextMessage(outbound, message);
 
     if (!sendResult.ok) {
       return NextResponse.json(

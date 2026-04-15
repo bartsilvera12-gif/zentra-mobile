@@ -66,7 +66,7 @@ export async function POST(request: NextRequest) {
 
     const { data: channel } = await supabase
       .from("chat_channels")
-      .select("meta_phone_number_id, activo, whatsapp_access_token")
+      .select("meta_phone_number_id, activo, whatsapp_access_token, provider")
       .eq("id", conv.channel_id as string)
       .maybeSingle();
 
@@ -74,6 +74,20 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         { ok: false, error: "El canal WhatsApp está desactivado." },
         { status: 403 }
+      );
+    }
+
+    const provider = String((channel as { provider?: string } | null)?.provider ?? "meta")
+      .toLowerCase()
+      .trim();
+    if (provider === "ycloud") {
+      return NextResponse.json(
+        {
+          ok: false,
+          error:
+            "Los adjuntos por canales YCloud aún no están soportados desde el ERP. Enviá un mensaje de texto o usá un canal Meta.",
+        },
+        { status: 400 }
       );
     }
 

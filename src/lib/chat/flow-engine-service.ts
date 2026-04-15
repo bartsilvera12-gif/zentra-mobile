@@ -5,11 +5,12 @@ import {
   mensajeClienteComprobanteNoValido,
   runComprobanteValidationPipeline,
 } from "@/lib/chat/comprobante-validation-service";
+import { sendWhatsAppInteractiveButtons, sendWhatsAppImage } from "@/lib/chat/whatsapp-send-service";
 import {
-  sendWhatsAppInteractiveButtons,
-  sendWhatsAppImage,
-  sendWhatsAppText,
-} from "@/lib/chat/whatsapp-send-service";
+  resolveOutboundTextContextFromIds,
+  sendOutboundTextMessage,
+  ycloudOutboundUnsupportedMessage,
+} from "@/lib/chat/outbound-send-dispatch";
 import type { SupabaseAdmin } from "@/lib/chat/types";
 import { normalizeWaPhone } from "@/lib/chat/whatsapp-webhook-service";
 import { ensureActiveFlowSessionForConversation } from "@/lib/chat/flow-session-service";
@@ -356,46 +357,65 @@ export function createFlowEngine(ctx: FlowEngineContext) {
     }
   }
 
-  async function getConversationSendContext(conversationId: string): Promise<{
-    conversation: ConversationFlowState;
-    toDigits: string;
-    phoneNumberId: string;
-    token: string;
-  }> {
+  type FlowSendContext =
+    | {
+        conversation: ConversationFlowState;
+        provider: "meta";
+        toDigits: string;
+        phoneNumberId: string;
+        token: string;
+      }
+    | {
+        conversation: ConversationFlowState;
+        provider: "ycloud";
+        toDigits: string;
+        ycloudApiKey: string;
+        ycloudFromE164: string;
+      };
+
+  async function getConversationSendContext(conversationId: string): Promise<FlowSendContext> {
     const conversation = await getConversationFlowState(conversationId);
     if (!conversation) throw new Error("Conversación no encontrada");
 
-    const { data: contact, error: cErr } = await supabase
-      .from("chat_contacts")
-      .select("phone_number")
-      .eq("id", conversation.contact_id)
-      .maybeSingle();
-    if (cErr) throw new Error(cErr.message);
+    const outbound = await resolveOutboundTextContextFromIds(supabase, {
+      contactId: conversation.contact_id,
+      channelId: conversation.channel_id,
+    });
 
-    const { data: channel, error: chErr } = await supabase
-      .from("chat_channels")
-      .select("meta_phone_number_id, whatsapp_access_token, activo")
-      .eq("id", conversation.channel_id)
-      .maybeSingle();
-    if (chErr) throw new Error(chErr.message);
-
-    const toDigits = normalizeWaPhone((contact?.phone_number as string) ?? "");
-    const phoneNumberId =
-      (channel as { meta_phone_number_id?: string } | null)?.meta_phone_number_id ??
-      process.env.WHATSAPP_PHONE_NUMBER_ID?.trim();
-    const tokenInChannel =
-      typeof (channel as { whatsapp_access_token?: string } | null)?.whatsapp_access_token ===
-      "string"
-        ? (channel as { whatsapp_access_token: string }).whatsapp_access_token.trim()
-        : "";
-    const token = tokenInChannel || process.env.WHATSAPP_TOKEN?.trim() || "";
-
-    if (!toDigits || !phoneNumberId || !token) {
-      throw new Error(
-        "Faltan datos de envío (toDigits/phoneNumberId/token) para avanzar flujo"
-      );
+    if (outbound.provider === "meta") {
+      return {
+        conversation,
+        provider: "meta",
+        toDigits: outbound.toDigits,
+        phoneNumberId: outbound.phoneNumberId,
+        token: outbound.accessToken,
+      };
     }
-    return { conversation, toDigits, phoneNumberId, token };
+    return {
+      conversation,
+      provider: "ycloud",
+      toDigits: outbound.toDigits,
+      ycloudApiKey: outbound.apiKey,
+      ycloudFromE164: outbound.fromE164,
+    };
+  }
+
+  async function flowSendText(ctx: FlowSendContext, text: string) {
+    const slice =
+      ctx.provider === "meta"
+        ? {
+            provider: "meta" as const,
+            toDigits: ctx.toDigits,
+            phoneNumberId: ctx.phoneNumberId,
+            accessToken: ctx.token,
+          }
+        : {
+            provider: "ycloud" as const,
+            toDigits: ctx.toDigits,
+            apiKey: ctx.ycloudApiKey,
+            fromE164: ctx.ycloudFromE164,
+          };
+    return sendOutboundTextMessage(slice, text);
   }
 
   async function persistOutgoingMessage(input: {
@@ -1012,6 +1032,12 @@ export function createFlowEngine(ctx: FlowEngineContext) {
     if (blocks.length === 0) {
       const bodyText = fallbackText;
       if (node.node_type === "buttons") {
+        if (ctxSend.provider !== "meta") {
+          return {
+            ok: false,
+            error: ycloudOutboundUnsupportedMessage("botones interactivos"),
+          };
+        }
         const options = await getNodeOptions(node.id);
         const send = await sendWhatsAppInteractiveButtons({
           toDigits: ctxSend.toDigits,
@@ -1035,6 +1061,12 @@ export function createFlowEngine(ctx: FlowEngineContext) {
           automationSource: "flow_engine",
         });
       } else if (node.node_type === "media") {
+        if (ctxSend.provider !== "meta") {
+          return {
+            ok: false,
+            error: ycloudOutboundUnsupportedMessage("imagen"),
+          };
+        }
         const imageFromLegacyText = node.message_text?.trim() || "";
         if (!imageFromLegacyText) {
           return {
@@ -1060,12 +1092,7 @@ export function createFlowEngine(ctx: FlowEngineContext) {
           automationSource: "flow_engine",
         });
       } else {
-        const send = await sendWhatsAppText({
-          toDigits: ctxSend.toDigits,
-          phoneNumberId: ctxSend.phoneNumberId,
-          accessToken: ctxSend.token,
-          text: bodyText,
-        });
+        const send = await flowSendText(ctxSend, bodyText);
         if (!send.ok) return { ok: false, error: send.error };
 
         await persistOutgoingMessage({
@@ -1120,12 +1147,7 @@ export function createFlowEngine(ctx: FlowEngineContext) {
         const textRaw = block.content_text?.trim();
         const text = textRaw ? interpolateTemplate(textRaw, flowVars) : "";
         if (!text) continue;
-        const send = await sendWhatsAppText({
-          toDigits: ctxSend.toDigits,
-          phoneNumberId: ctxSend.phoneNumberId,
-          accessToken: ctxSend.token,
-          text,
-        });
+        const send = await flowSendText(ctxSend, text);
         if (!send.ok) return { ok: false, error: send.error };
         await persistOutgoingMessage({
           conversation: state,
@@ -1139,6 +1161,9 @@ export function createFlowEngine(ctx: FlowEngineContext) {
         continue;
       }
       if (block.block_type === "image") {
+        if (ctxSend.provider !== "meta") {
+          return { ok: false, error: ycloudOutboundUnsupportedMessage("imagen") };
+        }
         const imageUrl = block.media_url?.trim();
         if (!imageUrl) continue;
         const captionRaw = block.content_text?.trim() || "";
@@ -1164,6 +1189,9 @@ export function createFlowEngine(ctx: FlowEngineContext) {
         continue;
       }
       if (block.block_type === "buttons") {
+        if (ctxSend.provider !== "meta") {
+          return { ok: false, error: ycloudOutboundUnsupportedMessage("botones interactivos") };
+        }
         const bodyTextRaw = block.content_text?.trim() || fallbackText;
         const bodyText = interpolateTemplate(bodyTextRaw, flowVars);
         const send = await sendWhatsAppInteractiveButtons({
@@ -1281,12 +1309,7 @@ export function createFlowEngine(ctx: FlowEngineContext) {
       if (params.metaButtonId === COMPROBANTE_BUTTON_IDS.enviar_otro) {
         const hint =
           "Podés enviar otro comprobante ahora como imagen o PDF en este mismo chat.";
-        const send = await sendWhatsAppText({
-          toDigits: sendCtxCv.toDigits,
-          phoneNumberId: sendCtxCv.phoneNumberId,
-          accessToken: sendCtxCv.token,
-          text: hint,
-        });
+        const send = await flowSendText(sendCtxCv, hint);
         if (send.ok) {
           await persistOutgoingMessage({
             conversation: state,
@@ -1320,12 +1343,7 @@ export function createFlowEngine(ctx: FlowEngineContext) {
         .eq("id", state.id);
       const handoff =
         "Te derivamos con un asesor humano. En breve te vamos a escribir desde este mismo número.";
-      const sendH = await sendWhatsAppText({
-        toDigits: sendCtxCv.toDigits,
-        phoneNumberId: sendCtxCv.phoneNumberId,
-        accessToken: sendCtxCv.token,
-        text: handoff,
-      });
+      const sendH = await flowSendText(sendCtxCv, handoff);
       if (sendH.ok) {
         await persistOutgoingMessage({
           conversation: state,
@@ -1510,12 +1528,7 @@ export function createFlowEngine(ctx: FlowEngineContext) {
       });
 
       const notifyFinalizeError = async (text: string) => {
-        const send = await sendWhatsAppText({
-          toDigits: sendCtxFin.toDigits,
-          phoneNumberId: sendCtxFin.phoneNumberId,
-          accessToken: sendCtxFin.token,
-          text,
-        });
+        const send = await flowSendText(sendCtxFin, text);
         if (send.ok) {
           await persistOutgoingMessage({
             conversation: state,
@@ -1620,12 +1633,7 @@ export function createFlowEngine(ctx: FlowEngineContext) {
         const no = sorteoOrderMerge.numero_orden ?? "";
         const cup = sorteoOrderMerge.numeros_cupon ?? "";
         const summary = `Listo. Tu orden Nº ${no}. Cupones: ${cup}.`;
-        const sendSum = await sendWhatsAppText({
-          toDigits: sendCtxEnd.toDigits,
-          phoneNumberId: sendCtxEnd.phoneNumberId,
-          accessToken: sendCtxEnd.token,
-          text: summary,
-        });
+        const sendSum = await flowSendText(sendCtxEnd, summary);
         if (sendSum.ok) {
           await persistOutgoingMessage({
             conversation: state,
@@ -1720,12 +1728,7 @@ export function createFlowEngine(ctx: FlowEngineContext) {
         state.id,
         "expected_image_got_text"
       );
-      const send = await sendWhatsAppText({
-        toDigits: sendCtx.toDigits,
-        phoneNumberId: sendCtx.phoneNumberId,
-        accessToken: sendCtx.token,
-        text: reminder,
-      });
+      const send = await flowSendText(sendCtx, reminder);
       if (send.ok) {
         await persistOutgoingMessage({
           conversation: state,
@@ -1939,6 +1942,12 @@ export function createFlowEngine(ctx: FlowEngineContext) {
     }
 
     const sendCtx = await getConversationSendContext(state.id);
+    if (sendCtx.provider !== "meta") {
+      console.warn("[flow-engine] processImageReply omitido: descarga de media usa Graph (Meta)", {
+        conversationId: state.id,
+      });
+      return { ok: true, status: "ignored_ycloud_image_pipeline" };
+    }
     const media = await downloadMetaMedia({
       mediaId: params.mediaId,
       accessToken: sendCtx.token,
@@ -1951,12 +1960,7 @@ export function createFlowEngine(ctx: FlowEngineContext) {
         state.id,
         "expected_image_got_non_image"
       );
-      const send = await sendWhatsAppText({
-        toDigits: sendCtx.toDigits,
-        phoneNumberId: sendCtx.phoneNumberId,
-        accessToken: sendCtx.token,
-        text: reminder,
-      });
+      const send = await flowSendText(sendCtx, reminder);
       if (send.ok) {
         await persistOutgoingMessage({
           conversation: state,
@@ -2149,12 +2153,7 @@ export function createFlowEngine(ctx: FlowEngineContext) {
     if (pipeline.kind === "resolved") {
       const sendCtxVal = await getConversationSendContext(state.id);
       if (pipeline.sendText?.trim()) {
-        const st = await sendWhatsAppText({
-          toDigits: sendCtxVal.toDigits,
-          phoneNumberId: sendCtxVal.phoneNumberId,
-          accessToken: sendCtxVal.token,
-          text: pipeline.sendText.trim(),
-        });
+        const st = await flowSendText(sendCtxVal, pipeline.sendText.trim());
         if (st.ok) {
           await persistOutgoingMessage({
             conversation: state,
@@ -2177,7 +2176,7 @@ export function createFlowEngine(ctx: FlowEngineContext) {
           })
           .eq("id", state.id);
       }
-      if (pipeline.sendInteractive) {
+      if (pipeline.sendInteractive && sendCtxVal.provider === "meta") {
         const ib = await sendWhatsAppInteractiveButtons({
           toDigits: sendCtxVal.toDigits,
           phoneNumberId: sendCtxVal.phoneNumberId,

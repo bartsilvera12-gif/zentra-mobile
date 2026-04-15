@@ -2,13 +2,15 @@
  * Evaluación de horario y envío de mensajes automáticos tras un inbound WhatsApp.
  * No depende de chat_flows.
  */
-import { getConversationWhatsAppSendContext } from "@/lib/chat/conversation-send-context";
+import {
+  resolveOutboundTextContextFromConversationId,
+  sendOutboundTextMessage,
+} from "@/lib/chat/conversation-send-context";
 import type { SupabaseAdmin } from "@/lib/chat/types";
 import {
   parseBusinessAutomationFromChannelConfig,
   type BusinessAutomationSettings,
 } from "@/lib/chat/channel-business-automation-types";
-import { sendWhatsAppText } from "@/lib/chat/whatsapp-send-service";
 
 const NEURA_AUTOMATION = "neura_automation" as const;
 
@@ -192,9 +194,9 @@ export async function runWhatsappBusinessAutomationAfterInbound(params: {
   );
   if (!settings.master_enabled) return { ...NO_AUTOMATION_SEND };
 
-  let ctx: Awaited<ReturnType<typeof getConversationWhatsAppSendContext>>;
+  let ctx: Awaited<ReturnType<typeof resolveOutboundTextContextFromConversationId>>;
   try {
-    ctx = await getConversationWhatsAppSendContext(supabase, conversationId);
+    ctx = await resolveOutboundTextContextFromConversationId(supabase, conversationId);
   } catch {
     return { ...NO_AUTOMATION_SEND };
   }
@@ -205,12 +207,7 @@ export async function runWhatsappBusinessAutomationAfterInbound(params: {
   const sendIfNeeded = async (text: string, kind: AutomationKind): Promise<boolean> => {
     const trimmed = text.trim();
     if (!trimmed) return false;
-    const sendC = await sendWhatsAppText({
-      toDigits: ctx.toDigits,
-      phoneNumberId: ctx.phoneNumberId,
-      accessToken: ctx.token,
-      text: trimmed,
-    });
+    const sendC = await sendOutboundTextMessage(ctx, trimmed);
     if (!sendC.ok) {
       console.warn("[business_automation] send_failed", {
         conversationId,
