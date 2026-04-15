@@ -20,8 +20,6 @@ import {
 } from "@/lib/chat/actions";
 import {
   assignConversationToAgent,
-  assignConversationToMe,
-  changeConversationPriority,
   changeConversationQueue,
   changeConversationStatus,
   listChatAgentsDirectory,
@@ -138,23 +136,10 @@ function labelEstado(s: string) {
   return s;
 }
 
-function labelPrioridad(p: string) {
-  if (p === "low") return "Baja";
-  if (p === "medium") return "Media";
-  if (p === "high") return "Alta";
-  return p;
-}
-
 function badgeEstadoClass(s: string) {
   if (s === "open") return "text-sky-800 bg-sky-50 border-sky-200";
   if (s === "pending") return "text-amber-800 bg-amber-50 border-amber-200";
   if (s === "closed") return "text-slate-600 bg-slate-100 border-slate-200";
-  return "text-slate-600 bg-slate-50 border-slate-200";
-}
-
-function badgePrioridadClass(p: string) {
-  if (p === "high") return "text-red-800 bg-red-50 border-red-200";
-  if (p === "medium") return "text-amber-800 bg-amber-50 border-amber-200";
   return "text-slate-600 bg-slate-50 border-slate-200";
 }
 
@@ -163,10 +148,13 @@ export type ConversacionesClientMode = "inbox" | "historial";
 export function ConversacionesClient({
   mode,
   chatDataSchema,
+  agentDisplayName,
 }: {
   mode: ConversacionesClientMode;
   /** Esquema Postgres de tablas chat_* (zentra_erp o `er_…`). */
   chatDataSchema: string;
+  /** Nombre visible del agente logueado (resuelto en servidor). */
+  agentDisplayName: string;
 }) {
   const supabaseChat = useMemo(
     () => createBrowserClientForSchema(chatDataSchema),
@@ -638,8 +626,10 @@ export function ConversacionesClient({
 
       <div className="flex flex-wrap items-center justify-between gap-2 shrink-0">
         <div className="min-w-0">
-          <h1 className="text-lg font-bold text-slate-800 leading-tight">Conversaciones</h1>
-          <p className="text-xs text-slate-500 leading-snug">
+          <h1 className="text-xl sm:text-2xl font-bold text-slate-800 leading-tight truncate">
+            {agentDisplayName}
+          </h1>
+          <p className="text-xs text-slate-500 leading-snug mt-0.5">
             Omnicanal ·{" "}
             {mode === "historial"
               ? "Historial omnicanal"
@@ -764,11 +754,6 @@ export function ConversacionesClient({
                     >
                       {labelEstado(c.status)}
                     </span>
-                    <span
-                      className={`text-[9px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded border ${badgePrioridadClass(c.priority)}`}
-                    >
-                      {labelPrioridad(c.priority)}
-                    </span>
                     {c.queue_name ? (
                       <span
                         className="text-[9px] font-medium text-indigo-800 bg-indigo-50 border border-indigo-200 px-1.5 py-0.5 rounded truncate max-w-full"
@@ -808,184 +793,141 @@ export function ConversacionesClient({
             </div>
           ) : (
             <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
-              <div className="px-2 py-1.5 border-b border-slate-200 bg-white shrink-0 space-y-1">
-                <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 min-w-0">
-                  <span className="font-semibold text-slate-800 text-sm truncate min-w-0 max-w-[min(100%,14rem)]">
-                    {selected?.contact.name || selected?.contact.phone_number}
-                  </span>
-                  {selected ? (
-                    <ChannelBadge type={selected.channel.type} nombre={selected.channel.nombre} />
-                  ) : null}
-                  {isHumanActive ? (
-                    <span className="text-[10px] font-semibold text-emerald-800 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded shrink-0">
-                      Humano
-                    </span>
-                  ) : (
-                    <span className="text-[10px] font-semibold text-violet-800 bg-violet-50 border border-violet-200 px-1.5 py-0.5 rounded shrink-0">
-                      Bot
-                    </span>
-                  )}
-                  <span className="text-[10px] text-slate-400 font-mono truncate min-w-0">
-                    {selected?.contact.phone_number}
-                  </span>
-                  {listColumnHidden ? (
-                    <button
-                      type="button"
-                      onClick={() => setListColumnHidden(false)}
-                      className="ml-auto shrink-0 text-[10px] font-medium text-slate-600 hover:text-slate-900 border border-slate-200 rounded px-1.5 py-0.5 bg-white"
-                      title="Mostrar lista de chats"
-                    >
-                      Chats
-                    </button>
-                  ) : null}
-                </div>
+              <div className="px-2 py-2 border-b border-slate-200 bg-white shrink-0">
                 {selected ? (
-                  <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1">
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5 min-w-0">
+                    <span className="font-semibold text-slate-800 text-sm truncate min-w-0 max-w-[min(100%,14rem)]">
+                      {selected.contact.name || selected.contact.phone_number}
+                    </span>
+                    <ChannelBadge type={selected.channel.type} nombre={selected.channel.nombre} />
+                    {isHumanActive ? (
+                      <span className="text-[10px] font-semibold text-emerald-800 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded shrink-0">
+                        Humano
+                      </span>
+                    ) : (
+                      <span className="text-[10px] font-semibold text-violet-800 bg-violet-50 border border-violet-200 px-1.5 py-0.5 rounded shrink-0">
+                        Bot
+                      </span>
+                    )}
+                    <span className="text-[10px] text-slate-500 font-mono truncate min-w-0 max-w-[11rem]">
+                      {selected.contact.phone_number}
+                    </span>
                     <span
-                      className={`text-[9px] font-semibold uppercase px-1.5 py-0.5 rounded border ${badgeEstadoClass(selected.status)}`}
+                      className={`text-[9px] font-semibold uppercase px-1.5 py-0.5 rounded border shrink-0 ${badgeEstadoClass(selected.status)}`}
                     >
                       {labelEstado(selected.status)}
                     </span>
-                    <span
-                      className={`text-[9px] font-semibold uppercase px-1.5 py-0.5 rounded border ${badgePrioridadClass(selected.priority)}`}
-                    >
-                      {labelPrioridad(selected.priority)}
-                    </span>
-                    <span className="text-[10px] text-slate-500">
-                      Cola:{" "}
-                      <span className="font-medium text-slate-700">{selected.queue_name ?? "—"}</span>
-                    </span>
-                    <span className="text-[10px] text-slate-500">
-                      Agente:{" "}
-                      <span className="font-medium text-slate-700">
-                        {selected.assigned_agent_name ?? "Sin asignar"}
-                      </span>
-                    </span>
-                    {isHumanActive && (
+                    {listColumnHidden ? (
                       <button
                         type="button"
-                        disabled={releasingBot}
-                        onClick={() => void handleReleaseToBot()}
-                        className="text-[10px] font-medium text-slate-600 hover:text-slate-800 border border-slate-200 rounded px-1.5 py-0.5 bg-white disabled:opacity-50"
+                        onClick={() => setListColumnHidden(false)}
+                        className="shrink-0 text-[10px] font-medium text-slate-600 hover:text-slate-900 border border-slate-200 rounded px-1.5 py-0.5 bg-white"
+                        title="Mostrar lista de chats"
                       >
-                        {releasingBot ? "…" : "Modo bot"}
+                        Chats
                       </button>
-                    )}
-                    <button
-                      type="button"
-                      disabled={opsBusy}
-                      onClick={() =>
-                        void runConversationOp(() => assignConversationToMe(selected.id))
-                      }
-                      className="text-[10px] font-medium text-white bg-[#0EA5E9] hover:bg-[#0284C7] rounded px-1.5 py-0.5 disabled:opacity-50"
-                    >
-                      Asignarme
-                    </button>
-                    <select
-                      disabled={opsBusy}
-                      className="text-[10px] border border-slate-200 rounded px-1 py-0.5 max-w-[9rem] min-h-[1.5rem]"
-                      value=""
-                      onChange={(e) => {
-                        const v = e.target.value;
-                        (e.target as HTMLSelectElement).value = "";
-                        if (v && selected) {
-                          void runConversationOp(() => assignConversationToAgent(selected.id, v));
-                        }
-                      }}
-                      aria-label="Reasignar conversación"
-                    >
-                      <option value="">Reasignar…</option>
-                      {opsAgents
-                        .filter((a) => a.id !== selected.assigned_agent_id)
-                        .map((a) => (
-                          <option key={a.id} value={a.id}>
-                            {a.nombre} · {a.queue_nombre}
-                          </option>
-                        ))}
-                    </select>
-                    <select
-                      disabled={opsBusy}
-                      className="text-[10px] border border-slate-200 rounded px-1 py-0.5 max-w-[7rem] min-h-[1.5rem]"
-                      value={selected.queue_id ?? ""}
-                      onChange={(e) => {
-                        const v = e.target.value;
-                        if (v && selected) {
-                          void runConversationOp(() => changeConversationQueue(selected.id, v));
-                        }
-                      }}
-                      aria-label="Cambiar cola"
-                    >
-                      <option value="" disabled>
-                        Cola…
-                      </option>
-                      {opsQueues.map((q) => (
-                        <option key={q.id} value={q.id}>
-                          {q.nombre}
-                          {!q.is_active ? " (inactiva)" : ""}
-                        </option>
-                      ))}
-                    </select>
-                    <select
-                      disabled={opsBusy}
-                      className="text-[10px] border border-slate-200 rounded px-1 py-0.5 min-h-[1.5rem]"
-                      value={selected.priority}
-                      onChange={(e) => {
-                        const v = e.target.value;
-                        if (v && selected) {
-                          void runConversationOp(() =>
-                            changeConversationPriority(selected.id, v)
-                          );
-                        }
-                      }}
-                      aria-label="Prioridad"
-                    >
-                      <option value="low">Baja</option>
-                      <option value="medium">Media</option>
-                      <option value="high">Alta</option>
-                    </select>
-                    {selected.status !== "closed" ? (
-                      <button
-                        type="button"
-                        disabled={opsBusy}
-                        onClick={() =>
-                          void runConversationOp(() =>
-                            changeConversationStatus(selected.id, "closed")
-                          )
-                        }
-                        className="text-[10px] font-medium text-slate-700 border border-slate-300 rounded px-1.5 py-0.5 hover:bg-slate-50 disabled:opacity-50"
-                      >
-                        Cerrar
-                      </button>
-                    ) : (
-                      <button
-                        type="button"
-                        disabled={opsBusy}
-                        onClick={() =>
-                          void runConversationOp(() =>
-                            changeConversationStatus(selected.id, "open")
-                          )
-                        }
-                        className="text-[10px] font-medium text-emerald-800 border border-emerald-300 rounded px-1.5 py-0.5 bg-emerald-50 hover:bg-emerald-100 disabled:opacity-50"
-                      >
-                        Reabrir
-                      </button>
-                    )}
-                    {selected.contact.cliente_id ? (
-                      <Link
-                        href={`/clientes/${selected.contact.cliente_id}`}
-                        className="text-[10px] text-[#0EA5E9] hover:underline"
-                      >
-                        Cliente
-                      </Link>
                     ) : null}
-                    {selected.contact.crm_prospecto_id ? (
-                      <Link
-                        href={`/crm/${selected.contact.crm_prospecto_id}`}
-                        className="text-[10px] text-violet-600 hover:underline"
+
+                    <div className="flex flex-wrap items-center gap-1 sm:ml-auto w-full sm:w-auto">
+                      <span className="text-[10px] font-semibold text-slate-600 shrink-0">Transferir a</span>
+                      <select
+                        disabled={opsBusy}
+                        className="text-[10px] border border-slate-200 rounded px-1 py-0.5 max-w-[10rem] min-h-[1.5rem] bg-white"
+                        value=""
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          (e.target as HTMLSelectElement).value = "";
+                          if (v && selected) {
+                            void runConversationOp(() => changeConversationQueue(selected.id, v));
+                          }
+                        }}
+                        aria-label="Transferir conversación a otra cola"
                       >
-                        CRM
-                      </Link>
-                    ) : null}
+                        <option value="">Cola…</option>
+                        {opsQueues
+                          .filter((q) => q.is_active)
+                          .map((q) => (
+                            <option key={q.id} value={q.id}>
+                              {q.nombre}
+                            </option>
+                          ))}
+                      </select>
+                      <select
+                        disabled={opsBusy}
+                        className="text-[10px] border border-slate-200 rounded px-1 py-0.5 max-w-[11rem] min-h-[1.5rem] bg-white"
+                        value=""
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          (e.target as HTMLSelectElement).value = "";
+                          if (v && selected) {
+                            void runConversationOp(() => assignConversationToAgent(selected.id, v));
+                          }
+                        }}
+                        aria-label="Transferir conversación a otro agente"
+                      >
+                        <option value="">Agente…</option>
+                        {opsAgents
+                          .filter((a) => a.id !== selected.assigned_agent_id)
+                          .map((a) => (
+                            <option key={a.id} value={a.id}>
+                              {a.nombre} · {a.queue_nombre}
+                            </option>
+                          ))}
+                      </select>
+                      {isHumanActive ? (
+                        <button
+                          type="button"
+                          disabled={releasingBot}
+                          onClick={() => void handleReleaseToBot()}
+                          className="text-[10px] font-medium text-slate-600 hover:text-slate-800 border border-slate-200 rounded px-1.5 py-0.5 bg-white disabled:opacity-50"
+                        >
+                          {releasingBot ? "…" : "Modo bot"}
+                        </button>
+                      ) : null}
+                      {selected.status !== "closed" ? (
+                        <button
+                          type="button"
+                          disabled={opsBusy}
+                          onClick={() =>
+                            void runConversationOp(() =>
+                              changeConversationStatus(selected.id, "closed")
+                            )
+                          }
+                          className="text-[10px] font-medium text-slate-700 border border-slate-300 rounded px-1.5 py-0.5 hover:bg-slate-50 disabled:opacity-50"
+                        >
+                          Finalizar
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          disabled={opsBusy}
+                          onClick={() =>
+                            void runConversationOp(() =>
+                              changeConversationStatus(selected.id, "open")
+                            )
+                          }
+                          className="text-[10px] font-medium text-emerald-800 border border-emerald-300 rounded px-1.5 py-0.5 bg-emerald-50 hover:bg-emerald-100 disabled:opacity-50"
+                        >
+                          Reabrir
+                        </button>
+                      )}
+                      {selected.contact.cliente_id ? (
+                        <Link
+                          href={`/clientes/${selected.contact.cliente_id}`}
+                          className="text-[10px] text-[#0EA5E9] hover:underline shrink-0"
+                        >
+                          Cliente
+                        </Link>
+                      ) : null}
+                      {selected.contact.crm_prospecto_id ? (
+                        <Link
+                          href={`/crm/${selected.contact.crm_prospecto_id}`}
+                          className="text-[10px] text-violet-600 hover:underline shrink-0"
+                        >
+                          CRM
+                        </Link>
+                      ) : null}
+                    </div>
                   </div>
                 ) : null}
               </div>

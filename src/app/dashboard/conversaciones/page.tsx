@@ -1,12 +1,16 @@
 import { Suspense } from "react";
+import { getCurrentUserDisplayNameServer } from "@/lib/auth/get-current-user-display-name-server";
 import { getChatDataSchemaForCurrentUser } from "@/lib/chat/empresa-chat-schema-server";
 import { ConversacionesClient } from "./ConversacionesClient";
 
 export default async function ConversacionesInboxPage() {
-  const chatDataSchema = await getChatDataSchemaForCurrentUser();
+  const [chatDataSchema, agentDisplayName] = await Promise.all([
+    getChatDataSchemaForCurrentUser(),
+    getCurrentUserDisplayNameServer(),
+  ]);
   return (
     <Suspense fallback={<div className="p-6 text-slate-400 text-sm animate-pulse">Cargando conversaciones…</div>}>
-      <ConversacionesClient mode="inbox" chatDataSchema={chatDataSchema} />
+      <ConversacionesClient mode="inbox" chatDataSchema={chatDataSchema} agentDisplayName={agentDisplayName} />
     </Suspense>
   );
 }
