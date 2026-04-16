@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { getModulos, crearEmpresa } from "@/lib/empresas/actions";
 import type { Modulo } from "@/lib/empresas/actions";
@@ -10,6 +10,7 @@ const fInput = "w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focu
 
 export default function EmpresaForm() {
   const router = useRouter();
+  const envioEnCurso = useRef(false);
   const [modulos, setModulos] = useState<Modulo[]>([]);
   const [cargandoModulos, setCargandoModulos] = useState(true);
   const [guardando, setGuardando] = useState(false);
@@ -54,6 +55,7 @@ export default function EmpresaForm() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (envioEnCurso.current) return;
     setError(null);
 
     if (!form.nombre_empresa.trim()) return setError("El nombre de la empresa es obligatorio.");
@@ -62,6 +64,7 @@ export default function EmpresaForm() {
     if (form.password.length < 6) return setError("La contraseña debe tener al menos 6 caracteres.");
     if (!form.nombre.trim()) return setError("El nombre del administrador es obligatorio.");
 
+    envioEnCurso.current = true;
     setGuardando(true);
 
     try {
@@ -80,6 +83,7 @@ export default function EmpresaForm() {
       const msg = err instanceof Error ? err.message : String(err);
       setError(msg);
     } finally {
+      envioEnCurso.current = false;
       setGuardando(false);
     }
   }

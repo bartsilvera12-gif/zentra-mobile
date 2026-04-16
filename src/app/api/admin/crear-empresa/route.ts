@@ -1,8 +1,45 @@
 import { createClient } from "@supabase/supabase-js";
+import type { AppSupabaseClient } from "@/lib/supabase/schema";
 import { supabaseServiceRoleClientOptions } from "@/lib/supabase/schema";
 import { NextResponse } from "next/server";
 
+function mensajeErrorCrearUsuarioAuth(msg: string): string {
+  const m = msg.toLowerCase();
+  if (m.includes("already been registered") || m.includes("already registered") || m.includes("user already registered")) {
+    return "Ese correo ya está registrado. Usá otro email o recuperá la contraseña desde el login.";
+  }
+  if (m.includes("duplicate") || m.includes("unique")) {
+    return "Ese correo ya está en uso.";
+  }
+  return msg;
+}
+
 export async function POST(req: Request) {
+  let authUserId: string | null = null;
+  let empresaId: string | null = null;
+
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  const cleanupFailure = async (sb: AppSupabaseClient) => {
+    if (empresaId) {
+      const { error: delErr } = await sb.from("empresas").delete().eq("id", empresaId);
+      if (delErr) {
+        await sb.rpc("neura_teardown_provision_failed" as never, { p_empresa_id: empresaId } as never);
+        await sb.from("empresas").delete().eq("id", empresaId);
+      }
+    }
+    if (authUserId) {
+      try {
+        await sb.auth.admin.deleteUser(authUserId);
+      } catch {
+        /* ya borrado o inexistente */
+      }
+    }
+    empresaId = null;
+    authUserId = null;
+  };
+
   try {
     const body = await req.json();
     const {
@@ -24,8 +61,6 @@ export async function POST(req: Request) {
       );
     }
 
-    const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
     if (!url || !key) {
       return NextResponse.json(
         { error: "Variables de entorno no configuradas" },
@@ -33,38 +68,86 @@ export async function POST(req: Request) {
       );
     }
 
-    const supabase = createClient(url, key, { ...supabaseServiceRoleClientOptions });
+    const supabase = createClient(url, key, {
+      ...supabaseServiceRoleClientOptions,
+    }) as AppSupabaseClient;
+    const emailNorm = email.trim().toLowerCase();
 
-    // 1 — Insertar empresa
+    const { data: dupUsuario, error: errDup } = await supabase
+      .from("usuarios")
+      .select("id")
+      .eq("email", emailNorm)
+      .maybeSingle();
+
+    if (errDup) {
+      return NextResponse.json({ error: errDup.message }, { status: 400 });
+    }
+    if (dupUsuario && typeof (dupUsuario as { id?: unknown }).id === "string") {
+      return NextResponse.json(
+        { error: "El correo ya está registrado en el ERP (tabla usuarios). No se creó empresa ni esquema." },
+        { status: 409 }
+      );
+    }
+
+    // 1 — Auth primero: si el correo ya existe en GoTrue, fallamos sin tocar empresa ni schema.
+    const { data: authData, error: errAuth } = await supabase.auth.admin.createUser({
+      email: emailNorm,
+      password,
+      email_confirm: true,
+    });
+
+    if (errAuth) {
+      return NextResponse.json(
+        { error: mensajeErrorCrearUsuarioAuth(errAuth.message) },
+        { status: 400 }
+      );
+    }
+
+    authUserId = authData.user?.id ?? null;
+    if (!authUserId) {
+      return NextResponse.json(
+        { error: "No se pudo crear el usuario en autenticación (sin id)." },
+        { status: 500 }
+      );
+    }
+
+    // 2 — Empresa
     const { data: empresa, error: errEmpresa } = await supabase
       .from("empresas")
-      .insert([{
-        nombre_empresa: nombre_empresa.trim(),
-        plan: plan?.trim() || null,
-        ruc: ruc?.trim() || null,
-        estado: estado || "activo",
-      }])
+      .insert([
+        {
+          nombre_empresa: nombre_empresa.trim(),
+          plan: plan?.trim() || null,
+          ruc: ruc?.trim() || null,
+          estado: estado || "activo",
+        },
+      ])
       .select("id")
       .single();
 
-    if (errEmpresa) {
-      return NextResponse.json({ error: errEmpresa.message }, { status: 400 });
+    if (errEmpresa || !empresa?.id) {
+      await cleanupFailure(supabase);
+      return NextResponse.json(
+        { error: errEmpresa?.message ?? "No se pudo crear la empresa." },
+        { status: 400 }
+      );
     }
 
-    const empresaId = empresa.id;
+    empresaId = empresa.id;
 
     const slugFuente =
       typeof schema_slug === "string" && schema_slug.trim()
         ? schema_slug.trim()
         : nombre_empresa.trim();
 
+    // 3 — Esquema tenant
     const { data: provisionJson, error: provErr } = await supabase.rpc(
       "neura_provision_empresa_data_schema",
       { p_empresa_id: empresaId, p_schema_slug: slugFuente }
     );
 
     if (provErr) {
-      await supabase.from("empresas").delete().eq("id", empresaId);
+      await cleanupFailure(supabase);
       return NextResponse.json(
         { error: `Provisión de esquema: ${provErr.message}` },
         { status: 500 }
@@ -73,36 +156,26 @@ export async function POST(req: Request) {
 
     const prov = provisionJson as { ok?: boolean; status?: string } | null;
     if (prov && prov.ok === false) {
-      await supabase.from("empresas").delete().eq("id", empresaId);
+      await cleanupFailure(supabase);
       return NextResponse.json(
         { error: "No se pudo provisionar el esquema de datos de la empresa." },
         { status: 500 }
       );
     }
 
-    // 2 — Crear usuario en Supabase Auth
-    const { data: authData, error: errAuth } = await supabase.auth.admin.createUser({
-      email: email.trim().toLowerCase(),
-      password,
-      email_confirm: true,
-    });
-
-    if (errAuth) {
-      await supabase.from("empresas").delete().eq("id", empresaId);
-      return NextResponse.json({ error: errAuth.message }, { status: 400 });
-    }
-
-    // 3 — Insertar en tabla usuarios (auth_user_id para actualización fiable de email)
-    const { error: errUsuario } = await supabase.from("usuarios").insert([{
-      empresa_id: empresaId,
-      nombre: nombre.trim(),
-      email: email.trim().toLowerCase(),
-      rol: "admin",
-      auth_user_id: authData.user?.id ?? null,
-    }]);
+    // 4 — Fila usuarios (ERP)
+    const { error: errUsuario } = await supabase.from("usuarios").insert([
+      {
+        empresa_id: empresaId,
+        nombre: nombre.trim(),
+        email: emailNorm,
+        rol: "admin",
+        auth_user_id: authUserId,
+      },
+    ]);
 
     if (errUsuario) {
-      await supabase.from("empresas").delete().eq("id", empresaId);
+      await cleanupFailure(supabase);
       return NextResponse.json({ error: errUsuario.message }, { status: 400 });
     }
 
@@ -123,8 +196,9 @@ export async function POST(req: Request) {
       }));
       const { error: errModulos } = await supabase.from("empresa_modulos").insert(rows);
       if (errModulos) {
+        await cleanupFailure(supabase);
         return NextResponse.json(
-          { error: `Empresa creada pero error en módulos: ${errModulos.message}` },
+          { error: `Error al asignar módulos: ${errModulos.message}` },
           { status: 400 }
         );
       }
@@ -132,10 +206,15 @@ export async function POST(req: Request) {
 
     return NextResponse.json({
       empresa_id: empresaId,
-      usuario_id: authData.user?.id,
+      usuario_id: authUserId,
     });
-
   } catch (err: unknown) {
+    if (url && key) {
+      const sb = createClient(url, key, {
+        ...supabaseServiceRoleClientOptions,
+      }) as AppSupabaseClient;
+      await cleanupFailure(sb);
+    }
     const message = err instanceof Error ? err.message : "Error interno";
     return NextResponse.json({ error: message }, { status: 500 });
   }
