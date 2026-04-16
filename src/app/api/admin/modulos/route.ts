@@ -4,6 +4,7 @@ import { getAuthUserForApiRoute } from "@/lib/auth/get-auth-user-for-api-route";
 import { resolveUsuarioErpFromAuthUser } from "@/lib/auth/resolve-usuario-erp";
 import { isBootstrapSuperAdminEmail } from "@/lib/auth/super-admin-bootstrap-email";
 import { ensureNotasCreditoModuloInCatalog } from "@/lib/modulos/ensure-notas-credito-modulo-catalog";
+import { ensureOmnicanalModulosInCatalog } from "@/lib/modulos/ensure-omnicanal-modulos-catalog";
 import { NextResponse } from "next/server";
 
 export async function GET(request: Request) {
@@ -31,6 +32,11 @@ export async function GET(request: Request) {
     const ensured = await ensureNotasCreditoModuloInCatalog(supabaseSr);
     if (!ensured.ok) {
       return NextResponse.json({ error: ensured.message }, { status: 500 });
+    }
+
+    const ensuredOmni = await ensureOmnicanalModulosInCatalog(supabaseSr);
+    if (!ensuredOmni.ok) {
+      return NextResponse.json({ error: ensuredOmni.message }, { status: 500 });
     }
 
     const { data, error } = await supabaseSr
