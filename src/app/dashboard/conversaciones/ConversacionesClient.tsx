@@ -1113,6 +1113,12 @@ export function ConversacionesClient({
   }, [selected?.channel?.id, vista]);
 
   useEffect(() => {
+    if (selected?.channel.quick_replies_inbox_enabled === false) {
+      setQuickReplyOpen(false);
+    }
+  }, [selected?.channel.quick_replies_inbox_enabled]);
+
+  useEffect(() => {
     if (!quickReplyOpen) return;
     function onKey(ev: KeyboardEvent) {
       if (ev.key === "Escape") setQuickReplyOpen(false);
@@ -2256,7 +2262,7 @@ export function ConversacionesClient({
                         <Mic className="w-[18px] h-[18px]" aria-hidden />
                       )}
                     </button>
-                    {vista !== "bot" ? (
+                    {vista !== "bot" && selected?.channel.quick_replies_inbox_enabled !== false ? (
                       <>
                         <button
                           type="button"

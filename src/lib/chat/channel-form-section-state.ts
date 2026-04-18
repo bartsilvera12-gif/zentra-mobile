@@ -9,6 +9,7 @@ export const CHANNEL_FORM_SECTION_KEYS = [
   "comprobantes_core",
   "comprobantes_bank",
   "comprobantes_messages",
+  "quick_replies",
 ] as const;
 
 export type ChannelFormSectionKey = (typeof CHANNEL_FORM_SECTION_KEYS)[number];
@@ -27,6 +28,7 @@ export function defaultChannelFormSectionState(): ChannelFormSectionStateMap {
     comprobantes_core: { active: true, expanded: false },
     comprobantes_bank: { active: true, expanded: false },
     comprobantes_messages: { active: true, expanded: false },
+    quick_replies: { active: true, expanded: false },
   };
 }
 
@@ -39,10 +41,20 @@ function hasPersistedFormSectionState(config: unknown): boolean {
 
 export function parseFormSectionStateFromChannelConfig(config: unknown): ChannelFormSectionStateMap {
   const out = defaultChannelFormSectionState();
-  if (!config || typeof config !== "object" || Array.isArray(config)) return out;
-  const raw = (config as Record<string, unknown>).form_section_state;
-  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return out;
-  const r = raw as Record<string, unknown>;
+  const cfgRoot =
+    config && typeof config === "object" && !Array.isArray(config)
+      ? (config as Record<string, unknown>)
+      : {};
+  /** Compat: antes solo existía `quick_replies_inbox_enabled` en config. */
+  const qrLegacyEnabled = cfgRoot.quick_replies_inbox_enabled !== false;
+
+  const rawFs = cfgRoot.form_section_state;
+  if (!rawFs || typeof rawFs !== "object" || Array.isArray(rawFs)) {
+    out.quick_replies = { active: qrLegacyEnabled, expanded: false };
+    return out;
+  }
+
+  const r = rawFs as Record<string, unknown>;
   for (const key of CHANNEL_FORM_SECTION_KEYS) {
     const slice = r[key];
     if (!slice || typeof slice !== "object" || Array.isArray(slice)) continue;
@@ -53,6 +65,12 @@ export function parseFormSectionStateFromChannelConfig(config: unknown): Channel
       expanded: typeof o.expanded === "boolean" ? o.expanded : b.expanded,
     };
   }
+
+  const qrSlice = r.quick_replies;
+  if (!qrSlice || typeof qrSlice !== "object" || Array.isArray(qrSlice)) {
+    out.quick_replies = { active: qrLegacyEnabled, expanded: false };
+  }
+
   return out;
 }
 

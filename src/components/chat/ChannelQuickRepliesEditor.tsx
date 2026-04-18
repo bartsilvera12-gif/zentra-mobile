@@ -11,9 +11,13 @@ import {
 
 type Props = {
   channelId: string;
+  /** Sección padre desactivada (interruptor global del canal). */
+  disabled?: boolean;
+  /** Sin párrafo inicial: el título/descripción va en ConfigCollapsibleSection. */
+  hideIntro?: boolean;
 };
 
-export function ChannelQuickRepliesEditor({ channelId }: Props) {
+export function ChannelQuickRepliesEditor({ channelId, disabled = false, hideIntro = false }: Props) {
   const [rows, setRows] = useState<ChannelQuickReplyRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -69,68 +73,82 @@ export function ChannelQuickRepliesEditor({ channelId }: Props) {
   }
 
   return (
-    <div className="space-y-4">
-      <p className="text-sm text-slate-600 leading-relaxed">
-        Textos reutilizables para el inbox. Los asesores los insertan desde el chat (icono de respuesta rápida). Solo
-        se listan las <span className="font-semibold">activas</span> en la bandeja.
-      </p>
+    <div className={`space-y-5 ${disabled ? "opacity-[0.88]" : ""}`}>
+      {!hideIntro ? (
+        <p className="text-sm text-slate-600 leading-relaxed">
+          Textos reutilizables para el inbox. Los asesores los insertan desde el chat (icono de respuesta rápida). Solo
+          se listan las <span className="font-semibold">activas</span> en la bandeja.
+        </p>
+      ) : null}
+
+      {disabled ? (
+        <p className="text-xs text-amber-900/90 bg-amber-50 border border-amber-200/80 rounded-lg px-3 py-2">
+          Activá esta sección con el interruptor superior para editar plantillas y que aparezcan en el inbox.
+        </p>
+      ) : null}
 
       {error ? (
         <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">{error}</div>
       ) : null}
 
-      <form onSubmit={(e) => void handleCreate(e)} className="rounded-xl border border-slate-200 bg-slate-50/80 p-4 space-y-3">
-        <h3 className="text-xs font-bold uppercase tracking-wide text-slate-500">Nueva respuesta rápida</h3>
-        <div className="grid gap-3 sm:grid-cols-2">
+      <form
+        onSubmit={(e) => void handleCreate(e)}
+        className="rounded-lg border border-slate-200 bg-white p-4 space-y-4"
+      >
+        <h4 className="text-sm font-semibold text-slate-800">Nueva respuesta rápida</h4>
+        <div className="grid gap-4 sm:grid-cols-2">
           <div>
-            <label className="block text-[11px] font-semibold text-slate-500 mb-1">Nombre interno</label>
+            <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Nombre interno</label>
             <input
               className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
               value={draftTitle}
               onChange={(e) => setDraftTitle(e.target.value)}
               placeholder="Ej: Saludo inicial"
               maxLength={120}
+              disabled={disabled}
             />
           </div>
           <div>
-            <label className="block text-[11px] font-semibold text-slate-500 mb-1">Orden</label>
+            <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Orden</label>
             <input
               type="number"
               className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm tabular-nums"
               value={draftOrder}
               onChange={(e) => setDraftOrder(e.target.value)}
               min={0}
+              disabled={disabled}
             />
           </div>
         </div>
         <div>
-          <label className="block text-[11px] font-semibold text-slate-500 mb-1">Texto completo</label>
+          <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Texto completo</label>
           <textarea
             className="w-full min-h-[88px] rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm resize-y"
             value={draftBody}
             onChange={(e) => setDraftBody(e.target.value)}
             placeholder="Mensaje que se insertará en el campo de escritura…"
+            disabled={disabled}
           />
         </div>
-        <div className="flex justify-end">
+        <div className="flex justify-end pt-1">
           <button
             type="submit"
-            disabled={creating || !draftTitle.trim() || !draftBody.trim()}
-            className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-50"
+            disabled={disabled || creating || !draftTitle.trim() || !draftBody.trim()}
+            className="rounded-lg bg-[#0EA5E9] hover:bg-[#0284C7] disabled:opacity-50 text-white px-5 py-2 text-sm font-medium"
           >
             {creating ? "Guardando…" : "Agregar"}
           </button>
         </div>
       </form>
 
-      <div className="rounded-xl border border-slate-200 overflow-hidden">
-        <div className="bg-slate-50 px-3 py-2 border-b border-slate-200 flex items-center justify-between gap-2">
-          <span className="text-xs font-bold uppercase tracking-wide text-slate-500">Definidas</span>
+      <div className="rounded-lg border border-slate-200 bg-white overflow-hidden">
+        <div className="bg-slate-50/90 px-4 py-2.5 border-b border-slate-200 flex items-center justify-between gap-2">
+          <span className="text-xs font-bold uppercase tracking-wide text-slate-500">Respuestas definidas</span>
           <button
             type="button"
             onClick={() => void load()}
             className="text-xs font-semibold text-[#0EA5E9] hover:underline disabled:opacity-50"
-            disabled={loading}
+            disabled={loading || disabled}
           >
             Actualizar
           </button>
@@ -145,7 +163,7 @@ export function ChannelQuickRepliesEditor({ channelId }: Props) {
               <QuickReplyRowEditor
                 key={r.id}
                 row={r}
-                disabled={savingId !== null}
+                disabled={disabled || savingId !== null}
                 onBusy={(id) => setSavingId(id)}
                 onReload={() => void load()}
               />

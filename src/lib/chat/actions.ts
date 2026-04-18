@@ -65,6 +65,8 @@ export type InboxConversation = {
     nombre: string | null;
     /** Si el canal tiene activada la validación inteligente de comprobantes (UI inbox). */
     comprobante_validation_enabled: boolean;
+    /** Respuestas rápidas en inbox (`config.quick_replies_inbox_enabled`, default true). */
+    quick_replies_inbox_enabled: boolean;
   };
   contact: {
     id: string;
@@ -427,7 +429,12 @@ async function fetchChatConversationsUnsafe(
 
   let channelById: Record<
     string,
-    { type: string; nombre: string | null; comprobante_validation_enabled: boolean }
+    {
+      type: string;
+      nombre: string | null;
+      comprobante_validation_enabled: boolean;
+      quick_replies_inbox_enabled: boolean;
+    }
   > = {};
   if (channelIds.length > 0) {
     const { data: chrows, error: chErr } = await supabase
@@ -451,12 +458,17 @@ async function fetchChatConversationsUnsafe(
             cfg && typeof cfg === "object" && !Array.isArray(cfg)
               ? parseComprobanteValidationConfig(cfg as Record<string, unknown>).enabled
               : false;
+          const qrOn =
+            cfg && typeof cfg === "object" && !Array.isArray(cfg)
+              ? (cfg as Record<string, unknown>).quick_replies_inbox_enabled !== false
+              : true;
           return [
             rec.id,
             {
               type: (rec.type as string) ?? "whatsapp",
               nombre: rec.nombre ?? null,
               comprobante_validation_enabled: compOn,
+              quick_replies_inbox_enabled: qrOn,
             },
           ];
         })
@@ -576,6 +588,7 @@ async function fetchChatConversationsUnsafe(
     const channelType = chMeta?.type ?? "whatsapp";
     const channelNombre = chMeta?.nombre ?? null;
     const compValEnabled = chMeta?.comprobante_validation_enabled ?? false;
+    const qrInboxEnabled = chMeta?.quick_replies_inbox_enabled !== false;
     const qid = (row.queue_id as string | null | undefined)?.trim() || null;
     const qRowNombre = qid ? queueNombreById[qid] : null;
     const waitCode = ((row as { assignment_wait_code?: string | null }).assignment_wait_code ?? null) as
@@ -605,6 +618,7 @@ async function fetchChatConversationsUnsafe(
         type: channelType,
         nombre: channelNombre,
         comprobante_validation_enabled: compValEnabled,
+        quick_replies_inbox_enabled: qrInboxEnabled,
       },
       contact: {
         id: c?.id ?? (row.contact_id as string),
@@ -749,6 +763,8 @@ export type ChatChannelFormInput = {
   business_automation?: Record<string, unknown>;
   /** Estado UI de secciones del formulario en `config.form_section_state`. */
   form_section_state?: Record<string, { active: boolean; expanded: boolean }>;
+  /** Persistido en `config.quick_replies_inbox_enabled` (icono rayo en inbox). */
+  quick_replies_inbox_enabled?: boolean;
 };
 
 function metaChannelConfigStatus(params: {
@@ -774,6 +790,7 @@ export type YCloudWhatsappChannelInput = {
   comprobante_validation?: Record<string, unknown>;
   business_automation?: Record<string, unknown>;
   form_section_state?: Record<string, { active: boolean; expanded: boolean }>;
+  quick_replies_inbox_enabled?: boolean;
 };
 
 /** WhatsApp vía YCloud (coexistencia). Sin ruta omnicanal Meta. */
@@ -820,6 +837,9 @@ export async function saveYCloudWhatsappChannel(input: YCloudWhatsappChannelInpu
   }
   if (input.form_section_state !== undefined) {
     config.form_section_state = input.form_section_state;
+  }
+  if (input.quick_replies_inbox_enabled !== undefined) {
+    config.quick_replies_inbox_enabled = input.quick_replies_inbox_enabled;
   }
 
   const hasKey =
@@ -884,6 +904,53 @@ export type GenericOmnichannelChannelInput = {
 };
 
 /** Canal no WhatsApp: registro base para Etapa 2 (sin phone Meta). */
+/**
+ * Persiste estado UI de “Respuestas rápidas” sin guardar todo el formulario del canal (p. ej. omnicanal no WhatsApp).
+ */
+export async function patchChatChannelQuickRepliesSectionState(
+  channelId: string,
+  slice: { active: boolean; expanded: boolean }
+): Promise<void> {
+  const { supabase, empresa_id } = await requireEmpresaTenantServiceRole();
+  const id = channelId.trim();
+  if (!id) throw new Error("Canal inválido.");
+
+  const { data: prevRow, error: fetchErr } = await supabase
+    .from("chat_channels")
+    .select("config")
+    .eq("id", id)
+    .eq("empresa_id", empresa_id)
+    .maybeSingle();
+  if (fetchErr) throw new Error(fetchErr.message);
+  if (!prevRow) throw new Error("Canal no encontrado.");
+
+  const prevCfg =
+    prevRow.config &&
+    typeof prevRow.config === "object" &&
+    prevRow.config !== null &&
+    !Array.isArray(prevRow.config)
+      ? ({ ...(prevRow.config as Record<string, unknown>) } as Record<string, unknown>)
+      : {};
+
+  const prevFsRaw = prevCfg.form_section_state;
+  const prevFs =
+    prevFsRaw && typeof prevFsRaw === "object" && !Array.isArray(prevFsRaw)
+      ? ({ ...(prevFsRaw as Record<string, unknown>) } as Record<string, unknown>)
+      : {};
+
+  prevFs.quick_replies = { active: slice.active, expanded: slice.expanded };
+  prevCfg.form_section_state = prevFs;
+  prevCfg.quick_replies_inbox_enabled = slice.active;
+
+  const { error } = await supabase
+    .from("chat_channels")
+    .update({ config: prevCfg, updated_at: new Date().toISOString() })
+    .eq("id", id)
+    .eq("empresa_id", empresa_id);
+
+  if (error) throw new Error(error.message);
+}
+
 export async function saveGenericOmnichannelChannel(input: GenericOmnichannelChannelInput): Promise<string> {
   const { supabase, empresa_id } = await requireEmpresaTenantServiceRole();
   const existingId = typeof input.id === "string" && input.id.trim().length > 0 ? input.id.trim() : undefined;
@@ -1001,6 +1068,9 @@ export async function saveChatChannel(input: ChatChannelFormInput): Promise<stri
   }
   if (input.form_section_state !== undefined) {
     config.form_section_state = input.form_section_state;
+  }
+  if (input.quick_replies_inbox_enabled !== undefined) {
+    config.quick_replies_inbox_enabled = input.quick_replies_inbox_enabled;
   }
 
   const tokenPatch = input.whatsapp_access_token?.trim();

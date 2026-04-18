@@ -5,7 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { ChannelBadge, channelTypeLabel } from "@/components/chat/ChannelBadge";
 import { GenericOmnichannelChannelForm } from "@/components/chat/GenericOmnichannelChannelForm";
-import { ChannelQuickRepliesEditor } from "@/components/chat/ChannelQuickRepliesEditor";
+import { ChannelQuickRepliesStandaloneBlock } from "@/components/chat/ChannelQuickRepliesStandaloneBlock";
 import { WhatsAppChannelForm } from "@/components/chat/WhatsAppChannelForm";
 import { OMNICHANNEL_CARD_DEFINITIONS } from "@/lib/chat/omnichannel-catalog";
 import {
@@ -175,23 +175,25 @@ export default function EditarCanalPage() {
             onSaved={() => void load()}
           />
         ) : (
-          <GenericOmnichannelChannelForm
-            mode="edit"
-            channelId={row.id}
-            channelType={type as "instagram" | "facebook" | "linkedin" | "email"}
-            defaultProvider={cardDef?.defaultProvider ?? "meta"}
-            initialRow={row}
-            cancelHref="/configuracion/canales"
-            onSaved={() => void load()}
-          />
+          <div className="space-y-5">
+            <GenericOmnichannelChannelForm
+              mode="edit"
+              channelId={row.id}
+              channelType={type as "instagram" | "facebook" | "linkedin" | "email"}
+              defaultProvider={cardDef?.defaultProvider ?? "meta"}
+              initialRow={row}
+              cancelHref="/configuracion/canales"
+              onSaved={() => void load()}
+            />
+            <div className="border-t border-slate-200 pt-5">
+              <ChannelQuickRepliesStandaloneBlock
+                channelId={row.id}
+                channelRow={row}
+                onPersisted={() => void load()}
+              />
+            </div>
+          </div>
         )}
-      </section>
-
-      <section className="w-full rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6 lg:p-8">
-        <h2 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-4 lg:mb-6">
-          Respuestas rápidas (inbox)
-        </h2>
-        <ChannelQuickRepliesEditor channelId={row.id} />
       </section>
     </div>
   );

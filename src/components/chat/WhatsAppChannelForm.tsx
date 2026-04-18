@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { BusinessAutomationConfigSection } from "@/components/chat/BusinessAutomationConfigSection";
+import { ChannelQuickRepliesEditor } from "@/components/chat/ChannelQuickRepliesEditor";
 import { ConfigCollapsibleSection } from "@/components/chat/ConfigCollapsibleSection";
 import {
   ComprobanteValidationPanelComprobantesCore,
@@ -210,6 +211,7 @@ export function WhatsAppChannelForm({
             comprobante_validation: cvPayload,
             business_automation: baPayload,
             form_section_state: fsPayload,
+            quick_replies_inbox_enabled: sectionUi.quick_replies.active,
           });
           setSuccess("Cambios guardados.");
           onSaved?.(id);
@@ -224,6 +226,7 @@ export function WhatsAppChannelForm({
             comprobante_validation: cvPayload,
             business_automation: baPayload,
             form_section_state: fsPayload,
+            quick_replies_inbox_enabled: sectionUi.quick_replies.active,
           });
           setSuccess("Canal creado.");
           onSaved?.(id);
@@ -241,6 +244,7 @@ export function WhatsAppChannelForm({
           comprobante_validation: cvPayload,
           business_automation: baPayload,
           form_section_state: fsPayload,
+          quick_replies_inbox_enabled: sectionUi.quick_replies.active,
         });
         setSuccess("Cambios guardados.");
         onSaved?.(id);
@@ -250,6 +254,7 @@ export function WhatsAppChannelForm({
           comprobante_validation: cvPayload,
           business_automation: baPayload,
           form_section_state: fsPayload,
+          quick_replies_inbox_enabled: sectionUi.quick_replies.active,
         });
         setSuccess("Canal creado.");
         onSaved?.(id);
@@ -496,6 +501,23 @@ export function WhatsAppChannelForm({
           >
             <ComprobanteValidationPanelMensajesYOcr value={cvSettings} onChange={setCvSettings} />
           </ConfigCollapsibleSection>
+
+          {mode === "edit" && channelId?.trim() ? (
+            <ConfigCollapsibleSection
+              title="Respuestas rápidas (inbox)"
+              description="Plantillas reutilizables que los asesores insertan desde Conversaciones con el ícono de rayo."
+              active={sectionUi.quick_replies.active}
+              expanded={sectionUi.quick_replies.expanded}
+              onActiveChange={(v) => patchSection("quick_replies", { active: v })}
+              onExpandedChange={(v) => patchSection("quick_replies", { expanded: v })}
+            >
+              <ChannelQuickRepliesEditor
+                channelId={channelId.trim()}
+                disabled={!sectionUi.quick_replies.active}
+                hideIntro
+              />
+            </ConfigCollapsibleSection>
+          ) : null}
         </div>
 
         <div ref={bottomFeedbackRef}>
