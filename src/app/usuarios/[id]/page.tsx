@@ -35,6 +35,9 @@ type Usuario = {
   created_at: string;
   modulo_ids?: string[];
   modulos_empresa?: ModuloOpt[];
+  dashboard_views_empresa?: { id: string; nombre: string; slug: string; orden: number }[];
+  dashboard_view_ids?: string[];
+  default_dashboard_view_id?: string | null;
   puede_editar_modulos?: boolean;
   puede_editar_rol?: boolean;
   es_admin_empresa?: boolean;
@@ -120,6 +123,8 @@ function usuarioToForm(u: Usuario): UsuarioFormValues {
     password: "",
     password2: "",
     modulo_ids: u.modulo_ids ?? [],
+    dashboard_view_ids: u.dashboard_view_ids ?? [],
+    default_dashboard_view_id: u.default_dashboard_view_id ?? "",
   };
 }
 
@@ -236,6 +241,21 @@ function UsuarioDetailContent() {
         body.modulo_ids = form.modulo_ids;
       }
 
+      if (
+        usuario.puede_editar_modulos &&
+        !usuario.es_admin_empresa &&
+        (usuario.dashboard_views_empresa?.length ?? 0) > 0
+      ) {
+        body.dashboard_view_ids = form.dashboard_view_ids;
+        body.default_dashboard_view_id =
+          form.default_dashboard_view_id.trim() &&
+          form.dashboard_view_ids.includes(form.default_dashboard_view_id.trim())
+            ? form.default_dashboard_view_id.trim()
+            : form.dashboard_view_ids.length === 1
+              ? form.dashboard_view_ids[0]
+              : null;
+      }
+
       if (usuario.puede_editar_modulos && usuario.omnicanal) {
         body.omnicanal_agent_enabled = omniAgent;
         body.omnicanal_work_schedule_id =
@@ -270,6 +290,21 @@ function UsuarioDetailContent() {
             }
           : usuario.omnicanal;
 
+      let nextDefaultDashboardId: string | null = usuario.default_dashboard_view_id ?? null;
+      if (
+        usuario.puede_editar_modulos &&
+        !usuario.es_admin_empresa &&
+        (usuario.dashboard_views_empresa?.length ?? 0) > 0
+      ) {
+        const t = form.default_dashboard_view_id.trim();
+        nextDefaultDashboardId =
+          t && form.dashboard_view_ids.includes(t)
+            ? t
+            : form.dashboard_view_ids.length === 1
+              ? form.dashboard_view_ids[0] ?? null
+              : null;
+      }
+
       setUsuario({
         ...usuario,
         nombre: form.nombre.trim(),
@@ -286,6 +321,11 @@ function UsuarioDetailContent() {
         rol: rolActualizado ?? usuario.rol,
         modulo_ids:
           usuario.puede_editar_modulos && !usuario.es_admin_empresa ? [...form.modulo_ids] : usuario.modulo_ids,
+        dashboard_view_ids:
+          usuario.puede_editar_modulos && !usuario.es_admin_empresa
+            ? [...form.dashboard_view_ids]
+            : usuario.dashboard_view_ids,
+        default_dashboard_view_id: nextDefaultDashboardId,
         omnicanal: nextOmni ?? usuario.omnicanal,
       });
       setEditing(false);
@@ -507,6 +547,49 @@ function UsuarioDetailContent() {
             </SectionCard>
           )}
 
+          {(usuario.dashboard_views_empresa?.length ?? 0) > 0 && (
+            <SectionCard title="Vistas del dashboard" icon="📊">
+              {usuario.es_admin_empresa ? (
+                <>
+                  <p className="text-xs text-gray-500 mb-3">
+                    Los administradores pueden usar todas las vistas del tablero que la empresa tenga habilitadas.
+                  </p>
+                  <ul className="flex flex-wrap gap-2">
+                    {(usuario.dashboard_views_empresa ?? []).map((m) => (
+                      <li
+                        key={m.id}
+                        className="text-sm font-medium px-3 py-1 rounded-full bg-slate-100 text-slate-800 border border-slate-200"
+                      >
+                        {m.nombre}
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              ) : (
+                <>
+                  <p className="text-xs text-gray-500 mb-3">
+                    Pestañas del tablero principal visibles para este usuario.
+                  </p>
+                  <ul className="flex flex-wrap gap-2">
+                    {(usuario.dashboard_views_empresa ?? [])
+                      .filter((m) => (usuario.dashboard_view_ids ?? []).includes(m.id))
+                      .map((m) => (
+                        <li
+                          key={m.id}
+                          className="text-sm font-medium px-3 py-1 rounded-full bg-slate-100 text-slate-800 border border-slate-200"
+                        >
+                          {m.nombre}
+                          {usuario.default_dashboard_view_id === m.id ? (
+                            <span className="ml-1 text-xs text-slate-500">(predeterminada)</span>
+                          ) : null}
+                        </li>
+                      ))}
+                  </ul>
+                </>
+              )}
+            </SectionCard>
+          )}
+
           {(usuario.modulos_empresa?.length ?? 0) > 0 && (
             <SectionCard title="Módulos del usuario" icon="📦">
               {usuario.es_admin_empresa ? (
@@ -661,6 +744,61 @@ function UsuarioDetailContent() {
                   </SectionCard>
                 ) : null}
 
+                {usuario.puede_editar_modulos &&
+                !usuario.es_admin_empresa &&
+                (usuario.dashboard_views_empresa?.length ?? 0) > 0 ? (
+                  <SectionCard title="Vistas del dashboard" icon="📊">
+                    <p className="text-xs text-gray-500 mb-4">
+                      Solo podés marcar vistas que tu empresa ya tenga habilitadas. Si tenés más de una, elegí cuál abrir
+                      por defecto.
+                    </p>
+                    <div className="space-y-2">
+                      {(usuario.dashboard_views_empresa ?? []).map((m) => (
+                        <label
+                          key={m.id}
+                          className="flex items-center gap-3 rounded-lg border border-gray-100 px-3 py-2.5 cursor-pointer hover:bg-gray-50"
+                        >
+                          <input
+                            type="checkbox"
+                            name={`dash_${m.id}`}
+                            value={m.id}
+                            checked={form.dashboard_view_ids.includes(m.id)}
+                            onChange={handleChange}
+                            className="rounded border-gray-300 text-gray-900 focus:ring-gray-900/20"
+                          />
+                          <span className="text-sm font-medium text-gray-800">{m.nombre}</span>
+                        </label>
+                      ))}
+                    </div>
+                    {form.dashboard_view_ids.length > 1 ? (
+                      <div className="mt-4 max-w-md">
+                        <label className={usuarioFormLabel}>Vista por defecto</label>
+                        <select
+                          value={
+                            form.default_dashboard_view_id &&
+                            form.dashboard_view_ids.includes(form.default_dashboard_view_id)
+                              ? form.default_dashboard_view_id
+                              : ""
+                          }
+                          onChange={(e) =>
+                            setForm((prev) => ({ ...prev, default_dashboard_view_id: e.target.value }))
+                          }
+                          className={`${usuarioFormInputGray} mt-1 w-full`}
+                        >
+                          <option value="">— Elegir —</option>
+                          {(usuario.dashboard_views_empresa ?? [])
+                            .filter((m) => form.dashboard_view_ids.includes(m.id))
+                            .map((m) => (
+                              <option key={m.id} value={m.id}>
+                                {m.nombre}
+                              </option>
+                            ))}
+                        </select>
+                      </div>
+                    ) : null}
+                  </SectionCard>
+                ) : null}
+
                 {usuario.puede_editar_modulos && usuario.omnicanal ? (
                   <SectionCard title="Omnicanal" icon="💬">
                     <p className="text-xs text-gray-500 mb-4">
@@ -726,7 +864,14 @@ function UsuarioDetailContent() {
               type="button"
               onClick={() => {
                 setEditing(false);
-                if (usuario) setForm({ ...usuarioToForm(usuario), modulo_ids: usuario.modulo_ids ?? [] });
+                if (usuario) {
+                  setForm({
+                    ...usuarioToForm(usuario),
+                    modulo_ids: usuario.modulo_ids ?? [],
+                    dashboard_view_ids: usuario.dashboard_view_ids ?? [],
+                    default_dashboard_view_id: usuario.default_dashboard_view_id ?? "",
+                  });
+                }
                 if (usuario?.omnicanal) {
                   setOmniAgent(Boolean(usuario.omnicanal.agent_enabled));
                   setOmniScheduleId(usuario.omnicanal.work_schedule_id ?? "");

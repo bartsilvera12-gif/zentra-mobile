@@ -31,6 +31,11 @@ import {
   rangoMesCalendarioLocal,
   toCalendarDateStr,
 } from "@/lib/fechas/calendario";
+import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
+import {
+  isDashboardTabSlug,
+  type DashboardTabSlug,
+} from "@/lib/dashboard/resolve-effective-dashboard-views";
 import {
   CartesianGrid,
   Line,
@@ -75,7 +80,7 @@ function labelClienteDimension(raw: string): string {
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 type Periodo = "hoy" | "7d" | "30d" | "mes" | "anio";
-type TabDash = "comercial" | "financiero" | "inventario" | "ventas";
+type TabDash = DashboardTabSlug;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -1662,14 +1667,21 @@ const PERIODO_OPTS: { id: Periodo; label: string }[] = [
 
 const TAB_VALID: TabDash[] = ["comercial", "financiero", "inventario", "ventas"];
 
+type DashScope =
+  | { kind: "pending" }
+  | { kind: "legacy" }
+  | { kind: "empty" }
+  | { kind: "scoped"; tabs: TabDash[]; defaultTab: TabDash };
+
 function getInitialTab(): TabDash {
   if (typeof window === "undefined") return "comercial";
   const params = new URLSearchParams(window.location.search);
   const t = params.get("tab");
-  return (t && TAB_VALID.includes(t as TabDash)) ? (t as TabDash) : "comercial";
+  return t && isDashboardTabSlug(t) ? t : "comercial";
 }
 
 export default function DashboardPage() {
+  const [dashScope, setDashScope] = useState<DashScope>({ kind: "pending" });
   const [tab,      setTab]      = useState<TabDash>(getInitialTab);
   const [periodo,  setPeriodo]  = useState<Periodo>("mes");
   const [config,   setConfig]   = useState<ConfigGlobal | null>(null);
@@ -1692,12 +1704,56 @@ export default function DashboardPage() {
     const syncFromUrl = () => {
       const params = new URLSearchParams(window.location.search);
       const t = params.get("tab");
-      if (t && TAB_VALID.includes(t as TabDash)) setTab(t as TabDash);
+      if (t && isDashboardTabSlug(t)) setTab(t);
     };
     syncFromUrl();
     window.addEventListener("popstate", syncFromUrl);
     return () => window.removeEventListener("popstate", syncFromUrl);
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchWithSupabaseSession("/api/empresas/mis-dashboard-views", { cache: "no-store" })
+      .then(async (r) => {
+        if (!r.ok) {
+          if (!cancelled) setDashScope({ kind: "legacy" });
+          return;
+        }
+        const j = (await r.json()) as {
+          views?: { slug: string }[];
+          defaultSlug?: string | null;
+        };
+        const slugs = (j.views ?? [])
+          .map((v) => v.slug)
+          .filter((s): s is TabDash => isDashboardTabSlug(s));
+        if (slugs.length === 0) {
+          if (!cancelled) setDashScope({ kind: "empty" });
+          return;
+        }
+        const defRaw = j.defaultSlug ?? null;
+        const defaultTab =
+          defRaw && isDashboardTabSlug(defRaw) && slugs.includes(defRaw) ? defRaw : slugs[0];
+        if (!cancelled) setDashScope({ kind: "scoped", tabs: slugs, defaultTab });
+      })
+      .catch(() => {
+        if (!cancelled) setDashScope({ kind: "legacy" });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (dashScope.kind !== "scoped") return;
+    const params = new URLSearchParams(window.location.search);
+    const t = params.get("tab");
+    const next =
+      t && isDashboardTabSlug(t) && dashScope.tabs.includes(t) ? t : dashScope.defaultTab;
+    setTab(next);
+    if (typeof window !== "undefined") {
+      window.history.replaceState(null, "", `?tab=${next}`);
+    }
+  }, [dashScope]);
 
   useEffect(() => {
     setConfig(getConfig());
@@ -1748,6 +1804,16 @@ export default function DashboardPage() {
   const usuarioActivo = usuarios.find(u => u.id === usuarioId) ?? null;
   const nivel = usuarioActivo?.nivel ?? "administrador";
 
+  const effectiveTabs: TabDash[] = dashScope.kind === "scoped" ? dashScope.tabs : TAB_VALID;
+  const showTabNav = !(dashScope.kind === "scoped" && effectiveTabs.length === 1);
+
+  const TAB_META: Record<TabDash, { label: string; icon: string }> = {
+    comercial: { label: "Comercial", icon: "📊" },
+    financiero: { label: "Financiero", icon: "💰" },
+    inventario: { label: "Inventario", icon: "📦" },
+    ventas: { label: "Ventas", icon: "🛒" },
+  };
+
   if (!config) {
     return (
       <div
@@ -1776,6 +1842,45 @@ export default function DashboardPage() {
               {u.nombre}
             </button>
           ))}
+        </div>
+      </div>
+    );
+  }
+
+  if (dashScope.kind === "empty") {
+    return (
+      <div
+        className="space-y-8 rounded-2xl border border-white/10 px-4 py-8 sm:px-6 md:px-8"
+        style={{ backgroundColor: Z.bg, color: Z.muted }}
+      >
+        <header className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
+          <div className="flex items-start gap-4">
+            <ZentraMark />
+            <div>
+              <p className="text-[10px] font-semibold uppercase tracking-[0.2em]" style={{ color: Z.accent }}>
+                Zentra
+              </p>
+              <h1 className="mt-1 text-2xl font-bold tracking-tight sm:text-3xl" style={{ color: Z.text }}>
+                Dashboard
+              </h1>
+              <p className="mt-1 max-w-md text-sm leading-relaxed" style={{ color: Z.muted }}>
+                No hay vistas del tablero disponibles para tu usuario.
+              </p>
+            </div>
+          </div>
+        </header>
+        <div
+          className="rounded-2xl border border-white/10 px-5 py-10 text-center text-sm"
+          style={{ backgroundColor: Z.surface, color: Z.muted }}
+        >
+          <p className="font-medium" style={{ color: Z.text }}>
+            Sin vistas asignadas
+          </p>
+          <p className="mt-2 max-w-md mx-auto">
+            Tu empresa aún no habilitó pestañas para vos, o tu perfil no tiene vistas del dashboard. Pedí a un
+            administrador que revise <span className="font-semibold">Usuarios</span> y las vistas habilitadas para la
+            empresa.
+          </p>
         </div>
       </div>
     );
@@ -1842,34 +1947,37 @@ export default function DashboardPage() {
         </div>
       </header>
 
-      <nav className="flex w-full flex-wrap gap-1 rounded-2xl border border-white/10 p-1.5 sm:w-fit" style={{ backgroundColor: Z.surface }}>
-        {(
-          [
-            { id: "comercial" as const, label: "Comercial", icon: "📊" },
-            { id: "financiero" as const, label: "Financiero", icon: "💰" },
-            { id: "inventario" as const, label: "Inventario", icon: "📦" },
-            { id: "ventas" as const, label: "Ventas", icon: "🛒" },
-          ] as { id: TabDash; label: string; icon: string }[]
-        ).map((t) => (
-          <button
-            key={t.id}
-            type="button"
-            onClick={() => {
-              setTab(t.id);
-              if (typeof window !== "undefined") window.history.replaceState(null, "", `?tab=${t.id}`);
-            }}
-            className="flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium transition-all"
-            style={
-              tab === t.id
-                ? { backgroundColor: Z.accent, color: Z.text, boxShadow: "0 8px 24px rgba(37,99,235,0.35)" }
-                : { color: Z.muted }
-            }
-          >
-            <span aria-hidden>{t.icon}</span>
-            {t.label}
-          </button>
-        ))}
-      </nav>
+      {showTabNav ? (
+        <nav
+          className="flex w-full flex-wrap gap-1 rounded-2xl border border-white/10 p-1.5 sm:w-fit"
+          style={{ backgroundColor: Z.surface }}
+        >
+          {effectiveTabs.map((tid) => {
+            const meta = TAB_META[tid];
+            return (
+              <button
+                key={tid}
+                type="button"
+                onClick={() => {
+                  setTab(tid);
+                  if (typeof window !== "undefined") {
+                    window.history.replaceState(null, "", `?tab=${tid}`);
+                  }
+                }}
+                className="flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium transition-all"
+                style={
+                  tab === tid
+                    ? { backgroundColor: Z.accent, color: Z.text, boxShadow: "0 8px 24px rgba(37,99,235,0.35)" }
+                    : { color: Z.muted }
+                }
+              >
+                <span aria-hidden>{meta.icon}</span>
+                {meta.label}
+              </button>
+            );
+          })}
+        </nav>
+      ) : null}
 
       {/* Contenido */}
       {tab === "comercial" && (

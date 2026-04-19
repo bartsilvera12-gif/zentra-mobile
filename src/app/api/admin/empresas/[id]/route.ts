@@ -40,6 +40,15 @@ export async function GET(
 
     const empresaModuloIds = (emData ?? []).map((r) => r.modulo_id).filter(Boolean) as string[];
 
+    const { data: edvData } = await supabase
+      .from("empresa_dashboard_views")
+      .select("dashboard_view_id")
+      .eq("empresa_id", id)
+      .eq("activo", true);
+    const empresaDashboardViewIds = (edvData ?? [])
+      .map((r) => (r as { dashboard_view_id?: string }).dashboard_view_id)
+      .filter(Boolean) as string[];
+
     // 2. Usuarios de la empresa (incluye estado y módulos si existe)
     const { data: usuariosRaw } = await supabase
       .from("usuarios")
@@ -51,6 +60,7 @@ export async function GET(
     const userIds = usuarios.map((u) => u.id);
 
     let usuarioModulosMap: Record<string, string[]> = {};
+    let usuarioDashboardMap: Record<string, string[]> = {};
     if (userIds.length > 0) {
       const { data: umData } = await supabase
         .from("usuario_modulos")
@@ -64,11 +74,27 @@ export async function GET(
           usuarioModulosMap[uid].push(mid);
         }
       }
+
+      const { data: udvData } = await supabase
+        .from("usuario_dashboard_views")
+        .select("usuario_id, dashboard_view_id")
+        .in("usuario_id", userIds);
+      if (udvData) {
+        for (const row of udvData) {
+          const uid = (row as { usuario_id: string }).usuario_id;
+          const vid = (row as { dashboard_view_id: string }).dashboard_view_id;
+          if (!usuarioDashboardMap[uid]) usuarioDashboardMap[uid] = [];
+          usuarioDashboardMap[uid].push(vid);
+        }
+      }
     }
 
     const usuariosConModulos = usuarios.map((u) => ({
       ...u,
       modulo_ids: esRolAdminEmpresa(u.rol) ? [...empresaModuloIds] : usuarioModulosMap[u.id] ?? [],
+      dashboard_view_ids: esRolAdminEmpresa(u.rol)
+        ? [...empresaDashboardViewIds]
+        : usuarioDashboardMap[u.id] ?? [],
     }));
 
     // 3. Módulos habilitados (empresa_modulos + modulos)
@@ -87,10 +113,27 @@ export async function GET(
       }));
     }
 
+    let dashboard_views: { id: string; nombre: string; slug: string; orden: number }[] = [];
+    if (empresaDashboardViewIds.length > 0) {
+      const { data: dvRows } = await supabase
+        .from("dashboard_views")
+        .select("id, nombre, slug, orden")
+        .in("id", empresaDashboardViewIds)
+        .order("orden", { ascending: true });
+      dashboard_views = (dvRows ?? []).map((m) => ({
+        id: m.id as string,
+        nombre: (m.nombre ?? "") as string,
+        slug: (m.slug ?? "") as string,
+        orden: Number((m as { orden?: unknown }).orden) || 0,
+      }));
+    }
+
     return NextResponse.json({
       empresa,
       usuarios: usuariosConModulos,
       modulos,
+      dashboard_views,
+      dashboard_view_ids: empresaDashboardViewIds,
     });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : "Error";
@@ -105,7 +148,7 @@ export async function PATCH(
   try {
     const { id } = await params;
     const body = await req.json();
-    const { nombre_empresa, ruc, plan, estado, modulo_ids } = body;
+    const { nombre_empresa, ruc, plan, estado, modulo_ids, dashboard_view_ids } = body;
 
     const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -178,6 +221,48 @@ export async function PATCH(
         for (const row of ums ?? []) {
           if (!allowed.has(row.modulo_id as string)) {
             await supabase.from("usuario_modulos").delete().eq("id", row.id as string);
+          }
+        }
+      }
+    }
+
+    // 3. Vistas de dashboard habilitadas para la empresa
+    if (Array.isArray(dashboard_view_ids)) {
+      await supabase.from("empresa_dashboard_views").delete().eq("empresa_id", id);
+
+      if (dashboard_view_ids.length > 0) {
+        const rows = dashboard_view_ids.map((dashboard_view_id: string) => ({
+          empresa_id: id,
+          dashboard_view_id,
+          activo: true,
+        }));
+        const { error: errDv } = await supabase.from("empresa_dashboard_views").insert(rows);
+        if (errDv) {
+          return NextResponse.json(
+            { error: `Empresa actualizada pero error en vistas de dashboard: ${errDv.message}` },
+            { status: 400 }
+          );
+        }
+      }
+
+      const { data: edActive } = await supabase
+        .from("empresa_dashboard_views")
+        .select("dashboard_view_id")
+        .eq("empresa_id", id)
+        .eq("activo", true);
+      const allowedDv = new Set(
+        (edActive ?? []).map((r) => String((r as { dashboard_view_id: string }).dashboard_view_id)).filter(Boolean)
+      );
+      const { data: userRows2 } = await supabase.from("usuarios").select("id").eq("empresa_id", id);
+      const uids2 = (userRows2 ?? []).map((r) => r.id as string);
+      if (uids2.length > 0) {
+        const { data: udvs } = await supabase
+          .from("usuario_dashboard_views")
+          .select("id, dashboard_view_id")
+          .in("usuario_id", uids2);
+        for (const row of udvs ?? []) {
+          if (!allowedDv.has(row.dashboard_view_id as string)) {
+            await supabase.from("usuario_dashboard_views").delete().eq("id", row.id as string);
           }
         }
       }

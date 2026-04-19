@@ -98,6 +98,14 @@ export async function getModulos(): Promise<Modulo[]> {
   return res.json();
 }
 
+export type DashboardViewCatalog = { id: string; nombre: string; slug: string; orden: number; activo?: boolean };
+
+export async function getDashboardViewsCatalog(): Promise<DashboardViewCatalog[]> {
+  const res = await fetchWithSupabaseSession("/api/admin/dashboard-views", { cache: "no-store" });
+  if (!res.ok) throw new Error("Error al cargar vistas de dashboard");
+  return res.json();
+}
+
 export interface CrearEmpresaData {
   nombre_empresa: string;
   plan?: string;
@@ -107,6 +115,8 @@ export interface CrearEmpresaData {
   password: string;
   nombre: string;
   modulo_ids: string[];
+  /** Vistas de tablero habilitadas; vacío = todas las del catálogo. */
+  dashboard_view_ids?: string[];
   /** Opcional: fragmento para nombre de schema (erp_<slug>_<8hex>); si no se envía se usa nombre_empresa. */
   schema_slug?: string;
 }
@@ -135,12 +145,15 @@ export interface UsuarioEmpresa {
   estado?: string;
   created_at: string;
   modulo_ids?: string[];
+  dashboard_view_ids?: string[];
 }
 
 export interface EmpresaDetalle {
   empresa: Empresa;
   usuarios: UsuarioEmpresa[];
   modulos: { id: string; nombre: string; slug: string }[];
+  dashboard_views?: { id: string; nombre: string; slug: string; orden: number }[];
+  dashboard_view_ids?: string[];
 }
 
 export async function getEmpresaById(id: string): Promise<EmpresaDetalle> {
@@ -158,6 +171,7 @@ export interface ActualizarEmpresaData {
   plan?: string;
   estado?: string;
   modulo_ids?: string[];
+  dashboard_view_ids?: string[];
 }
 
 export async function actualizarEmpresa(id: string, data: ActualizarEmpresaData): Promise<void> {
@@ -180,6 +194,8 @@ export interface ActualizarUsuarioData {
   email?: string;
   estado?: "activo" | "inactivo";
   modulo_ids?: string[];
+  dashboard_view_ids?: string[];
+  default_dashboard_view_id?: string | null;
 }
 
 export async function actualizarUsuario(id: string, data: ActualizarUsuarioData): Promise<void> {

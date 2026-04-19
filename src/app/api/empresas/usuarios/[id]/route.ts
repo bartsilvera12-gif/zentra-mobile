@@ -6,6 +6,10 @@ import {
   esRolAdminEmpresa,
   filterModuloIdsForEmpresa,
 } from "@/lib/modulos/resolve-effective-modules";
+import {
+  filterDashboardViewIdsForEmpresa,
+} from "@/lib/dashboard/resolve-effective-dashboard-views";
+import { syncUsuarioDashboardViews } from "@/lib/dashboard/sync-usuario-dashboard-views";
 import { createServiceRoleClientForEmpresa } from "@/lib/supabase/empresa-data-schema";
 
 const ERP_ROLES = ["usuario", "supervisor", "administrador"] as const;
@@ -132,6 +136,47 @@ export async function GET(
       }
     }
 
+    let dashboard_views_empresa: { id: string; nombre: string; slug: string; orden: number }[] = [];
+    let dashboard_view_ids: string[] = [];
+    let default_dashboard_view_id: string | null = null;
+
+    if (usuario.empresa_id) {
+      const { data: edvEmp } = await supabase
+        .from("empresa_dashboard_views")
+        .select("dashboard_view_id")
+        .eq("empresa_id", usuario.empresa_id)
+        .eq("activo", true);
+      const edvIds = (edvEmp ?? [])
+        .map((r) => (r as { dashboard_view_id: string }).dashboard_view_id)
+        .filter(Boolean);
+      if (edvIds.length > 0) {
+        const { data: dvCat } = await supabase
+          .from("dashboard_views")
+          .select("id, nombre, slug, orden")
+          .in("id", edvIds)
+          .order("orden", { ascending: true });
+        dashboard_views_empresa = (dvCat ?? []).map((m) => ({
+          id: m.id as string,
+          nombre: (m.nombre ?? "") as string,
+          slug: (m.slug ?? "") as string,
+          orden: Number((m as { orden?: unknown }).orden) || 0,
+        }));
+      }
+
+      const { data: udvRows } = await supabase
+        .from("usuario_dashboard_views")
+        .select("dashboard_view_id, es_default")
+        .eq("usuario_id", id);
+      dashboard_view_ids = (udvRows ?? []).map((r) => (r as { dashboard_view_id: string }).dashboard_view_id);
+      if (esRolAdminEmpresa(usuario.rol)) {
+        dashboard_view_ids = edvIds;
+      }
+      const def = (udvRows ?? []).find(
+        (r) => (r as { es_default?: boolean }).es_default === true
+      ) as { dashboard_view_id?: string } | undefined;
+      default_dashboard_view_id = def?.dashboard_view_id ?? null;
+    }
+
     const es_admin_empresa = esRolAdminEmpresa(usuario.rol);
 
     const puede_editar_modulos =
@@ -186,6 +231,9 @@ export async function GET(
       ...rest,
       modulo_ids,
       modulos_empresa,
+      dashboard_views_empresa,
+      dashboard_view_ids,
+      default_dashboard_view_id,
       puede_editar_modulos,
       puede_editar_rol,
       es_admin_empresa,
@@ -226,6 +274,7 @@ export async function PATCH(
 
     const body = await req.json();
     const moduloIdsProvided = Object.prototype.hasOwnProperty.call(body, "modulo_ids");
+    const dashIdsProvided = Object.prototype.hasOwnProperty.call(body, "dashboard_view_ids");
     const {
       nombre,
       email,
@@ -239,6 +288,8 @@ export async function PATCH(
       area,
       estado,
       modulo_ids,
+      dashboard_view_ids,
+      default_dashboard_view_id,
       rol: rolBody,
     } = body;
 
@@ -391,6 +442,27 @@ export async function PATCH(
           return NextResponse.json({ error: errIns.message }, { status: 400 });
         }
       }
+    }
+
+    if (
+      dashIdsProvided &&
+      Array.isArray(dashboard_view_ids) &&
+      usuario.empresa_id &&
+      !esRolAdminEmpresa(finalRol) &&
+      puedeModulos
+    ) {
+      const validDv = await filterDashboardViewIdsForEmpresa(
+        supabase,
+        usuario.empresa_id,
+        dashboard_view_ids
+      );
+      const defRaw =
+        default_dashboard_view_id === null || default_dashboard_view_id === undefined
+          ? null
+          : String(default_dashboard_view_id).trim();
+      let defId = defRaw && validDv.includes(defRaw) ? defRaw : null;
+      if (!defId && validDv.length === 1) defId = validDv[0];
+      await syncUsuarioDashboardViews(supabase, id, validDv, defId);
     }
 
     const omnicanalProvided =

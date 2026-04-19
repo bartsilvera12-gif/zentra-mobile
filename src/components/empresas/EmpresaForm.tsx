@@ -2,7 +2,12 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { getModulos, crearEmpresa } from "@/lib/empresas/actions";
+import {
+  crearEmpresa,
+  getDashboardViewsCatalog,
+  getModulos,
+  type DashboardViewCatalog,
+} from "@/lib/empresas/actions";
 import type { Modulo } from "@/lib/empresas/actions";
 
 const fLabel = "block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1";
@@ -13,6 +18,8 @@ export default function EmpresaForm() {
   const envioEnCurso = useRef(false);
   const [modulos, setModulos] = useState<Modulo[]>([]);
   const [cargandoModulos, setCargandoModulos] = useState(true);
+  const [dashboardViews, setDashboardViews] = useState<DashboardViewCatalog[]>([]);
+  const [cargandoDashboard, setCargandoDashboard] = useState(true);
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -25,6 +32,7 @@ export default function EmpresaForm() {
     password: "",
     nombre: "",
     modulo_ids: [] as string[],
+    dashboard_view_ids: [] as string[],
   });
 
   useEffect(() => {
@@ -34,11 +42,35 @@ export default function EmpresaForm() {
       .finally(() => setCargandoModulos(false));
   }, []);
 
+  useEffect(() => {
+    getDashboardViewsCatalog()
+      .then(setDashboardViews)
+      .catch(console.error)
+      .finally(() => setCargandoDashboard(false));
+  }, []);
+
+  useEffect(() => {
+    if (dashboardViews.length === 0) return;
+    setForm((p) =>
+      p.dashboard_view_ids.length > 0 ? p : { ...p, dashboard_view_ids: dashboardViews.map((d) => d.id) }
+    );
+  }, [dashboardViews]);
+
   function handleChange(e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) {
     const { name, value, type } = e.target;
     if (type === "checkbox") {
       const checked = (e.target as HTMLInputElement).checked;
       const id = (e.target as HTMLInputElement).value;
+      const field = (e.target as HTMLInputElement).getAttribute("data-field");
+      if (field === "dashboard_view") {
+        setForm((prev) => ({
+          ...prev,
+          dashboard_view_ids: checked
+            ? [...prev.dashboard_view_ids, id]
+            : prev.dashboard_view_ids.filter((x) => x !== id),
+        }));
+        return;
+      }
       setForm((prev) => ({
         ...prev,
         modulo_ids: checked
@@ -77,6 +109,7 @@ export default function EmpresaForm() {
         password: form.password,
         nombre: form.nombre.trim(),
         modulo_ids: form.modulo_ids,
+        dashboard_view_ids: form.dashboard_view_ids,
       });
       router.push("/admin/empresas");
     } catch (err: unknown) {
@@ -226,6 +259,43 @@ export default function EmpresaForm() {
                   className="rounded border-gray-300"
                 />
                 <span className="text-sm text-gray-700">{m.nombre ?? m.name ?? m.id}</span>
+              </label>
+            ))}
+          </div>
+        )}
+      </section>
+
+      <section className="bg-white rounded-xl border border-gray-100 shadow-sm p-6">
+        <div className="flex items-center gap-2 mb-5 pb-2 border-b border-gray-100">
+          <span className="text-base">📊</span>
+          <h3 className="text-sm font-bold text-gray-700 uppercase tracking-wider">
+            Vistas del dashboard
+          </h3>
+        </div>
+        <p className="text-xs text-slate-500 mb-3">
+          Definí qué pestañas del tablero principal tendrá esta empresa. Si no marcás ninguna, se habilitan todas
+          las vistas del catálogo.
+        </p>
+        {cargandoDashboard ? (
+          <p className="text-sm text-gray-400">Cargando vistas…</p>
+        ) : dashboardViews.length === 0 ? (
+          <p className="text-sm text-gray-400">No hay vistas en el catálogo.</p>
+        ) : (
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            {dashboardViews.map((d) => (
+              <label
+                key={d.id}
+                className="flex items-center gap-2 cursor-pointer p-2 rounded-lg hover:bg-gray-50 transition-colors"
+              >
+                <input
+                  type="checkbox"
+                  data-field="dashboard_view"
+                  value={d.id}
+                  checked={form.dashboard_view_ids.includes(d.id)}
+                  onChange={handleChange}
+                  className="rounded border-gray-300"
+                />
+                <span className="text-sm text-gray-700">{d.nombre}</span>
               </label>
             ))}
           </div>

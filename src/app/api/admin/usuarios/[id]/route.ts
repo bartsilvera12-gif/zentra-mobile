@@ -5,6 +5,8 @@ import {
   esRolAdminEmpresa,
   filterModuloIdsForEmpresa,
 } from "@/lib/modulos/resolve-effective-modules";
+import { filterDashboardViewIdsForEmpresa } from "@/lib/dashboard/resolve-effective-dashboard-views";
+import { syncUsuarioDashboardViews } from "@/lib/dashboard/sync-usuario-dashboard-views";
 
 function getSupabase() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -59,7 +61,16 @@ export async function PATCH(
   try {
     const { id } = await params;
     const body = await req.json();
-    const { nombre, email, telefono, fecha_nacimiento, estado, modulo_ids } = body;
+    const {
+      nombre,
+      email,
+      telefono,
+      fecha_nacimiento,
+      estado,
+      modulo_ids,
+      dashboard_view_ids,
+      default_dashboard_view_id,
+    } = body;
 
     const supabase = getSupabase();
 
@@ -140,6 +151,28 @@ export async function PATCH(
           return NextResponse.json({ error: `Error al guardar módulos: ${errMod.message}` }, { status: 400 });
         }
       }
+    }
+
+    const dashProvided = Object.prototype.hasOwnProperty.call(body, "dashboard_view_ids");
+    if (dashProvided && Array.isArray(dashboard_view_ids) && !esRolAdminEmpresa(usuario.rol)) {
+      if (!usuario.empresa_id) {
+        return NextResponse.json(
+          { error: "El usuario no tiene empresa; no se pueden asignar vistas de dashboard." },
+          { status: 400 }
+        );
+      }
+      const validDv = await filterDashboardViewIdsForEmpresa(
+        supabase,
+        usuario.empresa_id,
+        dashboard_view_ids
+      );
+      const defRaw =
+        default_dashboard_view_id === null || default_dashboard_view_id === undefined
+          ? null
+          : String(default_dashboard_view_id).trim();
+      let defId = defRaw && validDv.includes(defRaw) ? defRaw : null;
+      if (!defId && validDv.length === 1) defId = validDv[0];
+      await syncUsuarioDashboardViews(supabase, id, validDv, defId);
     }
 
     return NextResponse.json({ success: true });

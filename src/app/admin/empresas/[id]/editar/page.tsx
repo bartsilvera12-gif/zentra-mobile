@@ -6,9 +6,11 @@ import { useEffect, useState } from "react";
 import {
   getEmpresaById,
   getModulos,
+  getDashboardViewsCatalog,
   actualizarEmpresa,
   actualizarUsuario,
   resetearPasswordUsuario,
+  type DashboardViewCatalog,
 } from "@/lib/empresas/actions";
 import type { Modulo, UsuarioEmpresa } from "@/lib/empresas/actions";
 
@@ -54,24 +56,33 @@ export default function EditarEmpresaPage() {
   const [nuevaPassword, setNuevaPassword] = useState("");
   const [guardandoPassword, setGuardandoPassword] = useState(false);
 
+  const [dashCatalog, setDashCatalog] = useState<DashboardViewCatalog[]>([]);
+
   const [form, setForm] = useState({
     nombre_empresa: "",
     plan: "",
     ruc: "",
     estado: "activo" as "activo" | "inactivo",
     modulo_ids: [] as string[],
+    dashboard_view_ids: [] as string[],
   });
 
   useEffect(() => {
-    Promise.all([getModulos(), getEmpresaById(id)])
-      .then(([mods, detalle]) => {
+    Promise.all([getModulos(), getDashboardViewsCatalog(), getEmpresaById(id)])
+      .then(([mods, dvCat, detalle]) => {
         setModulos(mods);
+        setDashCatalog(dvCat ?? []);
+        const dvIds =
+          detalle.dashboard_view_ids?.length ?
+            detalle.dashboard_view_ids
+          : (detalle.dashboard_views ?? []).map((v) => v.id);
         setForm({
           nombre_empresa: detalle.empresa.nombre_empresa ?? "",
           plan: detalle.empresa.plan ?? "",
           ruc: detalle.empresa.ruc ?? "",
           estado: (detalle.empresa.estado as "activo" | "inactivo") ?? "activo",
           modulo_ids: detalle.modulos.map((m) => m.id),
+          dashboard_view_ids: dvIds,
         });
         const adminUser = detalle.usuarios.find((u) => u.rol === "admin") ?? null;
         setAdmin(adminUser);
@@ -96,6 +107,16 @@ export default function EditarEmpresaPage() {
     if (type === "checkbox") {
       const checked = (e.target as HTMLInputElement).checked;
       const modId = (e.target as HTMLInputElement).value;
+      const field = (e.target as HTMLInputElement).getAttribute("data-field");
+      if (field === "dashboard_view") {
+        setForm((prev) => ({
+          ...prev,
+          dashboard_view_ids: checked
+            ? [...prev.dashboard_view_ids, modId]
+            : prev.dashboard_view_ids.filter((x) => x !== modId),
+        }));
+        return;
+      }
       setForm((prev) => ({
         ...prev,
         modulo_ids: checked
@@ -124,6 +145,7 @@ export default function EditarEmpresaPage() {
         ruc: form.ruc.trim() || undefined,
         estado: form.estado,
         modulo_ids: form.modulo_ids,
+        dashboard_view_ids: form.dashboard_view_ids,
       });
       router.push(`/admin/empresas/${id}`);
     } catch (err: unknown) {
@@ -552,6 +574,43 @@ export default function EditarEmpresaPage() {
                     className="rounded border-gray-300"
                   />
                   <span className="text-sm text-gray-700">{m.nombre ?? m.name ?? m.id}</span>
+                </label>
+              ))}
+            </div>
+          )}
+        </section>
+
+        <section className="bg-white rounded-xl border border-gray-100 shadow-sm p-6">
+          <div className="flex items-center gap-2 mb-5 pb-2 border-b border-gray-100">
+            <span className="text-base">📊</span>
+            <h3 className="text-sm font-bold text-gray-700 uppercase tracking-wider">
+              Vistas del dashboard
+            </h3>
+          </div>
+          <p className="text-xs text-slate-500 mb-3 max-w-2xl">
+            Pestañas del tablero principal disponibles para la empresa. Los usuarios solo podrán asignarse vistas
+            incluidas aquí.
+          </p>
+          {cargandoModulos ? (
+            <p className="text-sm text-gray-400">Cargando…</p>
+          ) : dashCatalog.length === 0 ? (
+            <p className="text-sm text-gray-400">No hay vistas en el catálogo.</p>
+          ) : (
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              {dashCatalog.map((d) => (
+                <label
+                  key={d.id}
+                  className="flex items-center gap-2 cursor-pointer p-2 rounded-lg hover:bg-gray-50 transition-colors"
+                >
+                  <input
+                    type="checkbox"
+                    data-field="dashboard_view"
+                    value={d.id}
+                    checked={form.dashboard_view_ids.includes(d.id)}
+                    onChange={handleChange}
+                    className="rounded border-gray-300"
+                  />
+                  <span className="text-sm text-gray-700">{d.nombre}</span>
                 </label>
               ))}
             </div>

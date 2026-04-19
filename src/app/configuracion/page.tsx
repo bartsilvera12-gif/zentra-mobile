@@ -8,6 +8,7 @@ import {
   Inbox,
   LayoutGrid,
   MessageCircle,
+  PieChart,
   Receipt,
   SlidersHorizontal,
   UsersRound,
@@ -113,6 +114,16 @@ export default function ConfiguracionPage() {
               icon={BarChart3}
               badge={editorBadge}
               href="/configuracion/metricas"
+            />
+          </li>
+          <li>
+            <SettingsModuleCard
+              title="Vistas del dashboard"
+              subtitle="EMPRESA · TABLERO PRINCIPAL"
+              description="Definí qué pestañas del inicio tiene cada empresa y qué puede ver cada usuario (super admin en Empresas; administrador en Usuarios)."
+              icon={PieChart}
+              badge={{ label: "Empresa / usuarios", tone: "neutral" as const }}
+              href="/usuarios"
             />
           </li>
           <li>

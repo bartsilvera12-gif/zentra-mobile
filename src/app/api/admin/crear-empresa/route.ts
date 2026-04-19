@@ -52,6 +52,7 @@ export async function POST(req: Request) {
       password,
       nombre,
       modulo_ids,
+      dashboard_view_ids,
       schema_slug,
     } = body;
 
@@ -209,6 +210,31 @@ export async function POST(req: Request) {
     if (!ensured.ok) {
       await cleanupFailure(supabase);
       return NextResponse.json({ error: ensured.error }, { status: 400 });
+    }
+
+    const dvRequested = [...new Set(Array.isArray(dashboard_view_ids) ? dashboard_view_ids : [])];
+    const { data: catDv } = await supabase.from("dashboard_views").select("id").eq("activo", true);
+    const catDvSet = new Set(
+      (catDv ?? []).map((r) => (r as { id: string }).id).filter((x): x is string => typeof x === "string")
+    );
+    let dvToEnable = dvRequested.filter((x) => catDvSet.has(x));
+    if (dvToEnable.length === 0 && catDvSet.size > 0) {
+      dvToEnable = [...catDvSet];
+    }
+    if (dvToEnable.length > 0) {
+      const dvRows = dvToEnable.map((dashboard_view_id: string) => ({
+        empresa_id: empresaId,
+        dashboard_view_id,
+        activo: true,
+      }));
+      const { error: errDvEmp } = await supabase.from("empresa_dashboard_views").insert(dvRows);
+      if (errDvEmp) {
+        await cleanupFailure(supabase);
+        return NextResponse.json(
+          { error: `Error al asignar vistas de dashboard: ${errDvEmp.message}` },
+          { status: 400 }
+        );
+      }
     }
 
     return NextResponse.json({

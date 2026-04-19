@@ -49,6 +49,10 @@ export type UsuarioFormValues = {
   password2: string;
   /** Solo edición: módulos asignados (ids). */
   modulo_ids: string[];
+  /** Vistas de dashboard permitidas (ids de catálogo). */
+  dashboard_view_ids: string[];
+  /** Vista por defecto al abrir el tablero (id de catálogo). */
+  default_dashboard_view_id: string;
 };
 
 export function emptyUsuarioForm(): UsuarioFormValues {
@@ -68,6 +72,8 @@ export function emptyUsuarioForm(): UsuarioFormValues {
     password: "",
     password2: "",
     modulo_ids: [],
+    dashboard_view_ids: [],
+    default_dashboard_view_id: "",
   };
 }
 
