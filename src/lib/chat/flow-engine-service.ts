@@ -9,6 +9,8 @@ import {
   sendWhatsAppChoiceMessage,
   sendWhatsAppImage,
   sendWhatsAppInteractiveButtons,
+  WA_META_LIST_ROW_TITLE_MAX,
+  WA_META_REPLY_TITLE_MAX,
 } from "@/lib/chat/whatsapp-send-service";
 import {
   resolveOutboundTextContextFromIds,
@@ -783,7 +785,9 @@ export function createFlowEngine(ctx: FlowEngineContext) {
       | undefined;
     const listTitle = intr?.list_reply?.title?.trim();
     if (listTitle) {
-      const matches = options.filter((o) => whatsAppInteractiveTitleFromOption(o).trim() === listTitle);
+      const metaTitle = (o: FlowOption) =>
+        whatsAppInteractiveTitleFromOption(o).trim().slice(0, WA_META_LIST_ROW_TITLE_MAX);
+      const matches = options.filter((o) => metaTitle(o) === listTitle);
       if (matches.length === 1) {
         console.info("[flow-runtime]", "option_match_unique_list_title", { listTitle });
         return matches[0];
@@ -791,7 +795,10 @@ export function createFlowEngine(ctx: FlowEngineContext) {
     }
     const btnTitle = intr?.button_reply?.title?.trim();
     if (btnTitle) {
-      const matches = options.filter((o) => whatsAppInteractiveTitleFromOption(o).trim() === btnTitle);
+      /** Meta trunca reply buttons al enviar; el id devuelto debe matchear primero; si no, igual que envío saliente. */
+      const metaTitle = (o: FlowOption) =>
+        whatsAppInteractiveTitleFromOption(o).trim().slice(0, WA_META_REPLY_TITLE_MAX);
+      const matches = options.filter((o) => metaTitle(o) === btnTitle);
       if (matches.length === 1) {
         console.info("[flow-runtime]", "option_match_unique_button_title", { btnTitle });
         return matches[0];

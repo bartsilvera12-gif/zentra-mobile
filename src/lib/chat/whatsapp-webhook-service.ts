@@ -1004,8 +1004,11 @@ export async function processInboundWebhookValue(
       /**
        * Fuera de horario: evitamos amontonar respuesta automática + primer nodo del flujo en el mismo tick.
        * Mensaje de bienvenida ya no bloquea el motor (antes el primer "hola" solo enviaba welcome y cortaba el flujo).
+       * Clic en botón/lista: NUNCA omitir el motor solo por `away_message`: el cliente debe avanzar (resumen, etc.).
        */
-      const skipFlowForBusinessAutomation = businessAutomationResult.sentAwayMessage;
+      const interactiveInboundMetaId = extractMetaButtonId(msg);
+      const skipFlowForBusinessAutomation =
+        businessAutomationResult.sentAwayMessage && !interactiveInboundMetaId;
 
       console.info(logW, "conversation_updated_unread", { conversationId });
 
@@ -1144,19 +1147,19 @@ export async function processInboundWebhookValue(
           conversationId,
           sentWelcome: businessAutomationResult.sentWelcome,
           sentAwayMessage: businessAutomationResult.sentAwayMessage,
+          interactive_inbound_meta_id: interactiveInboundMetaId,
         });
       } else {
-        const metaButtonIdInbound = extractMetaButtonId(msg);
         /**
          * Clic en botón/lista: procesar ANTES que `ensureCurrentNodePresented`.
          * Si `ensure` corre primero y falta `node_sent` en BD, se re-envía el mismo menú interactivo
          * en el mismo webhook y el cliente ve el paso repetido sin avanzar al siguiente nodo.
          */
-        if (metaButtonIdInbound) {
+        if (interactiveInboundMetaId) {
           console.info(logW, "flow_trigger: interactive_reply_first", {
             conversationId,
             empresaId,
-            metaButtonId: metaButtonIdInbound,
+            metaButtonId: interactiveInboundMetaId,
             currentNode:
               (existingConv as { flow_current_node?: string | null }).flow_current_node ??
               "inicio",
@@ -1164,12 +1167,12 @@ export async function processInboundWebhookValue(
           const interactiveResult = await flowEngine.processInteractiveReply({
             conversationId,
             empresaId,
-            metaButtonId: metaButtonIdInbound,
+            metaButtonId: interactiveInboundMetaId,
             rawPayload: msg as unknown as Record<string, unknown>,
           });
           console.info(logW, "flow_result: interactive", {
             conversationId,
-            metaButtonId: metaButtonIdInbound,
+            metaButtonId: interactiveInboundMetaId,
             status: interactiveResult.status,
             nextNodeCode: interactiveResult.nextNodeCode ?? null,
           });
@@ -1202,7 +1205,7 @@ export async function processInboundWebhookValue(
           }
         }
 
-        if (!metaButtonIdInbound) {
+        if (!interactiveInboundMetaId) {
           if (message_type === "text") {
             const skipAfterRestartKeyword = restartKeywordMatch && restartedThisMessage;
             const skipBecauseNonCapturePresent =
