@@ -190,10 +190,9 @@ function toSimpleDraftFromPayload(option: FlowNodeOption): OptionSimpleDraft {
     promo_nombre:
       p.promo_nombre === undefined || p.promo_nombre === null ? "" : String(p.promo_nombre),
     precio_regular: regRaw === undefined || regRaw === null ? "" : String(regRaw),
+    /** Solo datos persistidos en payload; no copiar `option.label` (evita fusionar con «Texto del botón»). */
     opcion_label:
-      p.opcion_label === undefined || p.opcion_label === null
-        ? option.label
-        : String(p.opcion_label),
+      p.opcion_label === undefined || p.opcion_label === null ? "" : String(p.opcion_label),
   };
 }
 
@@ -207,8 +206,7 @@ function stripSorteoFinalizeKeys(p: Record<string, unknown>): Record<string, unk
 
 function buildPayloadFromSimple(
   existingPayload: Record<string, unknown> | undefined,
-  draft: OptionSimpleDraft,
-  fallbackLabel: string
+  draft: OptionSimpleDraft
 ): Record<string, unknown> {
   const base: Record<string, unknown> = { ...(existingPayload ?? {}) };
   const cantidad = draft.cantidad.trim();
@@ -216,7 +214,8 @@ function buildPayloadFromSimple(
   const monto = draft.monto.trim();
   const promoNombre = draft.promo_nombre.trim();
   const precioRegular = draft.precio_regular.trim();
-  const opcionLabel = (draft.opcion_label.trim() || fallbackLabel).trim();
+  /** «Etiqueta seleccionada» únicamente; el texto visible va en `chat_flow_options.label`, no aquí. */
+  const etiquetaInterna = draft.opcion_label.trim();
 
   if (cantidad) base.cantidad = Number.isFinite(Number(cantidad)) ? Number(cantidad) : cantidad;
   else delete base.cantidad;
@@ -247,7 +246,7 @@ function buildPayloadFromSimple(
     delete base.precio_regular_referencia;
     delete base.precio_lista;
   }
-  if (opcionLabel) base.opcion_label = opcionLabel;
+  if (etiquetaInterna) base.opcion_label = etiquetaInterna;
   else delete base.opcion_label;
 
   return base;
@@ -623,29 +622,24 @@ export default function FlowEditorPage() {
       setOptionPayloadDrafts((prev) => ({ ...prev, [liveOpt.id]: stringifyOptionPayload(payloadParsed) }));
     } else {
       const draft = optionSimpleDrafts[liveOpt.id] ?? toSimpleDraftFromPayload(liveOpt);
-      payloadParsed = stripSorteoFinalizeKeys(
-        buildPayloadFromSimple(liveOpt.option_payload, draft, liveOpt.label)
-      );
+      payloadParsed = stripSorteoFinalizeKeys(buildPayloadFromSimple(liveOpt.option_payload, draft));
       setOptionPayloadDrafts((prev) => ({ ...prev, [liveOpt.id]: stringifyOptionPayload(payloadParsed) }));
     }
 
-    /**
-     * Fuente de verdad del texto visible (WhatsApp + columna `label`):
-     * 1) Campo «Texto del botón» (`liveOpt.label`) — si el usuario lo editó, gana sobre el borrador.
-     * 2) opcion_label ya resuelto en payload (modo avanzado / simple).
-     * Antes: `payloadOpc || top` hacía que un opcion_label viejo «Nueva opción» del borrador
-     * sobrescribiera el título nuevo aunque el usuario hubiera cambiado solo el input superior.
-     */
-    const topLabel = liveOpt.label.trim();
-    const payloadOpc =
-      typeof payloadParsed.opcion_label === "string" ? payloadParsed.opcion_label.trim() : "";
-    const effectiveDisplayLabel = (topLabel || payloadOpc).slice(0, 500);
-    if (!effectiveDisplayLabel) {
-      throw new Error("Completá el texto del botón u opción antes de guardar.");
+    /** Texto visible WhatsApp → solo columna `label`. No mezclar con `option_payload.opcion_label`. */
+    const buttonLabel = liveOpt.label.trim().slice(0, 500);
+    if (!buttonLabel) {
+      throw new Error('Completá «Texto del botón» (o texto de la opción en lista) antes de guardar.');
     }
-    payloadParsed = { ...payloadParsed, opcion_label: effectiveDisplayLabel };
 
-    const metaButtonId = resolveUniqueMetaButtonId(live, liveOpt.id, effectiveDisplayLabel);
+    const metaButtonId = resolveUniqueMetaButtonId(live, liveOpt.id, buttonLabel);
+    console.info("[flow-options]", "save_option_payload", {
+      option_id: liveOpt.id,
+      label_column: buttonLabel,
+      opcion_label_in_payload:
+        typeof payloadParsed.opcion_label === "string" ? payloadParsed.opcion_label : null,
+      mode,
+    });
     const res = await fetchWithSupabaseSession(
       `/api/chat/flows/${encodeURIComponent(flowCode)}/nodes/${encodeURIComponent(live.node_code)}/options/${liveOpt.id}`,
       {
@@ -653,7 +647,7 @@ export default function FlowEditorPage() {
         headers: { "Content-Type": "application/json" },
         credentials: "same-origin",
         body: JSON.stringify({
-          label: effectiveDisplayLabel,
+          label: buttonLabel,
           meta_button_id: metaButtonId,
           next_node_code: nextCode,
           sort_order: liveOpt.sort_order,
@@ -682,7 +676,7 @@ export default function FlowEditorPage() {
       );
     }
     setError(null);
-    setSuccess(`Botón "${effectiveDisplayLabel}" guardado.`);
+    setSuccess(`Botón "${buttonLabel}" guardado.`);
   }
 
   async function createOption(node: FlowNode) {
@@ -1684,13 +1678,6 @@ export default function FlowEditorPage() {
                                     }
                               )
                             );
-                            setOptionSimpleDrafts((prev) => ({
-                              ...prev,
-                              [opt.id]: {
-                                ...(prev[opt.id] ?? toSimpleDraftFromPayload(opt)),
-                                opcion_label: v,
-                              },
-                            }));
                           }}
                           placeholder={node.node_type === "list" ? "Ej: Plan Premium" : "Ej: Comprar entrada"}
                         />
@@ -1886,7 +1873,9 @@ export default function FlowEditorPage() {
                               <label className="block text-[11px] text-slate-500 mb-1">Etiqueta seleccionada</label>
                               <input
                                 className="border border-slate-200 rounded-lg px-2 py-1.5 text-sm w-full"
-                                value={optionSimpleDrafts[opt.id]?.opcion_label ?? opt.label}
+                                value={
+                                  (optionSimpleDrafts[opt.id] ?? toSimpleDraftFromPayload(opt)).opcion_label
+                                }
                                 onChange={(e) =>
                                   setOptionSimpleDrafts((prev) => ({
                                     ...prev,
@@ -1896,7 +1885,7 @@ export default function FlowEditorPage() {
                                     },
                                   }))
                                 }
-                                placeholder={opt.label}
+                                placeholder="Ej: 1 boleta 10.000 Gs (interno / placeholders)"
                               />
                             </div>
                             <div className="md:col-span-2">

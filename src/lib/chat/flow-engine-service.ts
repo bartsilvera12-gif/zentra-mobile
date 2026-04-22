@@ -1536,7 +1536,17 @@ export function createFlowEngine(ctx: FlowEngineContext) {
             : JSON.stringify(v ?? ""),
         ]);
       if (!payloadEntries.some(([k]) => k === "opcion_label")) {
-        payloadEntries.push(["opcion_label", selected.label]);
+        const rawPl =
+          selected.option_payload && typeof selected.option_payload === "object"
+            ? (selected.option_payload as Record<string, unknown>)
+            : {};
+        const fromPayload =
+          typeof rawPl.opcion_label === "string" && rawPl.opcion_label.trim()
+            ? rawPl.opcion_label.trim()
+            : "";
+        /** Legacy: sin `opcion_label` en payload, placeholders usan el texto visible (`label`). */
+        const fallback = (selected.label ?? "").trim();
+        payloadEntries.push(["opcion_label", fromPayload || fallback]);
       }
       payloadEntries = augmentCantidadFromInteractiveOption(payloadEntries, selected);
       payloadEntries = augmentSorteoPricingFromInteractiveOption(payloadEntries);
