@@ -91,7 +91,7 @@ export default function ConfiguracionFacturacionPage() {
   return (
     <GlobalConfigSubpageShell
       title="Facturación"
-      description="Numeración, condiciones de cobro y enlace a SIFEN / facturación electrónica."
+      description="SIFEN, numeración, condiciones de cobro, y (en tarjeta propia) la opción de gestión tributaria de clientes."
     >
       {success && (
         <div className="flex items-center gap-2 rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">
@@ -121,6 +121,63 @@ export default function ConfiguracionFacturacionPage() {
             >
               Configurar SIFEN
             </Link>
+          </div>
+        </ConfigFormCard>
+
+        <ConfigFormCard>
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+            <div className="flex min-w-0 gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-indigo-100 bg-indigo-50 text-indigo-800">
+                <Users className="h-5 w-5" aria-hidden />
+              </div>
+              <div className="min-w-0">
+                <ConfigSectionTitle>Clientes — perfil tributario</ConfigSectionTitle>
+                <p className="mt-1 text-sm text-slate-600 leading-relaxed max-w-2xl">
+                  Activá acá el módulo opcional: en <strong>Clientes → Nuevo / Editar</strong> podrás asignar obligaciones
+                  (IVA, IRE, etc.) y honorarios, sin mezclar con la ficha comercial. Solo un administrador de la empresa
+                  puede encender o apagar esta opción.
+                </p>
+              </div>
+            </div>
+            <div className="flex w-full min-w-0 sm:w-auto flex-col sm:items-end gap-2 shrink-0 sm:pl-2">
+              {gestionErr && <p className="text-xs text-red-600 max-w-sm text-left sm:text-right">{gestionErr}</p>}
+              {gestionCargando ? (
+                <span className="text-xs text-slate-400">Cargando…</span>
+              ) : (
+                <div className="w-full sm:w-auto rounded-xl border border-slate-200/80 bg-white px-4 py-3 flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4">
+                  <span className="text-sm font-semibold text-slate-800 sm:whitespace-nowrap">
+                    Activar gestión tributaria de clientes
+                  </span>
+                  <label
+                    className={`flex items-center justify-end gap-3 ${esAdmin ? "cursor-pointer" : "cursor-not-allowed"} select-none`}
+                  >
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-label="Activar gestión tributaria de clientes"
+                      aria-checked={gestionTributaria === true}
+                      disabled={!esAdmin || gestionGuardando || gestionTributaria === null}
+                      onClick={() => void toggleGestionTributaria(!gestionTributaria)}
+                      className={`relative inline-flex h-8 w-12 shrink-0 rounded-full transition-colors ${
+                        gestionTributaria ? "bg-indigo-600" : "bg-slate-300"
+                      } ${!esAdmin || gestionTributaria === null ? "opacity-50" : ""}`}
+                    >
+                      <span
+                        className={`inline-block h-6 w-6 translate-y-1 rounded-full bg-white shadow transition-transform ${
+                          gestionTributaria ? "translate-x-5" : "translate-x-1"
+                        }`}
+                      />
+                    </button>
+                  </label>
+                </div>
+              )}
+              {!esAdmin && !gestionCargando && gestionTributaria != null && (
+                <p className="text-xs text-amber-700/90 max-w-xs text-left sm:text-right">
+                  Iniciá sesión como administrador de la empresa para cambiar esta opción.
+                </p>
+              )}
+              {gestionGuardando && <span className="text-xs text-slate-400">Guardando…</span>}
+            </div>
           </div>
         </ConfigFormCard>
 
@@ -219,52 +276,6 @@ export default function ConfiguracionFacturacionPage() {
                     </span>
                   </div>
                   <ConfigHelpText>Porcentaje mensual aplicado sobre el saldo vencido impago.</ConfigHelpText>
-                </div>
-              </div>
-
-              <div className="mt-6 rounded-xl border border-indigo-100 bg-indigo-50/40 p-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                <div className="flex gap-3 min-w-0">
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-indigo-100 bg-white text-indigo-700">
-                    <Users className="h-5 w-5" aria-hidden />
-                  </div>
-                  <div className="min-w-0">
-                    <p className="text-sm font-semibold text-slate-900">Gestión tributaria de clientes</p>
-                    <p className="mt-1 text-xs text-slate-600 leading-relaxed">
-                      Cuando está activa, podés registrar por cliente obligaciones IVA/IRE y honorarios profesionales, sin mezclar datos con la ficha comercial.
-                      Solo administradores pueden cambiar esta opción.
-                    </p>
-                  </div>
-                </div>
-                <div className="flex flex-col items-start sm:items-end gap-2 shrink-0">
-                  {gestionErr && (
-                    <p className="text-xs text-red-600 max-w-[220px] text-right">{gestionErr}</p>
-                  )}
-                  {gestionCargando ? (
-                    <span className="text-xs text-slate-400">Cargando…</span>
-                  ) : (
-                    <label className={`flex items-center gap-3 ${esAdmin ? "cursor-pointer" : "opacity-60 cursor-not-allowed"}`}>
-                      <span className="text-xs font-medium text-slate-700 whitespace-nowrap">
-                        Activar gestión tributaria de clientes
-                      </span>
-                      <button
-                        type="button"
-                        role="switch"
-                        aria-checked={gestionTributaria === true}
-                        disabled={!esAdmin || gestionGuardando || gestionTributaria === null}
-                        onClick={() => void toggleGestionTributaria(!gestionTributaria)}
-                        className={`relative inline-flex h-7 w-12 shrink-0 rounded-full transition-colors ${
-                          gestionTributaria ? "bg-indigo-600" : "bg-slate-300"
-                        } disabled:opacity-50`}
-                      >
-                        <span
-                          className={`inline-block h-6 w-6 translate-y-0.5 rounded-full bg-white shadow transition-transform ${
-                            gestionTributaria ? "translate-x-5" : "translate-x-1"
-                          }`}
-                        />
-                      </button>
-                    </label>
-                  )}
-                  {gestionGuardando && <span className="text-xs text-slate-400">Guardando…</span>}
                 </div>
               </div>
             </div>

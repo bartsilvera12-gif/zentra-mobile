@@ -373,12 +373,20 @@ export default function ClienteDetailPage() {
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const on = await apiGetGestionTributariaClientes();
-      if (cancelled) return;
-      setGestionTributariaEmpresa(on);
-      if (on) {
-        const cat = await apiGetObligacionesTributariasCatalogo();
-        if (!cancelled) setCatalogoObligacionesTrib(cat);
+      try {
+        const on = await apiGetGestionTributariaClientes();
+        if (cancelled) return;
+        setGestionTributariaEmpresa(on);
+        if (on) {
+          const cat = await apiGetObligacionesTributariasCatalogo();
+          if (!cancelled) setCatalogoObligacionesTrib(cat);
+        }
+      } catch (e) {
+        if (cancelled) return;
+        setGestionTributariaEmpresa(false);
+        if (process.env.NODE_ENV === "development") {
+          console.error("[cliente] gestión tributaria:", e);
+        }
       }
     })();
     return () => {

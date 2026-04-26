@@ -105,12 +105,20 @@ function NuevoClienteForm() {
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const on = await apiGetGestionTributariaClientes();
-      if (cancelled) return;
-      setGestionTributariaEmpresa(on);
-      if (on) {
-        const cat = await apiGetObligacionesTributariasCatalogo();
-        if (!cancelled) setCatalogoObligaciones(cat);
+      try {
+        const on = await apiGetGestionTributariaClientes();
+        if (cancelled) return;
+        setGestionTributariaEmpresa(on);
+        if (on) {
+          const cat = await apiGetObligacionesTributariasCatalogo();
+          if (!cancelled) setCatalogoObligaciones(cat);
+        }
+      } catch (e) {
+        if (cancelled) return;
+        setGestionTributariaEmpresa(false);
+        if (process.env.NODE_ENV === "development") {
+          console.error("[nuevo cliente] gestión tributaria (¿migración/columna empresas?):", e);
+        }
       }
     })();
     return () => {

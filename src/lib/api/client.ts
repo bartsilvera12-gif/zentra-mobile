@@ -136,10 +136,24 @@ export async function apiBajaOperativaCliente(
   return { ok: true };
 }
 
+/**
+ * Bandera `zentra_erp.empresas.gestion_tributaria_clientes`.
+ * Ante error HTTP o columna/permiso, **lanza** (no devuelve false) para que la UI muestre el error y no se confunda con “función apagada”.
+ */
 export async function apiGetGestionTributariaClientes(): Promise<boolean> {
   const res = await fetchWithSupabaseSession("/api/empresas/gestion-tributaria-clientes", { cache: "no-store" });
-  const json = (await res.json()) as { success?: boolean; data?: { gestion_tributaria_clientes?: boolean } };
-  if (!res.ok || !json.success || !json.data) return false;
+  let json: { success?: boolean; data?: { gestion_tributaria_clientes?: boolean }; error?: string };
+  try {
+    json = (await res.json()) as typeof json;
+  } catch {
+    throw new Error("Respuesta inválida del servidor al leer gestión tributaria.");
+  }
+  if (!res.ok) {
+    throw new Error(json?.error ?? `Error ${res.status} al leer gestión tributaria de clientes.`);
+  }
+  if (json.success !== true || json.data == null) {
+    throw new Error(json?.error ?? "Respuesta inválida al leer gestión tributaria de clientes.");
+  }
   return Boolean(json.data.gestion_tributaria_clientes);
 }
 
