@@ -32,6 +32,11 @@ import {
   toCalendarDateStr,
 } from "@/lib/fechas/calendario";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
+import {
+  etiquetaVisibleTipoServicio,
+  type ClienteTipoServicioRow,
+} from "@/lib/clientes/tipo-servicio-catalogo";
+import { filasTiposDesdeSistemaEstatico, fetchTiposFormCliente } from "@/lib/clientes/fetch-tipos-servicio-form";
 import { getEtapas, getEtapaClasses, normalizeEtapaCodigo, type EtapaCrm } from "@/lib/crm/etapas";
 import {
   isDashboardTabSlug,
@@ -568,9 +573,12 @@ function valorComercialClienteEnPeriodo(
   return { monto: 0, fuente: "sin_dato" };
 }
 
-function etiquetaPlanServicioCliente(c: ClienteRaw): string {
+function etiquetaPlanServicioCliente(
+  c: ClienteRaw,
+  mapNombreTipoServicio: Readonly<Record<string, string>>
+) {
   const t = (c.tipo_servicio_cliente ?? "").trim();
-  if (t) return labelClienteDimension(t);
+  if (t) return etiquetaVisibleTipoServicio(t, mapNombreTipoServicio);
   const co = (c.condicion_pago ?? "").trim();
   if (co) return labelClienteDimension(co);
   return "—";
@@ -579,6 +587,7 @@ function etiquetaPlanServicioCliente(c: ClienteRaw): string {
 function DashComercial({
   prospectos,
   clientes,
+  mapNombreTipoServicio,
   tipificaciones: _tipificaciones,
   usuario,
   periodo,
@@ -589,6 +598,7 @@ function DashComercial({
 }: {
   prospectos: ProspectoRaw[];
   clientes: ClienteRaw[];
+  mapNombreTipoServicio: Readonly<Record<string, string>>;
   tipificaciones: TipificacionRaw[];
   usuario: Usuario | null;
   periodo: Periodo;
@@ -731,14 +741,14 @@ function DashComercial({
           id: String(c.id),
           nombre: c.empresa ?? c.nombre_contacto,
           fechaAlta: c.created_at,
-          planServicio: etiquetaPlanServicioCliente(c),
+          planServicio: etiquetaPlanServicioCliente(c, mapNombreTipoServicio),
           monto,
           fuente,
           vendedor: c.vendedor_asignado?.trim() || "—",
         };
       })
       .sort((a, b) => new Date(b.fechaAlta).getTime() - new Date(a.fechaAlta).getTime());
-  }, [clientes, facturas, ncPorFactura, suscripciones, desde, hasta]);
+  }, [clientes, facturas, ncPorFactura, suscripciones, desde, hasta, mapNombreTipoServicio]);
 
   const totalValorClientesNuevos = filasClientesPeriodo.reduce((s, r) => s + r.monto, 0);
   const nClientesNuevos = filasClientesPeriodo.length;
@@ -998,7 +1008,7 @@ function composicionFacturacionPorModalidad(facturasPeriodo: FacturaRaw[]) {
 }
 
 function DashFinanciero({
-  facturas, pagos, clientes, ventas, periodo, config,
+  facturas, pagos, clientes, ventas, periodo, config, mapNombreTipoServicio,
 }: {
   facturas:  FacturaRaw[];
   pagos:     PagoRaw[];
@@ -1006,6 +1016,7 @@ function DashFinanciero({
   ventas:    VentaRaw[];
   periodo:   Periodo;
   config:    ConfigGlobal;
+  mapNombreTipoServicio: Readonly<Record<string, string>>;
 }) {
   const { desde, hasta } = useMemo(() => getRango(periodo), [periodo]);
 
@@ -1134,12 +1145,17 @@ function DashFinanciero({
     return {
       dimCliente: dim,
       segmentosClientes: entries.map(([k, count], i) => ({
-        label: k === "__sin__" ? "Sin clasificar" : labelClienteDimension(k),
+        label:
+          k === "__sin__"
+            ? "Sin clasificar"
+            : dim === "tipo_servicio"
+              ? etiquetaVisibleTipoServicio(k, mapNombreTipoServicio)
+              : labelClienteDimension(k),
         value: count,
         color: PALETTE[i % PALETTE.length],
       })),
     };
-  }, [clientes]);
+  }, [clientes, mapNombreTipoServicio]);
 
   const finCard =
     "rounded-2xl border border-slate-200/90 bg-white p-6 shadow-sm shadow-slate-200/50 transition-shadow hover:shadow-md sm:p-7";
@@ -1721,6 +1737,51 @@ function getInitialTab(): TabDash {
   return t && isDashboardTabSlug(t) ? t : "comercial";
 }
 
+/**
+ * Nombres visibles `slug → nombre` desde `cliente_tipos_servicio_catalogo` (GET form + include por slug
+ * faltante). Misma ruta que formularios CRM; el dashboard no relabeliza por slug a mano.
+ */
+function useMapNombreTipoServicioClientes(clientes: ClienteRaw[]) {
+  const [filas, setFilas] = useState<ClienteTipoServicioRow[]>(filasTiposDesdeSistemaEstatico);
+  const slugsKey = useMemo(() => {
+    const s = new Set<string>();
+    for (const c of clientes) {
+      const t = (c.tipo_servicio_cliente ?? "").trim().toLowerCase();
+      if (t) s.add(t);
+    }
+    return [...s].sort().join(",");
+  }, [clientes]);
+
+  useEffect(() => {
+    let cancel = false;
+    const need = slugsKey ? slugsKey.split(",") : [];
+    (async () => {
+      const bySlug = new Map<string, ClienteTipoServicioRow>();
+      const base = await fetchTiposFormCliente();
+      if (cancel) return;
+      for (const r of base) bySlug.set(r.slug, r);
+      for (const slug of need) {
+        if (bySlug.has(slug)) continue;
+        const withInc = await fetchTiposFormCliente(slug);
+        if (cancel) return;
+        for (const r of withInc) {
+          if (!bySlug.has(r.slug)) bySlug.set(r.slug, r);
+        }
+      }
+      setFilas([...bySlug.values()].sort((a, b) => a.orden - b.orden));
+    })();
+    return () => {
+      cancel = true;
+    };
+  }, [slugsKey]);
+
+  return useMemo(() => {
+    const m: Record<string, string> = {};
+    for (const t of filas) m[t.slug] = t.nombre;
+    return m;
+  }, [filas]);
+}
+
 export default function DashboardPage() {
   const [dashScope, setDashScope] = useState<DashScope>({ kind: "pending" });
   const [tab,      setTab]      = useState<TabDash>(getInitialTab);
@@ -1843,6 +1904,7 @@ export default function DashboardPage() {
   }
 
   const usuarioActivo = usuarios.find(u => u.id === usuarioId) ?? null;
+  const mapNombreTipoServicio = useMapNombreTipoServicioClientes(clientes);
   const nivel = usuarioActivo?.nivel ?? "administrador";
 
   const effectiveTabs: TabDash[] = dashScope.kind === "scoped" ? dashScope.tabs : TAB_VALID;
@@ -2025,6 +2087,7 @@ export default function DashboardPage() {
         <DashComercial
           prospectos={prospectos}
           clientes={clientes}
+          mapNombreTipoServicio={mapNombreTipoServicio}
           tipificaciones={tipificaciones}
           usuario={usuarioActivo}
           periodo={periodo}
@@ -2043,6 +2106,7 @@ export default function DashboardPage() {
           ventas={ventas}
           periodo={periodo}
           config={config}
+          mapNombreTipoServicio={mapNombreTipoServicio}
         />
       )}
 
