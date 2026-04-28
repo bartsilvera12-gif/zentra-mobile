@@ -1,8 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getChatServiceClientForEmpresa } from "@/app/api/chat/_chat-service-client";
+import { pgLoadConversationForSend } from "@/lib/chat/chat-send-persist-pg";
 import { markFirstHumanOperatorReply } from "@/lib/chat/conversation-sla-markers";
 import { getAuthWithRol } from "@/lib/middleware/auth";
-import { normalizeWaPhone } from "@/lib/chat/wa-phone";
+import {
+  resolveOutboundTextContextFromIds,
+  type ChannelOutboundTextContext,
+} from "@/lib/chat/outbound-send-dispatch";
 import {
   sendWhatsAppAudio,
   sendWhatsAppDocument,
@@ -10,7 +14,10 @@ import {
   sendWhatsAppVideo,
   type SendWhatsAppTextResult,
 } from "@/lib/chat/whatsapp-send-service";
-import { sendYCloudWhatsappMediaViaLink, ycloudSenderToE164 } from "@/lib/chat/ycloud-send-service";
+import { sendYCloudWhatsappMediaViaLink } from "@/lib/chat/ycloud-send-service";
+import { fetchDataSchemaForEmpresaId } from "@/lib/supabase/empresa-data-schema";
+import { getChatPostgresPool } from "@/lib/supabase/chat-pg-pool";
+import { isLikelyUnexposedTenantChatSchema } from "@/lib/supabase/chat-data-schema";
 
 const CHAT_MEDIA_BUCKET = "chat-media";
 
@@ -48,79 +55,65 @@ export async function POST(request: NextRequest) {
     }
 
     const supabase = await getChatServiceClientForEmpresa(auth.empresa_id);
+    const dataSchema = await fetchDataSchemaForEmpresaId(auth.empresa_id);
+    const pool = getChatPostgresPool();
+    const tenantPg = Boolean(pool && isLikelyUnexposedTenantChatSchema(dataSchema));
 
-    const { data: conv, error: cErr } = await supabase
-      .from("chat_conversations")
-      .select("id, empresa_id, contact_id, channel_id")
-      .eq("id", conversationId)
-      .maybeSingle();
+    let conv: { empresa_id: string; contact_id: string; channel_id: string } | null = null;
 
-    if (cErr || !conv) {
+    if (tenantPg && pool) {
+      conv = await pgLoadConversationForSend(pool, dataSchema, conversationId);
+    } else {
+      const { data: cdata, error: cErr } = await supabase
+        .from("chat_conversations")
+        .select("id, empresa_id, contact_id, channel_id")
+        .eq("id", conversationId)
+        .maybeSingle();
+      if (cErr || !cdata) {
+        return NextResponse.json({ ok: false, error: "Conversación no encontrada" }, { status: 404 });
+      }
+      conv = {
+        empresa_id: cdata.empresa_id as string,
+        contact_id: cdata.contact_id as string,
+        channel_id: cdata.channel_id as string,
+      };
+    }
+
+    if (!conv) {
       return NextResponse.json({ ok: false, error: "Conversación no encontrada" }, { status: 404 });
     }
 
-    if ((conv.empresa_id as string) !== auth.empresa_id) {
+    if (conv.empresa_id !== auth.empresa_id) {
       return NextResponse.json({ ok: false, error: "No autorizado" }, { status: 403 });
     }
 
-    const empresaId = conv.empresa_id as string;
+    const empresaId = conv.empresa_id;
 
-    const { data: contact } = await supabase
-      .from("chat_contacts")
-      .select("phone_number")
-      .eq("id", conv.contact_id as string)
-      .maybeSingle();
-
-    const { data: channel } = await supabase
-      .from("chat_channels")
-      .select("meta_phone_number_id, activo, whatsapp_access_token, provider, config")
-      .eq("id", conv.channel_id as string)
-      .maybeSingle();
-
-    if (channel && (channel as { activo?: boolean }).activo === false) {
-      return NextResponse.json(
-        { ok: false, error: "El canal WhatsApp está desactivado." },
-        { status: 403 }
+    let outboundCtx: ChannelOutboundTextContext;
+    try {
+      outboundCtx = await resolveOutboundTextContextFromIds(
+        supabase,
+        { contactId: conv.contact_id, channelId: conv.channel_id },
+        { dataSchema, empresaId }
       );
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Datos de envío incompletos";
+      let status = 400;
+      if (msg.includes("desactivado")) status = 403;
+      else if (msg.includes("configuración completa")) status = 400;
+      else if (msg.includes("token") || msg.includes("ycloud_api_key")) status = 500;
+      return NextResponse.json({ ok: false, error: msg }, { status });
     }
 
-    const provider = String((channel as { provider?: string } | null)?.provider ?? "meta")
-      .toLowerCase()
-      .trim();
+    const toDigits = outboundCtx.toDigits;
+    const provider = outboundCtx.provider;
+    const ycloudApiKey = provider === "ycloud" ? outboundCtx.apiKey : "";
+    const ycloudFromE164 = provider === "ycloud" ? outboundCtx.fromE164 : null;
+    const phoneNumberId = provider === "meta" ? outboundCtx.phoneNumberId : null;
+    const token = provider === "meta" ? outboundCtx.accessToken : null;
 
-    const toDigits = contact?.phone_number ? normalizeWaPhone(contact.phone_number as string) : "";
     if (!toDigits) {
       return NextResponse.json({ ok: false, error: "Falta teléfono del contacto" }, { status: 400 });
-    }
-
-    const cfgRaw = (channel as { config?: unknown } | null)?.config;
-    const cfgObj = cfgRaw && typeof cfgRaw === "object" && !Array.isArray(cfgRaw) ? (cfgRaw as Record<string, unknown>) : {};
-    const ycloudApiKey = typeof cfgObj.ycloud_api_key === "string" ? cfgObj.ycloud_api_key.trim() : "";
-    const ycloudFromRaw = typeof cfgObj.ycloud_sender_id === "string" ? cfgObj.ycloud_sender_id.trim() : "";
-    const ycloudFromE164 = ycloudFromRaw ? ycloudSenderToE164(ycloudFromRaw) : null;
-
-    const phoneNumberId =
-      (channel as { meta_phone_number_id?: string } | null)?.meta_phone_number_id ??
-      process.env.WHATSAPP_PHONE_NUMBER_ID?.trim();
-
-    const rowToken =
-      typeof (channel as { whatsapp_access_token?: string } | null)?.whatsapp_access_token === "string"
-        ? (channel as { whatsapp_access_token: string }).whatsapp_access_token.trim()
-        : "";
-    const token = rowToken || process.env.WHATSAPP_TOKEN?.trim();
-
-    if (provider === "ycloud") {
-      if (!ycloudApiKey || !ycloudFromE164) {
-        return NextResponse.json(
-          { ok: false, error: "Falta ycloud_api_key o ycloud_sender_id válido en la configuración del canal YCloud" },
-          { status: 400 }
-        );
-      }
-    } else if (!phoneNumberId || !token) {
-      return NextResponse.json(
-        { ok: false, error: "Falta phone_number_id o token de Meta para el canal" },
-        { status: 400 }
-      );
     }
 
     const { data: buckets } = await supabase.storage.listBuckets();

@@ -99,12 +99,13 @@ export async function POST(request: NextRequest) {
           contactId: conv.contact_id,
           channelId: conv.channel_id,
         },
-        { dataSchema }
+        { dataSchema, empresaId: conv.empresa_id }
       );
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Datos de envío incompletos";
       let status = 400;
       if (msg.includes("desactivado")) status = 403;
+      else if (msg.includes("configuración completa")) status = 400;
       else if (msg.includes("token") || msg.includes("ycloud_api_key")) status = 500;
       return NextResponse.json({ ok: false, error: msg }, { status });
     }
