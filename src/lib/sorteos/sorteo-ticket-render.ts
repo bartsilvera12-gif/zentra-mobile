@@ -196,6 +196,16 @@ export function buildSorteoTicketSvg(input: SorteoTicketRenderInput): string {
 </svg>`;
 }
 
+function fillAttr(color: string): string {
+  const t = color.trim();
+  if (/^#[0-9A-Fa-f]{6}$/.test(t) || /^#[0-9A-Fa-f]{3}$/.test(t)) return t;
+  return "#111827";
+}
+
+/**
+ * Datos en la parte inferior; cupones protagonistas. Colores desde mergeCustomTemplateFields.
+ * 1–6 cupones: apilados centrados, tipografía grande. Más de 6: grilla compacta.
+ */
 function buildCustomTemplateOverlaySvg(
   w: number,
   h: number,
@@ -204,38 +214,145 @@ function buildCustomTemplateOverlaySvg(
 ): string {
   const font =
     'system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif';
-  const pieces: string[] = [];
+  const padX = Math.max(40, Math.min(layout.cliente_nombre?.x ?? 72, w * 0.2));
+  const bottomPad = Math.max(36, Math.round(h * 0.028));
+  const zoneTopLimit = Math.round(h * 0.33);
 
-  const valMap: Record<string, string> = {
-    cliente_nombre: input.clienteNombre?.trim() || "—",
-    cliente_documento: input.documento?.trim() || "—",
-    telefono: input.telefono?.trim() || "—",
-    numero_orden: String(input.numeroOrden ?? ""),
-    sorteo_nombre: input.sorteoNombre?.trim() || "—",
-    cupones: input.cupones.length ? input.cupones.join("\n") : "—",
+  const colName = fillAttr(layout.cliente_nombre.color);
+  const colDoc = fillAttr(layout.cliente_documento.color);
+  const colTel = fillAttr(layout.telefono.color);
+  const colOrd = fillAttr(layout.numero_orden.color);
+  const colSort = fillAttr(layout.sorteo_nombre.color);
+  const colCup = fillAttr(layout.cupones.color);
+
+  const cupones = input.cupones ?? [];
+  const metaGap = 10;
+  const blockGap = 20;
+
+  type MetaRow = { text: string; fs: number; color: string; weight: number };
+  const buildMetaRows = (scale: number): MetaRow[] => {
+    const r = (n: number) => Math.max(12, Math.round(n * scale));
+    return [
+      {
+        text: input.clienteNombre?.trim() || "—",
+        fs: r(layout.cliente_nombre.fontSize),
+        color: colName,
+        weight: 650,
+      },
+      {
+        text: `Documento: ${input.documento?.trim() || "—"}`,
+        fs: r(layout.cliente_documento.fontSize),
+        color: colDoc,
+        weight: 600,
+      },
+      {
+        text: `Teléfono: ${input.telefono?.trim() || "—"}`,
+        fs: r(layout.telefono.fontSize),
+        color: colTel,
+        weight: 600,
+      },
+      {
+        text: `Nº orden: ${String(input.numeroOrden ?? "")}`,
+        fs: r(layout.numero_orden.fontSize),
+        color: colOrd,
+        weight: 650,
+      },
+      {
+        text: `Sorteo: ${input.sorteoNombre?.trim() || "—"}`,
+        fs: r(layout.sorteo_nombre.fontSize),
+        color: colSort,
+        weight: 600,
+      },
+    ];
   };
 
-  for (const key of Object.keys(layout)) {
-    const L = layout[key]!;
-    if (key === "cupones" && input.cupones.length > 0) {
-      const lines = input.cupones;
-      const fs = L.fontSize;
-      const lineH = Math.round(fs * 1.25);
-      const fixed = lines
-        .map((line, i) => {
-          const y = L.y + i * lineH;
-          return `<text x="${L.x}" y="${y}" font-family="${font}" font-size="${fs}" font-weight="700" fill="${esc(
-            L.color
-          )}">${esc(line)}</text>`;
-        })
-        .join("\n");
-      pieces.push(fixed);
-    } else {
-      const text = valMap[key] ?? "";
+  const metaLineH = (rows: MetaRow[]) => {
+    let sum = 0;
+    for (const row of rows) {
+      sum += row.fs + metaGap;
+    }
+    return sum - metaGap;
+  };
+
+  const cupBlockHeight = (scale: number): number => {
+    const n = cupones.length;
+    if (n === 0) return Math.round(36 * scale);
+    if (n <= 6) {
+      const fs = Math.min(
+        72,
+        Math.max(46, Math.round((layout.cupones.fontSize + (6 - Math.min(n, 6)) * 2) * scale))
+      );
+      const step = Math.round(fs * 1.2);
+      return n * step + 8;
+    }
+    const cols = 3;
+    const cap = Math.min(n, 24);
+    const rowsN = Math.ceil(cap / cols);
+    return rowsN * 34 + 36;
+  };
+
+  let scale = 1;
+  let metaRows = buildMetaRows(scale);
+  let totalH = metaLineH(metaRows) + blockGap + cupBlockHeight(scale);
+  let yStart = h - bottomPad - totalH;
+
+  for (let i = 0; i < 14 && yStart < zoneTopLimit && scale > 0.62; i++) {
+    scale *= 0.9;
+    metaRows = buildMetaRows(scale);
+    totalH = metaLineH(metaRows) + blockGap + cupBlockHeight(scale);
+    yStart = h - bottomPad - totalH;
+  }
+
+  const pieces: string[] = [];
+  let y = yStart;
+  for (const row of metaRows) {
+    y += row.fs;
+    pieces.push(
+      `<text x="${padX}" y="${y}" font-family="${font}" font-size="${row.fs}" font-weight="${row.weight}" fill="${fillAttr(row.color)}">${esc(row.text)}</text>`
+    );
+    y += metaGap;
+  }
+  y += blockGap - metaGap;
+
+  const cx = w / 2;
+  if (cupones.length === 0) {
+    y += Math.round(30 * scale);
+    pieces.push(
+      `<text x="${cx}" y="${y}" text-anchor="middle" font-family="${font}" font-size="${Math.round(28 * scale)}" font-weight="600" fill="${colCup}">—</text>`
+    );
+  } else if (cupones.length <= 6) {
+    const fs = Math.min(
+      72,
+      Math.max(46, Math.round((layout.cupones.fontSize + (6 - Math.min(cupones.length, 6)) * 2) * scale))
+    );
+    const step = Math.round(fs * 1.2);
+    for (let i = 0; i < cupones.length; i++) {
+      y += step;
       pieces.push(
-        `<text x="${L.x}" y="${L.y}" font-family="${font}" font-size="${L.fontSize}" font-weight="600" fill="${esc(
-          L.color
-        )}">${esc(text)}</text>`
+        `<text x="${cx}" y="${y}" text-anchor="middle" font-family="${font}" font-size="${fs}" font-weight="800" letter-spacing="0.02em" fill="${colCup}">${esc(cupones[i]!)}</text>`
+      );
+    }
+  } else {
+    const cols = 3;
+    const cellW = (w - 2 * padX) / cols;
+    const fs = Math.round(22 * scale);
+    const rowH = 34;
+    const maxShow = 24;
+    const list = cupones.slice(0, maxShow);
+    let gy = y + fs + 4;
+    for (let i = 0; i < list.length; i++) {
+      const col = i % cols;
+      const row = Math.floor(i / cols);
+      const xCell = padX + col * cellW + cellW / 2;
+      const yCell = gy + row * rowH;
+      pieces.push(
+        `<text x="${xCell}" y="${yCell}" text-anchor="middle" font-family="${font}" font-size="${fs}" font-weight="700" fill="${colCup}">${esc(list[i]!)}</text>`
+      );
+    }
+    if (cupones.length > maxShow) {
+      gy += Math.ceil(list.length / cols) * rowH + 8;
+      pieces.push(
+        `<text x="${cx}" y="${gy}" text-anchor="middle" font-family="${font}" font-size="${Math.round(18 * scale)}" font-weight="600" fill="${colCup}">+${cupones.length - maxShow} más</text>`
       );
     }
   }
@@ -280,13 +397,9 @@ export async function renderSorteoTicketPng(svg: string): Promise<{ png: Buffer;
  * Punto único: plantilla personalizada (imagen + texto) o automático (SVG premium).
  */
 export async function renderTicketPngUnified(input: SorteoTicketRenderInput): Promise<{ png: Buffer; hash: string }> {
-  const mode = input.config.design_mode ?? "auto";
-  if (
-    mode === "custom_template" &&
-    input.templateBytes &&
-    input.templateBytes.length > 0 &&
-    input.templateMime
-  ) {
+  const hasTemplate =
+    input.templateBytes && input.templateBytes.length > 0 && input.templateMime;
+  if (hasTemplate) {
     try {
       const png = await renderCustomTemplateTicketPng(input);
       const hash = createHash("sha256").update(png).digest("hex");

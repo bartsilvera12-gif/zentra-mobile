@@ -6,7 +6,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { getSorteoById, updateSorteo } from "@/lib/sorteos/actions";
 import type { SorteoEstado, SorteoTicketDeliveryMode } from "@/lib/sorteos/types";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
-import { normalizeTicketImageConfig, type SorteoTicketDesignMode } from "@/lib/sorteos/sorteo-ticket-types";
+import { normalizeTicketImageConfig } from "@/lib/sorteos/sorteo-ticket-types";
 
 const SORTEO_TICKET_ASSETS_BUCKET = "sorteo-ticket-assets";
 const MAX_ASSET_BYTES = 4 * 1024 * 1024;
@@ -20,31 +20,22 @@ function publicTicketAssetUrl(storagePath: string): string {
 
 function buildTicketImagePayload(
   base: Record<string, unknown>,
-  text: { title: string; caption: string; legal: string; stub: string }
+  text: { caption: string; stub: string }
 ): Record<string, unknown> {
   const ticketMerged: Record<string, unknown> = {
-    showLogo: true,
+    ...base,
+    design_mode: "custom_template",
     showClienteNombre: true,
     showDocumento: true,
     showTelefono: true,
     showNumeroOrden: true,
     showCupones: true,
     showSorteoNombre: true,
-    primaryColor: "#0f172a",
-    secondaryColor: "#64748b",
-    backgroundColor: "#f8fafc",
-    ...base,
   };
-  const tit = text.title.trim();
   const cap = text.caption.trim();
-  const leg = text.legal.trim();
   const stu = text.stub.trim();
-  if (tit) ticketMerged.title = tit;
-  else delete ticketMerged.title;
   if (cap) ticketMerged.caption = cap;
   else delete ticketMerged.caption;
-  if (leg) ticketMerged.legalFooter = leg;
-  else delete ticketMerged.legalFooter;
   if (stu) ticketMerged.ticket_image_only_stub = stu;
   else delete ticketMerged.ticket_image_only_stub;
   return ticketMerged;
@@ -99,47 +90,29 @@ export default function EditarSorteoPage() {
   const [empresaId, setEmpresaId] = useState<string | null>(null);
   const [ticketDeliveryMode, setTicketDeliveryMode] = useState<SorteoTicketDeliveryMode>("text_only");
   const [ticketCaption, setTicketCaption] = useState("");
-  const [ticketTitle, setTicketTitle] = useState("");
-  const [ticketLegal, setTicketLegal] = useState("");
   const [ticketStub, setTicketStub] = useState("");
   /** Resto de claves de ticket_image_config (colores, show*, paths de storage). */
   const [ticketImageConfigBase, setTicketImageConfigBase] = useState<Record<string, unknown>>({});
   const ticketCfgRef = useRef<Record<string, unknown>>({});
   ticketCfgRef.current = ticketImageConfigBase;
 
-  /** Preview por archivo existente en Storage sin fila en config (legado). */
-  const [legacyLogoUrl, setLegacyLogoUrl] = useState<string | null>(null);
-  const [legacyBgUrl, setLegacyBgUrl] = useState<string | null>(null);
+  /** Preview si hay template en Storage sin path en config (legado). */
   const [legacyTemplateUrl, setLegacyTemplateUrl] = useState<string | null>(null);
 
   type AssetPhase = "idle" | "uploading" | "ok" | "error";
-  const [logoPickName, setLogoPickName] = useState<string | null>(null);
-  const [logoObjectUrl, setLogoObjectUrl] = useState<string | null>(null);
-  const [logoPhase, setLogoPhase] = useState<AssetPhase>("idle");
-  const [logoMsg, setLogoMsg] = useState<string | null>(null);
-
-  const [bgPickName, setBgPickName] = useState<string | null>(null);
-  const [bgObjectUrl, setBgObjectUrl] = useState<string | null>(null);
-  const [bgPhase, setBgPhase] = useState<AssetPhase>("idle");
-  const [bgMsg, setBgMsg] = useState<string | null>(null);
-
   const [templatePickName, setTemplatePickName] = useState<string | null>(null);
   const [templateObjectUrl, setTemplateObjectUrl] = useState<string | null>(null);
   const [templatePhase, setTemplatePhase] = useState<AssetPhase>("idle");
   const [templateMsg, setTemplateMsg] = useState<string | null>(null);
 
-  const logoInputRef = useRef<HTMLInputElement>(null);
-  const bgInputRef = useRef<HTMLInputElement>(null);
   const templateInputRef = useRef<HTMLInputElement>(null);
 
   const textFields = useCallback(
     () => ({
-      title: ticketTitle,
       caption: ticketCaption,
-      legal: ticketLegal,
       stub: ticketStub,
     }),
-    [ticketTitle, ticketCaption, ticketLegal, ticketStub]
+    [ticketCaption, ticketStub]
   );
 
   const persistTicketConfig = useCallback(
@@ -198,51 +171,17 @@ export default function EditarSorteoPage() {
             ? { ...(s.ticket_image_config as Record<string, unknown>) }
             : {}
         );
-        setTicketTitle(typeof tic.title === "string" ? tic.title : "");
         setTicketCaption(typeof tic.caption === "string" ? tic.caption : "");
-        setTicketLegal(typeof tic.legalFooter === "string" ? tic.legalFooter : "");
         setTicketStub(typeof tic.ticket_image_only_stub === "string" ? tic.ticket_image_only_stub : "");
       })
       .catch((e) => setError(e instanceof Error ? e.message : "Error"))
       .finally(() => setCargando(false));
   }, [id]);
 
-  const depLogoPath =
-    typeof ticketImageConfigBase.logo_storage_path === "string" ? ticketImageConfigBase.logo_storage_path : "";
-  const depBgPath =
-    typeof ticketImageConfigBase.background_storage_path === "string"
-      ? ticketImageConfigBase.background_storage_path
-      : "";
   const depTemplatePath =
     typeof ticketImageConfigBase.custom_template_storage_path === "string"
       ? ticketImageConfigBase.custom_template_storage_path
       : "";
-
-  useEffect(() => {
-    if (!empresaId || !id) return;
-    const base = `${empresaId}/${id}`;
-    if (depLogoPath) {
-      setLegacyLogoUrl(null);
-      return;
-    }
-    const logoUrls = [`${base}/logo.png`, `${base}/logo.webp`, `${base}/logo.jpg`].map(publicTicketAssetUrl);
-    setLegacyLogoUrl(null);
-    probePublicImage(logoUrls, (u) => setLegacyLogoUrl(u));
-  }, [empresaId, id, depLogoPath]);
-
-  useEffect(() => {
-    if (!empresaId || !id) return;
-    const base = `${empresaId}/${id}`;
-    if (depBgPath) {
-      setLegacyBgUrl(null);
-      return;
-    }
-    const urls = [`${base}/background.png`, `${base}/background.webp`, `${base}/background.jpg`].map(
-      publicTicketAssetUrl
-    );
-    setLegacyBgUrl(null);
-    probePublicImage(urls, (u) => setLegacyBgUrl(u));
-  }, [empresaId, id, depBgPath]);
 
   useEffect(() => {
     if (!empresaId || !id) return;
@@ -258,11 +197,9 @@ export default function EditarSorteoPage() {
 
   useEffect(() => {
     return () => {
-      if (logoObjectUrl) URL.revokeObjectURL(logoObjectUrl);
-      if (bgObjectUrl) URL.revokeObjectURL(bgObjectUrl);
       if (templateObjectUrl) URL.revokeObjectURL(templateObjectUrl);
     };
-  }, [logoObjectUrl, bgObjectUrl, templateObjectUrl]);
+  }, [templateObjectUrl]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -332,122 +269,6 @@ export default function EditarSorteoPage() {
     }
   }
 
-  async function onLogoFile(files: FileList | null) {
-    const f = files?.[0];
-    if (!f || !id) return;
-    setLogoMsg(null);
-    setLogoPhase("idle");
-    const err = validateAssetFile(f);
-    if (err) {
-      setLogoPhase("error");
-      setLogoMsg(err);
-      return;
-    }
-    if (logoObjectUrl) URL.revokeObjectURL(logoObjectUrl);
-    const ou = URL.createObjectURL(f);
-    setLogoObjectUrl(ou);
-    setLogoPickName(f.name);
-    setLogoPhase("uploading");
-
-    const fd = new FormData();
-    fd.set("sorteo_id", id);
-    fd.set("kind", "logo");
-    fd.set("file", f);
-    try {
-      const res = await fetchWithSupabaseSession("/api/sorteos/ticket-assets", {
-        method: "POST",
-        body: fd,
-      });
-      const raw = await res.text();
-      if (!res.ok) {
-        setLogoPhase("error");
-        setLogoMsg(raw || `Error ${res.status}`);
-        return;
-      }
-      const json = JSON.parse(raw) as { success?: boolean; data?: { bucket?: string; path?: string } };
-      const bucket = json.data?.bucket;
-      const path = json.data?.path;
-      if (!json.success || !bucket || !path) {
-        setLogoPhase("error");
-        setLogoMsg("Respuesta inválida del servidor.");
-        return;
-      }
-      const nextBase = {
-        ...ticketCfgRef.current,
-        logo_storage_bucket: bucket,
-        logo_storage_path: path,
-      };
-      await persistTicketConfig(nextBase);
-      if (logoObjectUrl) URL.revokeObjectURL(logoObjectUrl);
-      setLogoObjectUrl(null);
-      setLogoPickName(null);
-      setLegacyLogoUrl(null);
-      setLogoPhase("ok");
-      setLogoMsg("Logo cargado correctamente.");
-    } catch (e) {
-      setLogoPhase("error");
-      setLogoMsg(e instanceof Error ? e.message : "Error al subir");
-    }
-  }
-
-  async function onBgFile(files: FileList | null) {
-    const f = files?.[0];
-    if (!f || !id) return;
-    setBgMsg(null);
-    setBgPhase("idle");
-    const err = validateAssetFile(f);
-    if (err) {
-      setBgPhase("error");
-      setBgMsg(err);
-      return;
-    }
-    if (bgObjectUrl) URL.revokeObjectURL(bgObjectUrl);
-    const ou = URL.createObjectURL(f);
-    setBgObjectUrl(ou);
-    setBgPickName(f.name);
-    setBgPhase("uploading");
-
-    const fd = new FormData();
-    fd.set("sorteo_id", id);
-    fd.set("kind", "background");
-    fd.set("file", f);
-    try {
-      const res = await fetchWithSupabaseSession("/api/sorteos/ticket-assets", {
-        method: "POST",
-        body: fd,
-      });
-      const raw = await res.text();
-      if (!res.ok) {
-        setBgPhase("error");
-        setBgMsg(raw || `Error ${res.status}`);
-        return;
-      }
-      const json = JSON.parse(raw) as { success?: boolean; data?: { bucket?: string; path?: string } };
-      const bucket = json.data?.bucket;
-      const path = json.data?.path;
-      if (!json.success || !bucket || !path) {
-        setBgPhase("error");
-        setBgMsg("Respuesta inválida del servidor.");
-        return;
-      }
-      const nextBase = {
-        ...ticketCfgRef.current,
-        background_storage_bucket: bucket,
-        background_storage_path: path,
-      };
-      await persistTicketConfig(nextBase);
-      if (bgObjectUrl) URL.revokeObjectURL(bgObjectUrl);
-      setBgObjectUrl(null);
-      setBgPickName(null);
-      setLegacyBgUrl(null);
-      setBgPhase("ok");
-      setBgMsg("Fondo cargado correctamente.");
-    } catch (e) {
-      setBgPhase("error");
-      setBgMsg(e instanceof Error ? e.message : "Error al subir");
-    }
-  }
-
   async function onTemplateFile(files: FileList | null) {
     const f = files?.[0];
     if (!f || !id) return;
@@ -501,7 +322,7 @@ export default function EditarSorteoPage() {
       }
       const nextBase = {
         ...ticketCfgRef.current,
-        design_mode: "custom_template" satisfies SorteoTicketDesignMode,
+        design_mode: "custom_template" as const,
         custom_template_storage_bucket: bucket,
         custom_template_storage_path: path,
         custom_template_width: dims.w,
@@ -550,79 +371,6 @@ export default function EditarSorteoPage() {
     }
   }
 
-  function setTicketColorField(
-    key: "primaryColor" | "secondaryColor" | "backgroundColor",
-    value: string
-  ) {
-    setTicketImageConfigBase((prev) => ({ ...prev, [key]: value }));
-  }
-
-  async function removeLogo() {
-    if (!id) return;
-    setLogoMsg(null);
-    try {
-      const res = await fetchWithSupabaseSession(
-        `/api/sorteos/ticket-assets?sorteo_id=${encodeURIComponent(id)}&kind=logo`,
-        { method: "DELETE" }
-      );
-      if (!res.ok) {
-        setLogoPhase("error");
-        setLogoMsg(await res.text());
-        return;
-      }
-      const next = { ...ticketCfgRef.current };
-      delete next.logo_storage_bucket;
-      delete next.logo_storage_path;
-      await persistTicketConfig(next);
-      setLegacyLogoUrl(null);
-      setLogoPhase("idle");
-      setLogoMsg("Logo quitado. Podés subir uno nuevo cuando quieras.");
-    } catch (e) {
-      setLogoPhase("error");
-      setLogoMsg(e instanceof Error ? e.message : "Error");
-    }
-  }
-
-  async function removeBackground() {
-    if (!id) return;
-    setBgMsg(null);
-    try {
-      const res = await fetchWithSupabaseSession(
-        `/api/sorteos/ticket-assets?sorteo_id=${encodeURIComponent(id)}&kind=background`,
-        { method: "DELETE" }
-      );
-      if (!res.ok) {
-        setBgPhase("error");
-        setBgMsg(await res.text());
-        return;
-      }
-      const next = { ...ticketCfgRef.current };
-      delete next.background_storage_bucket;
-      delete next.background_storage_path;
-      await persistTicketConfig(next);
-      setLegacyBgUrl(null);
-      setBgPhase("idle");
-      setBgMsg("Fondo quitado.");
-    } catch (e) {
-      setBgPhase("error");
-      setBgMsg(e instanceof Error ? e.message : "Error");
-    }
-  }
-
-  const logoPathStored =
-    typeof ticketImageConfigBase.logo_storage_path === "string" ? ticketImageConfigBase.logo_storage_path : null;
-  const bgPathStored =
-    typeof ticketImageConfigBase.background_storage_path === "string"
-      ? ticketImageConfigBase.background_storage_path
-      : null;
-
-  const logoPreviewSrc = logoObjectUrl
-    ? logoObjectUrl
-    : logoPathStored
-      ? publicTicketAssetUrl(logoPathStored)
-      : legacyLogoUrl;
-  const bgPreviewSrc = bgObjectUrl ? bgObjectUrl : bgPathStored ? publicTicketAssetUrl(bgPathStored) : legacyBgUrl;
-
   const templatePathStored =
     typeof ticketImageConfigBase.custom_template_storage_path === "string"
       ? ticketImageConfigBase.custom_template_storage_path
@@ -633,12 +381,7 @@ export default function EditarSorteoPage() {
       ? publicTicketAssetUrl(templatePathStored)
       : legacyTemplateUrl;
 
-  const hasLogoOnServer = Boolean(logoPathStored || legacyLogoUrl);
-  const hasBgOnServer = Boolean(bgPathStored || legacyBgUrl);
   const hasTemplateOnServer = Boolean(templatePathStored || legacyTemplateUrl);
-
-  const designMode: SorteoTicketDesignMode =
-    ticketImageConfigBase.design_mode === "custom_template" ? "custom_template" : "auto";
 
   const templateW =
     typeof ticketImageConfigBase.custom_template_width === "number"
@@ -658,19 +401,6 @@ export default function EditarSorteoPage() {
       ? (templatePathStored.split("/").pop() ?? "")
       : "";
   const templateDisplayFileName = templateStoredOriginalName || templatePathFilename || null;
-
-  const colorPrimary =
-    typeof ticketImageConfigBase.primaryColor === "string" && ticketImageConfigBase.primaryColor
-      ? ticketImageConfigBase.primaryColor
-      : "#0f172a";
-  const colorSecondary =
-    typeof ticketImageConfigBase.secondaryColor === "string" && ticketImageConfigBase.secondaryColor
-      ? ticketImageConfigBase.secondaryColor
-      : "#64748b";
-  const colorBackground =
-    typeof ticketImageConfigBase.backgroundColor === "string" && ticketImageConfigBase.backgroundColor
-      ? ticketImageConfigBase.backgroundColor
-      : "#f8fafc";
 
   if (cargando) {
     return <div className="py-16 text-center text-slate-400 text-sm animate-pulse">Cargando…</div>;
@@ -708,8 +438,8 @@ export default function EditarSorteoPage() {
       </div>
       <p className="text-sm text-slate-600 max-w-3xl">
         El botón <strong className="font-medium text-slate-800">Tickets / Comprobantes</strong> abre el reservorio de
-        envíos. La <strong className="font-medium text-slate-800">configuración del ticket</strong> (modo, texto, logo y
-        fondo) está en esta misma página, en la sección{" "}
+        envíos. Subí <strong className="font-medium text-slate-800">una imagen base</strong> del comprobante y los textos
+        de la sección{" "}
         <a href="#respuesta-ticket" className="text-violet-700 underline underline-offset-2">
           Respuesta al comprador / Ticket
         </a>
@@ -821,9 +551,10 @@ export default function EditarSorteoPage() {
           <div>
             <h2 className="text-base font-semibold text-slate-900">Respuesta al comprador / Ticket</h2>
             <p className="text-xs text-slate-600 mt-1">
-              Definí si el comprador recibe solo texto, texto más imagen del comprobante o solo la imagen. Los textos del
-              ticket y el modo de envío se guardan con <span className="font-medium">Guardar</span>. Logo, fondo y
-              plantilla se suben a Storage al elegir archivo (se actualiza{" "}
+              Definí si el comprador recibe solo texto, texto más imagen del comprobante o solo la imagen. Subí{" "}
+              <span className="font-medium">una imagen base</span> ya diseñada; el sistema completará datos y cupones
+              encima. La imagen y los textos se guardan con <span className="font-medium">Guardar</span> o al terminar
+              la subida (se actualiza{" "}
               <code className="rounded bg-violet-100/80 px-1">ticket_image_config</code>).
             </p>
           </div>
@@ -834,380 +565,152 @@ export default function EditarSorteoPage() {
               value={ticketDeliveryMode}
               onChange={(e) => setTicketDeliveryMode(e.target.value as SorteoTicketDeliveryMode)}
             >
-              <option value="text_only">Solo mensaje de texto (sin ticket PNG)</option>
-              <option value="text_and_image">Texto + ticket en imagen</option>
-              <option value="image_only">Solo ticket en imagen</option>
-            </select>
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-slate-600 mb-1">Diseño del ticket</label>
-            <select
-              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white"
-              value={designMode}
-              onChange={(e) => {
-                const v = e.target.value as SorteoTicketDesignMode;
-                setTicketImageConfigBase((prev) => ({ ...prev, design_mode: v }));
-              }}
-            >
-              <option value="auto">Automático</option>
-              <option value="custom_template">Plantilla personalizada</option>
+              <option value="text_only">Solo texto</option>
+              <option value="text_and_image">Texto + imagen del comprobante</option>
+              <option value="image_only">Solo imagen del comprobante</option>
             </select>
           </div>
 
-          {designMode === "auto" && (
-            <>
-              <p className="text-sm text-slate-700 rounded-lg border border-sky-200 bg-sky-50/90 px-3 py-2">
-                El ERP generará el diseño automáticamente usando logo, colores y datos del comprador.
+          <div className="rounded-xl border-2 border-violet-400/80 bg-white p-5 space-y-4">
+            <div>
+              <p className="text-base font-semibold text-slate-900">Subir imagen base del comprobante</p>
+              <p className="text-sm text-slate-600 mt-2">
+                Subí una imagen ya diseñada con el logo y espacio libre para los datos. El sistema completará
+                automáticamente los datos del comprador y sus cupones.
               </p>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="rounded-xl border border-dashed border-violet-300 bg-white/90 p-4 flex flex-col gap-3">
-                  <div className="flex items-start justify-between gap-2">
-                    <div>
-                      <p className="text-sm font-semibold text-slate-900">Subir logo del sorteo</p>
-                      <p className="text-xs text-slate-500 mt-0.5">
-                        PNG, JPG o WebP. Recomendado: fondo transparente. Máx. {MAX_ASSET_BYTES / (1024 * 1024)} MB.
-                      </p>
-                    </div>
-                  </div>
-                  <input
-                    ref={logoInputRef}
-                    type="file"
-                    accept="image/png,image/jpeg,image/webp"
-                    className="sr-only"
-                    onChange={(e) => {
-                      void onLogoFile(e.target.files);
-                      e.target.value = "";
-                    }}
-                  />
-                  <div className="flex flex-wrap items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => logoInputRef.current?.click()}
-                      disabled={logoPhase === "uploading"}
-                      className="inline-flex items-center rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50"
-                    >
-                      {hasLogoOnServer ? "Cambiar logo" : "Seleccionar logo"}
-                    </button>
-                    {hasLogoOnServer && (
-                      <button
-                        type="button"
-                        onClick={() => void removeLogo()}
-                        className="text-sm text-red-700 hover:underline"
-                      >
-                        Quitar logo
-                      </button>
-                    )}
-                  </div>
-                  {logoPathStored && (
-                    <p className="text-xs text-emerald-800 font-medium">
-                      Hay un logo guardado en Storage (registrado en el sorteo).
-                    </p>
-                  )}
-                  {!logoPathStored && legacyLogoUrl && (
-                    <p className="text-xs text-amber-800">
-                      Hay un archivo de logo en Storage (subida anterior sin registro en config).
-                    </p>
-                  )}
-                  {!hasLogoOnServer && !logoPickName && logoPhase !== "uploading" && (
-                    <p className="text-xs text-slate-500">Aún no cargaste un logo.</p>
-                  )}
-                  {logoPickName && (
-                    <p className="text-xs text-slate-700">
-                      Archivo: <span className="font-medium break-all">{logoPickName}</span>
-                    </p>
-                  )}
-                  {logoPhase === "uploading" && (
-                    <p className="text-xs font-medium text-violet-800">Subiendo logo…</p>
-                  )}
-                  {logoPhase === "ok" && logoMsg && (
-                    <p className="text-xs font-medium text-emerald-800">{logoMsg}</p>
-                  )}
-                  {logoPhase === "error" && logoMsg && (
-                    <p className="text-xs text-red-700" role="alert">
-                      {logoMsg}
-                    </p>
-                  )}
-                  <div className="flex items-center gap-3">
-                    <div
-                      className="h-20 w-20 shrink-0 overflow-hidden rounded-lg border border-slate-200 bg-slate-100 flex items-center justify-center text-[10px] text-slate-400 text-center p-1"
-                      aria-hidden={!logoPreviewSrc}
-                    >
-                      {logoPreviewSrc ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img src={logoPreviewSrc} alt="" className="max-h-full max-w-full object-contain" />
-                      ) : (
-                        <span>Sin preview</span>
-                      )}
-                    </div>
-                    <span className="text-xs text-slate-500">Vista previa 80×80</span>
-                  </div>
-                </div>
+              <ul className="mt-2 text-xs text-slate-600 list-disc list-inside space-y-0.5">
+                <li>PNG, JPG o WebP · máximo {MAX_ASSET_BYTES / (1024 * 1024)} MB</li>
+                <li>
+                  Tamaño recomendado: <span className="font-medium">1080×1350</span> · dejá espacio libre{" "}
+                  <span className="font-medium">abajo</span> para los datos
+                </li>
+              </ul>
+            </div>
 
-                <div className="rounded-xl border border-dashed border-violet-300 bg-white/90 p-4 flex flex-col gap-3">
-                  <div>
-                    <p className="text-sm font-semibold text-slate-900">Subir fondo del ticket</p>
-                    <p className="text-xs text-slate-500 mt-0.5">
-                      Opcional. PNG, JPG o WebP. Máx. {MAX_ASSET_BYTES / (1024 * 1024)} MB.
-                    </p>
-                  </div>
-                  <input
-                    ref={bgInputRef}
-                    type="file"
-                    accept="image/png,image/jpeg,image/webp"
-                    className="sr-only"
-                    onChange={(e) => {
-                      void onBgFile(e.target.files);
-                      e.target.value = "";
-                    }}
-                  />
-                  <div className="flex flex-wrap items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => bgInputRef.current?.click()}
-                      disabled={bgPhase === "uploading"}
-                      className="inline-flex items-center rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50"
-                    >
-                      {hasBgOnServer ? "Cambiar fondo" : "Seleccionar fondo"}
-                    </button>
-                    {hasBgOnServer && (
-                      <button
-                        type="button"
-                        onClick={() => void removeBackground()}
-                        className="text-sm text-red-700 hover:underline"
-                      >
-                        Quitar fondo
-                      </button>
-                    )}
-                  </div>
-                  {bgPathStored && (
-                    <p className="text-xs text-emerald-800 font-medium">Fondo cargado y registrado en el sorteo.</p>
-                  )}
-                  {!bgPathStored && legacyBgUrl && (
-                    <p className="text-xs text-amber-800">
-                      Hay un fondo en Storage (subida anterior sin registro en config).
-                    </p>
-                  )}
-                  {!hasBgOnServer && !bgPickName && bgPhase !== "uploading" && (
-                    <p className="text-xs text-slate-500">
-                      Sin fondo personalizado (se usa el color de fondo del diseño).
-                    </p>
-                  )}
-                  {bgPickName && (
-                    <p className="text-xs text-slate-700">
-                      Archivo: <span className="font-medium break-all">{bgPickName}</span>
-                    </p>
-                  )}
-                  {bgPhase === "uploading" && (
-                    <p className="text-xs font-medium text-violet-800">Subiendo fondo…</p>
-                  )}
-                  {bgPhase === "ok" && bgMsg && <p className="text-xs font-medium text-emerald-800">{bgMsg}</p>}
-                  {bgPhase === "error" && bgMsg && (
-                    <p className="text-xs text-red-700" role="alert">
-                      {bgMsg}
-                    </p>
-                  )}
-                  <div className="h-20 max-w-[200px] overflow-hidden rounded-lg border border-slate-200 bg-slate-100 flex items-center justify-center text-[10px] text-slate-400 text-center px-2">
-                    {bgPreviewSrc ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img src={bgPreviewSrc} alt="" className="h-full w-full object-cover" />
-                    ) : (
-                      <span>Sin preview</span>
-                    )}
-                  </div>
-                </div>
-              </div>
+            <input
+              ref={templateInputRef}
+              type="file"
+              accept="image/png,image/jpeg,image/webp"
+              className="sr-only"
+              onChange={(e) => {
+                void onTemplateFile(e.target.files);
+                e.target.value = "";
+              }}
+            />
 
-              <div className="rounded-xl border border-slate-200 bg-white p-4 space-y-3">
-                <p className="text-sm font-semibold text-slate-900">Colores (modo automático)</p>
-                <p className="text-xs text-slate-500">
-                  Se aplican al comprobante generado por el sistema. Guardá los cambios con <span className="font-medium">Guardar</span>.
-                </p>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  <div>
-                    <label className="block text-xs text-slate-600 mb-1">Principal</label>
-                    <input
-                      type="color"
-                      className="h-9 w-full min-w-0 cursor-pointer rounded border border-slate-200 bg-white"
-                      value={colorPrimary.length === 7 && colorPrimary.startsWith("#") ? colorPrimary : "#0f172a"}
-                      onChange={(e) => setTicketColorField("primaryColor", e.target.value)}
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs text-slate-600 mb-1">Secundario</label>
-                    <input
-                      type="color"
-                      className="h-9 w-full min-w-0 cursor-pointer rounded border border-slate-200 bg-white"
-                      value={colorSecondary.length === 7 && colorSecondary.startsWith("#") ? colorSecondary : "#64748b"}
-                      onChange={(e) => setTicketColorField("secondaryColor", e.target.value)}
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs text-slate-600 mb-1">Fondo</label>
-                    <input
-                      type="color"
-                      className="h-9 w-full min-w-0 cursor-pointer rounded border border-slate-200 bg-white"
-                      value={colorBackground.length === 7 && colorBackground.startsWith("#") ? colorBackground : "#f8fafc"}
-                      onChange={(e) => setTicketColorField("backgroundColor", e.target.value)}
-                    />
-                  </div>
-                </div>
-              </div>
-            </>
-          )}
-
-          {designMode === "custom_template" && (
-            <>
-              <div className="rounded-lg border border-amber-200 bg-amber-50/90 px-3 py-2 text-xs text-amber-950">
-                Los textos se colocan automáticamente sobre la plantilla. En esta versión las posiciones usan una
-                configuración predeterminada; si necesitás ajustar ubicación/tamaño, se modifica desde la configuración
-                avanzada del ticket.
-              </div>
-
-              <div className="rounded-xl border-2 border-violet-400/80 bg-white p-5 space-y-4">
-                <div>
-                  <p className="text-base font-semibold text-slate-900">Subir plantilla base del ticket</p>
-                  <p className="text-sm text-slate-600 mt-2">
-                    Subí una imagen completa del comprobante ya diseñada. El sistema escribirá encima los datos reales del
-                    comprador, orden y cupones.
-                  </p>
-                  <ul className="mt-2 text-xs text-slate-600 list-disc list-inside space-y-0.5">
-                    <li>Formatos: PNG, JPG o WebP · máximo {MAX_ASSET_BYTES / (1024 * 1024)} MB</li>
-                    <li>
-                      Tamaño recomendado: <span className="font-medium">1080×1350</span> o{" "}
-                      <span className="font-medium">1080×1920</span>
-                    </li>
-                    <li>Dejá espacio libre en el diseño donde irán los datos dinámicos</li>
-                  </ul>
-                </div>
-
-                <input
-                  ref={templateInputRef}
-                  type="file"
-                  accept="image/png,image/jpeg,image/webp"
-                  className="sr-only"
-                  onChange={(e) => {
-                    void onTemplateFile(e.target.files);
-                    e.target.value = "";
-                  }}
-                />
-
-                <div className="flex flex-wrap items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
+              {!hasTemplateOnServer && (
+                <button
+                  type="button"
+                  onClick={() => templateInputRef.current?.click()}
+                  disabled={templatePhase === "uploading"}
+                  className="inline-flex items-center rounded-lg bg-violet-700 px-4 py-2.5 text-sm font-medium text-white hover:bg-violet-800 disabled:opacity-50"
+                >
+                  Seleccionar imagen
+                </button>
+              )}
+              {hasTemplateOnServer && (
+                <>
                   <button
                     type="button"
                     onClick={() => templateInputRef.current?.click()}
                     disabled={templatePhase === "uploading"}
                     className="inline-flex items-center rounded-lg bg-violet-700 px-4 py-2.5 text-sm font-medium text-white hover:bg-violet-800 disabled:opacity-50"
                   >
-                    {hasTemplateOnServer ? "Cambiar plantilla" : "Seleccionar plantilla"}
+                    Cambiar imagen
                   </button>
-                  {hasTemplateOnServer && (
-                    <button
-                      type="button"
-                      onClick={() => void removeTemplate()}
-                      className="inline-flex items-center rounded-lg border border-red-200 bg-white px-4 py-2.5 text-sm font-medium text-red-700 hover:bg-red-50"
-                    >
-                      Quitar plantilla
-                    </button>
-                  )}
-                </div>
-
-                {templatePhase === "uploading" && (
-                  <p className="text-sm font-medium text-violet-800">Subiendo plantilla…</p>
-                )}
-                {templatePhase === "error" && templateMsg && (
-                  <p className="text-sm text-red-700" role="alert">
-                    {templateMsg}
-                  </p>
-                )}
-
-                {hasTemplateOnServer && templatePhase !== "uploading" && templatePhase !== "error" && (
-                  <p className="text-sm font-medium text-emerald-800">Plantilla cargada correctamente.</p>
-                )}
-
-                {(templatePickName || templateDisplayFileName) && (
-                  <p className="text-sm text-slate-700">
-                    Archivo:{" "}
-                    <span className="font-medium break-all">
-                      {templatePickName || templateDisplayFileName}
-                    </span>
-                  </p>
-                )}
-
-                {(templateW != null && templateH != null) || templatePathStored ? (
-                  <p className="text-sm text-slate-600">
-                    {templateW != null && templateH != null ? (
-                      <>
-                        Dimensiones: <span className="font-medium">{templateW}×{templateH}px</span>
-                      </>
-                    ) : (
-                      <span className="text-slate-500">Dimensiones no registradas (subí de nuevo la plantilla).</span>
-                    )}
-                  </p>
-                ) : null}
-
-                {!templatePathStored && legacyTemplateUrl && (
-                  <p className="text-xs text-amber-800">
-                    Hay un archivo template.* en Storage de una subida anterior (sin path en config). Subí de nuevo para
-                    registrar dimensiones y bucket/path.
-                  </p>
-                )}
-
-                <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                  <div className="mx-auto w-full max-w-xl overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
-                    {templatePreviewSrc ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        src={templatePreviewSrc}
-                        alt="Vista previa de la plantilla base del ticket"
-                        className="w-full h-auto max-h-[min(70vh,900px)] object-contain"
-                      />
-                    ) : (
-                      <div className="flex min-h-[220px] items-center justify-center px-6 py-10 text-center text-sm text-slate-400">
-                        Aún no hay plantilla. Usá &quot;Seleccionar plantilla&quot; para cargar la imagen base.
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-            </>
-          )}
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1 border-t border-violet-200/80">
-            <div>
-              <label className="block text-xs text-slate-600 mb-1">Título en el ticket</label>
-              <input
-                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white"
-                value={ticketTitle}
-                onChange={(e) => setTicketTitle(e.target.value)}
-              />
+                  <button
+                    type="button"
+                    onClick={() => void removeTemplate()}
+                    className="inline-flex items-center rounded-lg border border-red-200 bg-white px-4 py-2.5 text-sm font-medium text-red-700 hover:bg-red-50"
+                  >
+                    Quitar imagen
+                  </button>
+                </>
+              )}
             </div>
+
+            {templatePhase === "uploading" && (
+              <p className="text-sm font-medium text-violet-800">Subiendo imagen…</p>
+            )}
+            {templatePhase === "error" && templateMsg && (
+              <p className="text-sm text-red-700" role="alert">
+                {templateMsg}
+              </p>
+            )}
+
+            {hasTemplateOnServer && templatePhase !== "uploading" && templatePhase !== "error" && (
+              <p className="text-sm font-medium text-emerald-800">Imagen base cargada correctamente.</p>
+            )}
+
+            {(templatePickName || templateDisplayFileName) && (
+              <p className="text-sm text-slate-700">
+                Archivo:{" "}
+                <span className="font-medium break-all">{templatePickName || templateDisplayFileName}</span>
+              </p>
+            )}
+
+            {(templateW != null && templateH != null) || templatePathStored ? (
+              <p className="text-sm text-slate-600">
+                {templateW != null && templateH != null ? (
+                  <>
+                    Dimensiones: <span className="font-medium">{templateW}×{templateH}px</span>
+                  </>
+                ) : (
+                  <span className="text-slate-500">Dimensiones no registradas (subí de nuevo la imagen).</span>
+                )}
+              </p>
+            ) : null}
+
+            {!templatePathStored && legacyTemplateUrl && (
+              <p className="text-xs text-amber-800">
+                Hay un archivo template.* en Storage sin registrar en el sorteo. Subí de nuevo la imagen para asociarla.
+              </p>
+            )}
+
+            {!hasTemplateOnServer && (
+              <p className="text-xs text-amber-900/90 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
+                Si todavía no subís imagen base, el sistema puede generar un comprobante de respaldo automáticamente;
+                lo recomendable es subir tu diseño para un resultado profesional.
+              </p>
+            )}
+
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+              <div className="mx-auto w-full max-w-xl overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
+                {templatePreviewSrc ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={templatePreviewSrc}
+                    alt="Vista previa de la imagen base del comprobante"
+                    className="w-full h-auto max-h-[min(70vh,900px)] object-contain"
+                  />
+                ) : (
+                  <div className="flex min-h-[220px] items-center justify-center px-6 py-10 text-center text-sm text-slate-400">
+                    Aún no hay imagen base. Usá &quot;Seleccionar imagen&quot;.
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div className="space-y-3 pt-1 border-t border-violet-200/80">
             <div>
-              <label className="block text-xs text-slate-600 mb-1">Caption WhatsApp (imagen)</label>
+              <label className="block text-xs text-slate-600 mb-1">Caption WhatsApp de la imagen</label>
               <input
                 className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white"
                 value={ticketCaption}
                 onChange={(e) => setTicketCaption(e.target.value)}
               />
             </div>
-          </div>
-          <div>
-            <label className="block text-xs text-slate-600 mb-1">Texto legal / pie</label>
-            <input
-              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white"
-              value={ticketLegal}
-              onChange={(e) => setTicketLegal(e.target.value)}
-            />
-          </div>
-          <div>
-            <label className="block text-xs text-slate-600 mb-1">
-              Texto corto (solo ticket imagen — opcional)
-            </label>
-            <input
-              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white"
-              value={ticketStub}
-              onChange={(e) => setTicketStub(e.target.value)}
-              placeholder="Listo, generamos tu comprobante…"
-            />
+            <div>
+              <label className="block text-xs text-slate-600 mb-1">Texto corto fallback (opcional)</label>
+              <input
+                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white"
+                value={ticketStub}
+                onChange={(e) => setTicketStub(e.target.value)}
+                placeholder="Listo, generamos tu comprobante…"
+              />
+            </div>
           </div>
 
           <p className="text-xs text-slate-600 border-t border-violet-200/80 pt-3">

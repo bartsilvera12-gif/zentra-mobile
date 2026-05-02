@@ -13,14 +13,14 @@ export type SorteoTicketCustomFieldLayout = {
   color: string;
 };
 
-/** Defaults MVP para overlay sobre plantilla (1080×1350 típico). */
+/** Colores y tamaños base; el render ubica el bloque abajo. x/y en DB = override opcional. */
 export const DEFAULT_CUSTOM_TEMPLATE_FIELDS: Record<string, SorteoTicketCustomFieldLayout> = {
-  cliente_nombre: { x: 90, y: 520, fontSize: 34, color: "#111827" },
-  cliente_documento: { x: 90, y: 575, fontSize: 30, color: "#374151" },
-  telefono: { x: 90, y: 625, fontSize: 30, color: "#374151" },
-  numero_orden: { x: 90, y: 685, fontSize: 32, color: "#111827" },
-  sorteo_nombre: { x: 90, y: 740, fontSize: 30, color: "#374151" },
-  cupones: { x: 90, y: 900, fontSize: 52, color: "#111827" },
+  cliente_nombre: { x: 72, y: 0, fontSize: 32, color: "#111827" },
+  cliente_documento: { x: 72, y: 0, fontSize: 26, color: "#374151" },
+  telefono: { x: 72, y: 0, fontSize: 26, color: "#374151" },
+  numero_orden: { x: 72, y: 0, fontSize: 30, color: "#111827" },
+  sorteo_nombre: { x: 72, y: 0, fontSize: 26, color: "#374151" },
+  cupones: { x: 72, y: 0, fontSize: 56, color: "#111827" },
 };
 
 export type SorteoTicketImageConfig = {
