@@ -506,14 +506,15 @@ export default function EditarSorteoPage() {
         custom_template_storage_path: path,
         custom_template_width: dims.w,
         custom_template_height: dims.h,
+        custom_template_original_filename: f.name,
       };
       await persistTicketConfig(nextBase);
       URL.revokeObjectURL(ou);
       setTemplateObjectUrl(null);
       setTemplatePickName(null);
       setLegacyTemplateUrl(null);
-      setTemplatePhase("ok");
-      setTemplateMsg("Plantilla base cargada. Los datos del comprador se dibujarán encima al generar el ticket.");
+      setTemplatePhase("idle");
+      setTemplateMsg(null);
     } catch (e) {
       setTemplatePhase("error");
       setTemplateMsg(e instanceof Error ? e.message : "Error al subir");
@@ -538,14 +539,22 @@ export default function EditarSorteoPage() {
       delete next.custom_template_storage_path;
       delete next.custom_template_width;
       delete next.custom_template_height;
+      delete next.custom_template_original_filename;
       await persistTicketConfig(next);
       setLegacyTemplateUrl(null);
       setTemplatePhase("idle");
-      setTemplateMsg("Plantilla quitada. Si el diseño sigue en “Plantilla personalizada”, el ticket usará el modo automático hasta que subas otra imagen.");
+      setTemplateMsg(null);
     } catch (e) {
       setTemplatePhase("error");
       setTemplateMsg(e instanceof Error ? e.message : "Error");
     }
+  }
+
+  function setTicketColorField(
+    key: "primaryColor" | "secondaryColor" | "backgroundColor",
+    value: string
+  ) {
+    setTicketImageConfigBase((prev) => ({ ...prev, [key]: value }));
   }
 
   async function removeLogo() {
@@ -639,6 +648,29 @@ export default function EditarSorteoPage() {
     typeof ticketImageConfigBase.custom_template_height === "number"
       ? ticketImageConfigBase.custom_template_height
       : null;
+
+  const templateStoredOriginalName =
+    typeof ticketImageConfigBase.custom_template_original_filename === "string"
+      ? ticketImageConfigBase.custom_template_original_filename.trim()
+      : "";
+  const templatePathFilename =
+    templatePathStored && typeof templatePathStored === "string"
+      ? (templatePathStored.split("/").pop() ?? "")
+      : "";
+  const templateDisplayFileName = templateStoredOriginalName || templatePathFilename || null;
+
+  const colorPrimary =
+    typeof ticketImageConfigBase.primaryColor === "string" && ticketImageConfigBase.primaryColor
+      ? ticketImageConfigBase.primaryColor
+      : "#0f172a";
+  const colorSecondary =
+    typeof ticketImageConfigBase.secondaryColor === "string" && ticketImageConfigBase.secondaryColor
+      ? ticketImageConfigBase.secondaryColor
+      : "#64748b";
+  const colorBackground =
+    typeof ticketImageConfigBase.backgroundColor === "string" && ticketImageConfigBase.backgroundColor
+      ? ticketImageConfigBase.backgroundColor
+      : "#f8fafc";
 
   if (cargando) {
     return <div className="py-16 text-center text-slate-400 text-sm animate-pulse">Cargando…</div>;
@@ -789,9 +821,9 @@ export default function EditarSorteoPage() {
           <div>
             <h2 className="text-base font-semibold text-slate-900">Respuesta al comprador / Ticket</h2>
             <p className="text-xs text-slate-600 mt-1">
-              Define cómo responde el sistema tras la compra en WhatsApp: solo texto, texto más imagen del ticket, o solo
-              imagen. Los archivos de logo y fondo se suben a Storage al elegir archivo; los textos y modo se guardan con{" "}
-              <span className="font-medium">Guardar</span> o al terminar la subida del asset (se actualiza{" "}
+              Definí si el comprador recibe solo texto, texto más imagen del comprobante o solo la imagen. Los textos del
+              ticket y el modo de envío se guardan con <span className="font-medium">Guardar</span>. Logo, fondo y
+              plantilla se suben a Storage al elegir archivo (se actualiza{" "}
               <code className="rounded bg-violet-100/80 px-1">ticket_image_config</code>).
             </p>
           </div>
@@ -820,18 +852,331 @@ export default function EditarSorteoPage() {
               <option value="auto">Automático</option>
               <option value="custom_template">Plantilla personalizada</option>
             </select>
-            <p className="text-xs text-slate-500 mt-1">
-              <strong className="font-medium text-slate-700">Automático:</strong> comprobante vertical con logo, datos en
-              bloques y cupón destacado (~1080×1350).{" "}
-              <strong className="font-medium text-slate-700">Plantilla personalizada:</strong> subís una imagen base con
-              marca y estilo; el sistema solo escribe los datos del comprador y los cupones encima.
-            </p>
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+
+          {designMode === "auto" && (
+            <>
+              <p className="text-sm text-slate-700 rounded-lg border border-sky-200 bg-sky-50/90 px-3 py-2">
+                El ERP generará el diseño automáticamente usando logo, colores y datos del comprador.
+              </p>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="rounded-xl border border-dashed border-violet-300 bg-white/90 p-4 flex flex-col gap-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <p className="text-sm font-semibold text-slate-900">Subir logo del sorteo</p>
+                      <p className="text-xs text-slate-500 mt-0.5">
+                        PNG, JPG o WebP. Recomendado: fondo transparente. Máx. {MAX_ASSET_BYTES / (1024 * 1024)} MB.
+                      </p>
+                    </div>
+                  </div>
+                  <input
+                    ref={logoInputRef}
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp"
+                    className="sr-only"
+                    onChange={(e) => {
+                      void onLogoFile(e.target.files);
+                      e.target.value = "";
+                    }}
+                  />
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => logoInputRef.current?.click()}
+                      disabled={logoPhase === "uploading"}
+                      className="inline-flex items-center rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50"
+                    >
+                      {hasLogoOnServer ? "Cambiar logo" : "Seleccionar logo"}
+                    </button>
+                    {hasLogoOnServer && (
+                      <button
+                        type="button"
+                        onClick={() => void removeLogo()}
+                        className="text-sm text-red-700 hover:underline"
+                      >
+                        Quitar logo
+                      </button>
+                    )}
+                  </div>
+                  {logoPathStored && (
+                    <p className="text-xs text-emerald-800 font-medium">
+                      Hay un logo guardado en Storage (registrado en el sorteo).
+                    </p>
+                  )}
+                  {!logoPathStored && legacyLogoUrl && (
+                    <p className="text-xs text-amber-800">
+                      Hay un archivo de logo en Storage (subida anterior sin registro en config).
+                    </p>
+                  )}
+                  {!hasLogoOnServer && !logoPickName && logoPhase !== "uploading" && (
+                    <p className="text-xs text-slate-500">Aún no cargaste un logo.</p>
+                  )}
+                  {logoPickName && (
+                    <p className="text-xs text-slate-700">
+                      Archivo: <span className="font-medium break-all">{logoPickName}</span>
+                    </p>
+                  )}
+                  {logoPhase === "uploading" && (
+                    <p className="text-xs font-medium text-violet-800">Subiendo logo…</p>
+                  )}
+                  {logoPhase === "ok" && logoMsg && (
+                    <p className="text-xs font-medium text-emerald-800">{logoMsg}</p>
+                  )}
+                  {logoPhase === "error" && logoMsg && (
+                    <p className="text-xs text-red-700" role="alert">
+                      {logoMsg}
+                    </p>
+                  )}
+                  <div className="flex items-center gap-3">
+                    <div
+                      className="h-20 w-20 shrink-0 overflow-hidden rounded-lg border border-slate-200 bg-slate-100 flex items-center justify-center text-[10px] text-slate-400 text-center p-1"
+                      aria-hidden={!logoPreviewSrc}
+                    >
+                      {logoPreviewSrc ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={logoPreviewSrc} alt="" className="max-h-full max-w-full object-contain" />
+                      ) : (
+                        <span>Sin preview</span>
+                      )}
+                    </div>
+                    <span className="text-xs text-slate-500">Vista previa 80×80</span>
+                  </div>
+                </div>
+
+                <div className="rounded-xl border border-dashed border-violet-300 bg-white/90 p-4 flex flex-col gap-3">
+                  <div>
+                    <p className="text-sm font-semibold text-slate-900">Subir fondo del ticket</p>
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      Opcional. PNG, JPG o WebP. Máx. {MAX_ASSET_BYTES / (1024 * 1024)} MB.
+                    </p>
+                  </div>
+                  <input
+                    ref={bgInputRef}
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp"
+                    className="sr-only"
+                    onChange={(e) => {
+                      void onBgFile(e.target.files);
+                      e.target.value = "";
+                    }}
+                  />
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => bgInputRef.current?.click()}
+                      disabled={bgPhase === "uploading"}
+                      className="inline-flex items-center rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50"
+                    >
+                      {hasBgOnServer ? "Cambiar fondo" : "Seleccionar fondo"}
+                    </button>
+                    {hasBgOnServer && (
+                      <button
+                        type="button"
+                        onClick={() => void removeBackground()}
+                        className="text-sm text-red-700 hover:underline"
+                      >
+                        Quitar fondo
+                      </button>
+                    )}
+                  </div>
+                  {bgPathStored && (
+                    <p className="text-xs text-emerald-800 font-medium">Fondo cargado y registrado en el sorteo.</p>
+                  )}
+                  {!bgPathStored && legacyBgUrl && (
+                    <p className="text-xs text-amber-800">
+                      Hay un fondo en Storage (subida anterior sin registro en config).
+                    </p>
+                  )}
+                  {!hasBgOnServer && !bgPickName && bgPhase !== "uploading" && (
+                    <p className="text-xs text-slate-500">
+                      Sin fondo personalizado (se usa el color de fondo del diseño).
+                    </p>
+                  )}
+                  {bgPickName && (
+                    <p className="text-xs text-slate-700">
+                      Archivo: <span className="font-medium break-all">{bgPickName}</span>
+                    </p>
+                  )}
+                  {bgPhase === "uploading" && (
+                    <p className="text-xs font-medium text-violet-800">Subiendo fondo…</p>
+                  )}
+                  {bgPhase === "ok" && bgMsg && <p className="text-xs font-medium text-emerald-800">{bgMsg}</p>}
+                  {bgPhase === "error" && bgMsg && (
+                    <p className="text-xs text-red-700" role="alert">
+                      {bgMsg}
+                    </p>
+                  )}
+                  <div className="h-20 max-w-[200px] overflow-hidden rounded-lg border border-slate-200 bg-slate-100 flex items-center justify-center text-[10px] text-slate-400 text-center px-2">
+                    {bgPreviewSrc ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={bgPreviewSrc} alt="" className="h-full w-full object-cover" />
+                    ) : (
+                      <span>Sin preview</span>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-slate-200 bg-white p-4 space-y-3">
+                <p className="text-sm font-semibold text-slate-900">Colores (modo automático)</p>
+                <p className="text-xs text-slate-500">
+                  Se aplican al comprobante generado por el sistema. Guardá los cambios con <span className="font-medium">Guardar</span>.
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div>
+                    <label className="block text-xs text-slate-600 mb-1">Principal</label>
+                    <input
+                      type="color"
+                      className="h-9 w-full min-w-0 cursor-pointer rounded border border-slate-200 bg-white"
+                      value={colorPrimary.length === 7 && colorPrimary.startsWith("#") ? colorPrimary : "#0f172a"}
+                      onChange={(e) => setTicketColorField("primaryColor", e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-slate-600 mb-1">Secundario</label>
+                    <input
+                      type="color"
+                      className="h-9 w-full min-w-0 cursor-pointer rounded border border-slate-200 bg-white"
+                      value={colorSecondary.length === 7 && colorSecondary.startsWith("#") ? colorSecondary : "#64748b"}
+                      onChange={(e) => setTicketColorField("secondaryColor", e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-slate-600 mb-1">Fondo</label>
+                    <input
+                      type="color"
+                      className="h-9 w-full min-w-0 cursor-pointer rounded border border-slate-200 bg-white"
+                      value={colorBackground.length === 7 && colorBackground.startsWith("#") ? colorBackground : "#f8fafc"}
+                      onChange={(e) => setTicketColorField("backgroundColor", e.target.value)}
+                    />
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
+
+          {designMode === "custom_template" && (
+            <>
+              <div className="rounded-lg border border-amber-200 bg-amber-50/90 px-3 py-2 text-xs text-amber-950">
+                Los textos se colocan automáticamente sobre la plantilla. En esta versión las posiciones usan una
+                configuración predeterminada; si necesitás ajustar ubicación/tamaño, se modifica desde la configuración
+                avanzada del ticket.
+              </div>
+
+              <div className="rounded-xl border-2 border-violet-400/80 bg-white p-5 space-y-4">
+                <div>
+                  <p className="text-base font-semibold text-slate-900">Subir plantilla base del ticket</p>
+                  <p className="text-sm text-slate-600 mt-2">
+                    Subí una imagen completa del comprobante ya diseñada. El sistema escribirá encima los datos reales del
+                    comprador, orden y cupones.
+                  </p>
+                  <ul className="mt-2 text-xs text-slate-600 list-disc list-inside space-y-0.5">
+                    <li>Formatos: PNG, JPG o WebP · máximo {MAX_ASSET_BYTES / (1024 * 1024)} MB</li>
+                    <li>
+                      Tamaño recomendado: <span className="font-medium">1080×1350</span> o{" "}
+                      <span className="font-medium">1080×1920</span>
+                    </li>
+                    <li>Dejá espacio libre en el diseño donde irán los datos dinámicos</li>
+                  </ul>
+                </div>
+
+                <input
+                  ref={templateInputRef}
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp"
+                  className="sr-only"
+                  onChange={(e) => {
+                    void onTemplateFile(e.target.files);
+                    e.target.value = "";
+                  }}
+                />
+
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => templateInputRef.current?.click()}
+                    disabled={templatePhase === "uploading"}
+                    className="inline-flex items-center rounded-lg bg-violet-700 px-4 py-2.5 text-sm font-medium text-white hover:bg-violet-800 disabled:opacity-50"
+                  >
+                    {hasTemplateOnServer ? "Cambiar plantilla" : "Seleccionar plantilla"}
+                  </button>
+                  {hasTemplateOnServer && (
+                    <button
+                      type="button"
+                      onClick={() => void removeTemplate()}
+                      className="inline-flex items-center rounded-lg border border-red-200 bg-white px-4 py-2.5 text-sm font-medium text-red-700 hover:bg-red-50"
+                    >
+                      Quitar plantilla
+                    </button>
+                  )}
+                </div>
+
+                {templatePhase === "uploading" && (
+                  <p className="text-sm font-medium text-violet-800">Subiendo plantilla…</p>
+                )}
+                {templatePhase === "error" && templateMsg && (
+                  <p className="text-sm text-red-700" role="alert">
+                    {templateMsg}
+                  </p>
+                )}
+
+                {hasTemplateOnServer && templatePhase !== "uploading" && templatePhase !== "error" && (
+                  <p className="text-sm font-medium text-emerald-800">Plantilla cargada correctamente.</p>
+                )}
+
+                {(templatePickName || templateDisplayFileName) && (
+                  <p className="text-sm text-slate-700">
+                    Archivo:{" "}
+                    <span className="font-medium break-all">
+                      {templatePickName || templateDisplayFileName}
+                    </span>
+                  </p>
+                )}
+
+                {(templateW != null && templateH != null) || templatePathStored ? (
+                  <p className="text-sm text-slate-600">
+                    {templateW != null && templateH != null ? (
+                      <>
+                        Dimensiones: <span className="font-medium">{templateW}×{templateH}px</span>
+                      </>
+                    ) : (
+                      <span className="text-slate-500">Dimensiones no registradas (subí de nuevo la plantilla).</span>
+                    )}
+                  </p>
+                ) : null}
+
+                {!templatePathStored && legacyTemplateUrl && (
+                  <p className="text-xs text-amber-800">
+                    Hay un archivo template.* en Storage de una subida anterior (sin path en config). Subí de nuevo para
+                    registrar dimensiones y bucket/path.
+                  </p>
+                )}
+
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                  <div className="mx-auto w-full max-w-xl overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
+                    {templatePreviewSrc ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={templatePreviewSrc}
+                        alt="Vista previa de la plantilla base del ticket"
+                        className="w-full h-auto max-h-[min(70vh,900px)] object-contain"
+                      />
+                    ) : (
+                      <div className="flex min-h-[220px] items-center justify-center px-6 py-10 text-center text-sm text-slate-400">
+                        Aún no hay plantilla. Usá &quot;Seleccionar plantilla&quot; para cargar la imagen base.
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1 border-t border-violet-200/80">
             <div>
               <label className="block text-xs text-slate-600 mb-1">Título en el ticket</label>
               <input
-                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm"
+                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white"
                 value={ticketTitle}
                 onChange={(e) => setTicketTitle(e.target.value)}
               />
@@ -839,7 +1184,7 @@ export default function EditarSorteoPage() {
             <div>
               <label className="block text-xs text-slate-600 mb-1">Caption WhatsApp (imagen)</label>
               <input
-                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm"
+                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white"
                 value={ticketCaption}
                 onChange={(e) => setTicketCaption(e.target.value)}
               />
@@ -848,7 +1193,7 @@ export default function EditarSorteoPage() {
           <div>
             <label className="block text-xs text-slate-600 mb-1">Texto legal / pie</label>
             <input
-              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm"
+              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white"
               value={ticketLegal}
               onChange={(e) => setTicketLegal(e.target.value)}
             />
@@ -858,261 +1203,16 @@ export default function EditarSorteoPage() {
               Texto corto (solo ticket imagen — opcional)
             </label>
             <input
-              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm"
+              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white"
               value={ticketStub}
               onChange={(e) => setTicketStub(e.target.value)}
               placeholder="Listo, generamos tu comprobante…"
             />
           </div>
 
-          {designMode === "custom_template" && (
-            <div className="rounded-xl border-2 border-violet-400/80 bg-white p-4 space-y-3">
-              <div>
-                <p className="text-sm font-semibold text-slate-900">Plantilla base del ticket</p>
-                <p className="text-xs text-slate-600 mt-1">
-                  Subí PNG, JPG o WebP (máx. {MAX_ASSET_BYTES / (1024 * 1024)} MB). Recomendado:{" "}
-                  <span className="font-medium">1080×1350</span> u orientación story{" "}
-                  <span className="font-medium">1080×1920</span>. El ERP dibujará encima nombre, documento, teléfono, Nº de
-                  orden, sorteo y cupones (posiciones por defecto; más adelante se podrá ajustar con editor visual).
-                </p>
-              </div>
-              <input
-                ref={templateInputRef}
-                type="file"
-                accept="image/png,image/jpeg,image/webp"
-                className="sr-only"
-                onChange={(e) => {
-                  void onTemplateFile(e.target.files);
-                  e.target.value = "";
-                }}
-              />
-              <div className="flex flex-wrap items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => templateInputRef.current?.click()}
-                  disabled={templatePhase === "uploading"}
-                  className="inline-flex items-center rounded-lg bg-violet-700 px-3 py-2 text-sm font-medium text-white hover:bg-violet-800 disabled:opacity-50"
-                >
-                  {hasTemplateOnServer ? "Cambiar plantilla base" : "Subir plantilla base del ticket"}
-                </button>
-                {hasTemplateOnServer && (
-                  <button
-                    type="button"
-                    onClick={() => void removeTemplate()}
-                    className="text-sm text-red-700 hover:underline"
-                  >
-                    Quitar plantilla
-                  </button>
-                )}
-              </div>
-              {templatePathStored && (
-                <p className="text-xs text-emerald-800 font-medium">
-                  Hay una plantilla registrada en el sorteo
-                  {templateW != null && templateH != null ? (
-                    <>
-                      {" "}
-                      ({templateW}×{templateH}px)
-                    </>
-                  ) : null}
-                  .
-                </p>
-              )}
-              {!templatePathStored && legacyTemplateUrl && (
-                <p className="text-xs text-amber-800">
-                  Hay un archivo template.* en Storage de una subida anterior (sin path en config). Subí de nuevo para
-                  registrar dimensiones y bucket/path.
-                </p>
-              )}
-              {templatePickName && (
-                <p className="text-xs text-slate-700">
-                  Archivo: <span className="font-medium break-all">{templatePickName}</span>
-                </p>
-              )}
-              {templatePhase === "uploading" && (
-                <p className="text-xs font-medium text-violet-800">Subiendo plantilla…</p>
-              )}
-              {templatePhase === "ok" && templateMsg && (
-                <p className="text-xs font-medium text-emerald-800">{templateMsg}</p>
-              )}
-              {templatePhase === "error" && templateMsg && (
-                <p className="text-xs text-red-700" role="alert">
-                  {templateMsg}
-                </p>
-              )}
-              <div className="rounded-lg border border-slate-200 bg-slate-50 p-2 overflow-hidden">
-                <div className="mx-auto max-w-[280px] max-h-[360px] overflow-auto rounded-md border border-slate-200 bg-white shadow-inner">
-                  {templatePreviewSrc ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={templatePreviewSrc}
-                      alt="Vista previa plantilla base"
-                      className="w-full h-auto object-contain max-h-[340px]"
-                    />
-                  ) : (
-                    <div className="flex min-h-[160px] items-center justify-center px-4 text-center text-xs text-slate-400">
-                      Aún no hay plantilla. Subí una imagen para ver la vista previa.
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-          )}
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
-            {/* Logo uploader */}
-            <div className="rounded-xl border border-dashed border-violet-300 bg-white/90 p-4 flex flex-col gap-3">
-              <div className="flex items-start justify-between gap-2">
-                <div>
-                  <p className="text-sm font-semibold text-slate-900">Subir logo del sorteo</p>
-                  <p className="text-xs text-slate-500 mt-0.5">
-                    PNG, JPG o WebP. Recomendado: fondo transparente. Máx. {MAX_ASSET_BYTES / (1024 * 1024)} MB.
-                  </p>
-                </div>
-              </div>
-              <input
-                ref={logoInputRef}
-                type="file"
-                accept="image/png,image/jpeg,image/webp"
-                className="sr-only"
-                onChange={(e) => {
-                  void onLogoFile(e.target.files);
-                  e.target.value = "";
-                }}
-              />
-              <div className="flex flex-wrap items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => logoInputRef.current?.click()}
-                  disabled={logoPhase === "uploading"}
-                  className="inline-flex items-center rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50"
-                >
-                  {hasLogoOnServer ? "Cambiar logo" : "Seleccionar logo"}
-                </button>
-                {hasLogoOnServer && (
-                  <button
-                    type="button"
-                    onClick={() => void removeLogo()}
-                    className="text-sm text-red-700 hover:underline"
-                  >
-                    Quitar logo
-                  </button>
-                )}
-              </div>
-              {logoPathStored && (
-                <p className="text-xs text-emerald-800 font-medium">Hay un logo guardado en Storage (registrado en el sorteo).</p>
-              )}
-              {!logoPathStored && legacyLogoUrl && (
-                <p className="text-xs text-amber-800">Hay un archivo de logo en Storage (subida anterior sin registro en config).</p>
-              )}
-              {!hasLogoOnServer && !logoPickName && logoPhase !== "uploading" && (
-                <p className="text-xs text-slate-500">Aún no cargaste un logo.</p>
-              )}
-              {logoPickName && (
-                <p className="text-xs text-slate-700">
-                  Archivo: <span className="font-medium break-all">{logoPickName}</span>
-                </p>
-              )}
-              {logoPhase === "uploading" && (
-                <p className="text-xs font-medium text-violet-800">Subiendo logo…</p>
-              )}
-              {logoPhase === "ok" && logoMsg && (
-                <p className="text-xs font-medium text-emerald-800">{logoMsg}</p>
-              )}
-              {logoPhase === "error" && logoMsg && (
-                <p className="text-xs text-red-700" role="alert">
-                  {logoMsg}
-                </p>
-              )}
-              <div className="flex items-center gap-3">
-                <div
-                  className="h-20 w-20 shrink-0 overflow-hidden rounded-lg border border-slate-200 bg-slate-100 flex items-center justify-center text-[10px] text-slate-400 text-center p-1"
-                  aria-hidden={!logoPreviewSrc}
-                >
-                  {logoPreviewSrc ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={logoPreviewSrc} alt="" className="max-h-full max-w-full object-contain" />
-                  ) : (
-                    <span>Sin preview</span>
-                  )}
-                </div>
-                <span className="text-xs text-slate-500">Vista previa 80×80</span>
-              </div>
-            </div>
-
-            {/* Background uploader */}
-            <div className="rounded-xl border border-dashed border-violet-300 bg-white/90 p-4 flex flex-col gap-3">
-              <div>
-                <p className="text-sm font-semibold text-slate-900">Subir fondo del ticket</p>
-                <p className="text-xs text-slate-500 mt-0.5">
-                  Opcional. PNG, JPG o WebP. Máx. {MAX_ASSET_BYTES / (1024 * 1024)} MB.
-                </p>
-              </div>
-              <input
-                ref={bgInputRef}
-                type="file"
-                accept="image/png,image/jpeg,image/webp"
-                className="sr-only"
-                onChange={(e) => {
-                  void onBgFile(e.target.files);
-                  e.target.value = "";
-                }}
-              />
-              <div className="flex flex-wrap items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => bgInputRef.current?.click()}
-                  disabled={bgPhase === "uploading"}
-                  className="inline-flex items-center rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50"
-                >
-                  {hasBgOnServer ? "Cambiar fondo" : "Seleccionar fondo"}
-                </button>
-                {hasBgOnServer && (
-                  <button
-                    type="button"
-                    onClick={() => void removeBackground()}
-                    className="text-sm text-red-700 hover:underline"
-                  >
-                    Quitar fondo
-                  </button>
-                )}
-              </div>
-              {bgPathStored && (
-                <p className="text-xs text-emerald-800 font-medium">Fondo cargado y registrado en el sorteo.</p>
-              )}
-              {!bgPathStored && legacyBgUrl && (
-                <p className="text-xs text-amber-800">Hay un fondo en Storage (subida anterior sin registro en config).</p>
-              )}
-              {!hasBgOnServer && !bgPickName && bgPhase !== "uploading" && (
-                <p className="text-xs text-slate-500">Sin fondo personalizado (se usa el color de fondo del diseño).</p>
-              )}
-              {bgPickName && (
-                <p className="text-xs text-slate-700">
-                  Archivo: <span className="font-medium break-all">{bgPickName}</span>
-                </p>
-              )}
-              {bgPhase === "uploading" && <p className="text-xs font-medium text-violet-800">Subiendo fondo…</p>}
-              {bgPhase === "ok" && bgMsg && <p className="text-xs font-medium text-emerald-800">{bgMsg}</p>}
-              {bgPhase === "error" && bgMsg && (
-                <p className="text-xs text-red-700" role="alert">
-                  {bgMsg}
-                </p>
-              )}
-              <div
-                className="h-20 max-w-[200px] overflow-hidden rounded-lg border border-slate-200 bg-slate-100 flex items-center justify-center text-[10px] text-slate-400 text-center px-2"
-              >
-                {bgPreviewSrc ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={bgPreviewSrc} alt="" className="h-full w-full object-cover" />
-                ) : (
-                  <span>Sin preview</span>
-                )}
-              </div>
-            </div>
-          </div>
-
           <p className="text-xs text-slate-600 border-t border-violet-200/80 pt-3">
-            Al guardar el formulario completo, también persistís modo de envío y textos. Podés revisar envíos en el
-            reservorio <strong>Tickets / Comprobantes</strong>.
+            Los cambios de diseño se aplicarán en los próximos tickets generados o al regenerar tickets existentes desde{" "}
+            <strong>Tickets / Comprobantes</strong>.
           </p>
         </section>
 

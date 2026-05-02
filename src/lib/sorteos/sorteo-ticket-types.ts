@@ -32,6 +32,8 @@ export type SorteoTicketImageConfig = {
   /** Dimensiones detectadas al subir (overlay SVG) */
   custom_template_width?: number;
   custom_template_height?: number;
+  /** Nombre original del archivo al subir la plantilla (solo UX / referencia) */
+  custom_template_original_filename?: string;
   /** Coordenadas por campo para texto sobre plantilla */
   custom_template_fields?: Partial<Record<string, SorteoTicketCustomFieldLayout>>;
   /** Título visible en el PNG */
