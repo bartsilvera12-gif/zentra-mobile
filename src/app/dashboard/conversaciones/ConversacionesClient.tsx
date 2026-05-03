@@ -430,10 +430,11 @@ export function ConversacionesClient({
         });
       }
       try {
-        const { conversations: rows, base_row_count: baseRowCount } = await fetchChatConversations(
-          vista,
-          filters
-        );
+        const {
+          conversations: rows,
+          base_row_count: baseRowCount,
+          transient_list_error: transientListError,
+        } = await fetchChatConversations(vista, filters);
         if (silent) {
           chatListUiLog("refetch-result", {
             activeTab: vista,
@@ -446,7 +447,10 @@ export function ConversacionesClient({
           });
         }
         const preserveSilentEmpty =
-          silent && rows.length === 0 && previousCount > 0 && baseRowCount === 0;
+          silent &&
+          rows.length === 0 &&
+          previousCount > 0 &&
+          (baseRowCount === 0 || Boolean(transientListError));
         if (preserveSilentEmpty) {
           chatListUiLog("refetch-preserve", {
             activeTab: vista,
@@ -481,6 +485,11 @@ export function ConversacionesClient({
           });
         }
         setListError(null);
+        if (transientListError && !silent && rows.length === 0) {
+          setListError(
+            "No pudimos refrescar el listado (base de datos ocupada). La vista anterior se mantiene si ya tenías datos."
+          );
+        }
       } catch (e) {
         chatListUiLog("refetch-result", {
           activeTab: vista,

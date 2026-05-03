@@ -3,9 +3,9 @@ import { SUPABASE_APP_SCHEMA, type AppSupabaseClient } from "@/lib/supabase/sche
 import {
   ensureSorteoOrderViaDirectPostgres,
   fetchSorteoRowTicketFieldsFromPg,
-  getSupabaseDirectPgConnectionString,
   type DirectPgSorteoOk,
 } from "@/lib/sorteos/sorteo-order-direct-pg";
+import { getChatPostgresConnectionString } from "@/lib/supabase/chat-pg-pool";
 import { flowTrace, summarizeFlowDataForTrace } from "@/lib/chat/flow-trace-log";
 import {
   SORTEO_COMPROBANTE_ESTADO_VALIDACION_FIELD,
@@ -983,7 +983,7 @@ export async function ensureSorteoOrderFromChat(
   }
 
   const dataSchema = await fetchDataSchemaForEmpresaId(input.empresaId);
-  const hasDirectPg = Boolean(getSupabaseDirectPgConnectionString());
+  const hasDirectPg = Boolean(getChatPostgresConnectionString());
 
   const directOrderArgs = {
     schema: dataSchema,

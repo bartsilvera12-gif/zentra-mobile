@@ -24,7 +24,11 @@ import {
 import { buildPgOmnicanalConversationScopeAndClause } from "@/lib/chat/omnicanal-scope-pg";
 import { pgSelectChatAgentIdsForUsuarios } from "@/lib/chat/omnicanal-scope-pg";
 import type { AppSupabaseClient } from "@/lib/supabase/schema";
-import { quoteSchemaTable } from "@/lib/supabase/chat-pg-pool";
+import {
+  isPgPoolExhaustionMessage,
+  logPgPoolStats,
+  quoteSchemaTable,
+} from "@/lib/supabase/chat-pg-pool";
 import type {
   ChatConversationsFetchResult,
   ChatInboxFilters,
@@ -205,7 +209,20 @@ async function pgFetchConversationsWithColumns(
   try {
     const r = await pool.query(q, params);
     return (r.rows ?? []) as Record<string, unknown>[];
-  } catch {
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    if (isPgPoolExhaustionMessage(msg)) {
+      logPgPoolStats("pgFetchConversationsWithColumns", pool, {
+        schema,
+        variant,
+        caller: "pgFetchConversationsWithColumns",
+      });
+      console.error("[chat-list][pg-pool-exhausted]", {
+        schema,
+        variant,
+        surface: "conversations_query",
+      });
+    }
     return null;
   }
 }
@@ -356,11 +373,40 @@ export async function fetchChatConversationsFromTenantPg(
 
   const whereSql = whereParts.join(" AND ");
 
-  let list =
-    (await pgFetchConversationsWithColumns(pool, dataSchema, whereSql, params, "full")) ??
-    (await pgFetchConversationsWithColumns(pool, dataSchema, whereSql, params, "legacy")) ??
-    (await pgFetchConversationsWithColumns(pool, dataSchema, whereSql, params, "min")) ??
-    [];
+  const full = await pgFetchConversationsWithColumns(pool, dataSchema, whereSql, params, "full");
+  const legacy =
+    full === null
+      ? await pgFetchConversationsWithColumns(pool, dataSchema, whereSql, params, "legacy")
+      : null;
+  const min =
+    full === null && legacy === null
+      ? await pgFetchConversationsWithColumns(pool, dataSchema, whereSql, params, "min")
+      : null;
+
+  let list: Record<string, unknown>[];
+  if (full !== null) {
+    list = full;
+  } else if (legacy !== null) {
+    list = legacy;
+  } else if (min !== null) {
+    list = min;
+  } else {
+    logPgPoolStats("fetchChatConversationsFromTenantPg", pool, {
+      schema: dataSchema,
+      empresa_id,
+      caller: "main_conversation_select",
+    });
+    console.error("[pg_pool_exhausted]", {
+      kind: "tenant_pg_list",
+      schema: dataSchema,
+      empresa_id,
+    });
+    return {
+      conversations: [],
+      base_row_count: 0,
+      transient_list_error: true,
+    };
+  }
 
   const totalAfterQuery = list.length;
   console.info("[chat-list][fetch-result]", {

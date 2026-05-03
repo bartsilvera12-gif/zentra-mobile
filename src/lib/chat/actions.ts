@@ -35,7 +35,12 @@ import {
   syncOmnichannelRouteForWhatsappChannel,
 } from "@/lib/chat/omnichannel-route-sync";
 import type { AppSupabaseClient } from "@/lib/supabase/schema";
-import { getChatPostgresPool, quoteSchemaTable } from "@/lib/supabase/chat-pg-pool";
+import {
+  getChatPostgresPool,
+  isPgPoolExhaustionMessage,
+  logPgPoolStats,
+  quoteSchemaTable,
+} from "@/lib/supabase/chat-pg-pool";
 import { isLikelyUnexposedTenantChatSchema } from "@/lib/supabase/chat-data-schema";
 import {
   pgDeleteChatChannel,
@@ -119,6 +124,10 @@ export type ChatConversationsFetchResult = {
   conversations: InboxConversation[];
   /** Filas que devolvió la query base antes del split Inbox/Bot (o cerradas en historial). */
   base_row_count: number;
+  /**
+   * El listado principal no pudo leerse (p. ej. pool PG agotado). El cliente puede conservar datos previos en refetch silencioso.
+   */
+  transient_list_error?: boolean;
 };
 
 /**
@@ -167,7 +176,7 @@ export async function fetchChatConversations(
   vista: ConversacionesVista = "inbox",
   filters?: ChatInboxFilters
 ): Promise<ChatConversationsFetchResult> {
-  /** No devolver [] ante error: el cliente podría borrar el listado; debe lanzar para preservar estado previo. */
+  /** PostgREST sigue lanzando ante error; tenant_pg puede devolver `transient_list_error` sin tirar la UI. */
   return fetchChatConversationsUnsafe(vista, filters);
 }
 
@@ -1126,6 +1135,15 @@ function mapChatChannelRow(r: Record<string, unknown>): ChatChannelRow {
 const POSTGREST_TENANT_SCHEMA_HINT =
   "PostgREST no puede usar el schema de datos de esta empresa. Configurá SUPABASE_DB_URL o DIRECT_URL (pooler Postgres) en el entorno del servidor, o agregá el schema en Supabase → Settings → API → Exposed schemas.";
 
+/** Dedupe + micro-cache canales por empresa/schema (reduce picos de conexiones PG en Omnicanal). */
+const CHAT_CHANNELS_CACHE_TTL_MS = 4000;
+const chatChannelsCache = new Map<string, { at: number; rows: ChatChannelRow[] }>();
+const chatChannelsInflight = new Map<string, Promise<ChatChannelRow[]>>();
+
+function chatChannelsCacheKey(empresaId: string, schema: string) {
+  return `${schema}::${empresaId}`;
+}
+
 function postgrestMutationError(dataSchema: string, message: string): Error {
   if (isLikelyUnexposedTenantChatSchema(dataSchema) && isInvalidPostgrestSchemaError(message)) {
     return new Error(POSTGREST_TENANT_SCHEMA_HINT);
@@ -1211,15 +1229,52 @@ async function tryFetchChatChannelsFromPg(
       empresa_id: empresaId,
       message: msg.slice(0, 300),
     });
+    if (isPgPoolExhaustionMessage(msg)) {
+      logPgPoolStats("tryFetchChatChannelsFromPg_full", pool, {
+        schema: dataSchema,
+        empresa_id: empresaId,
+        caller: "tryFetchChatChannelsFromPg",
+      });
+      console.error("[fetchChatChannels][pg-pool-exhausted]", {
+        schema: dataSchema,
+        empresa_id: empresaId,
+        stage: "full",
+      });
+      console.error("[chat-list][pg-pool-exhausted]", {
+        schema: dataSchema,
+        empresa_id: empresaId,
+        surface: "channels",
+        stage: "full",
+      });
+    }
     try {
       const r = await pool.query(qMinimal, [empresaId]);
       return (r.rows ?? []).map((row) => mapChatChannelRow(row as Record<string, unknown>));
     } catch (e2) {
+      const msg2 = e2 instanceof Error ? e2.message : String(e2);
       console.error("[fetchChatChannels] pg_minimal_failed", {
         schema: dataSchema,
         empresa_id: empresaId,
-        message: e2 instanceof Error ? e2.message.slice(0, 300) : String(e2),
+        message: msg2.slice(0, 300),
       });
+      if (isPgPoolExhaustionMessage(msg2)) {
+        logPgPoolStats("tryFetchChatChannelsFromPg_minimal", pool, {
+          schema: dataSchema,
+          empresa_id: empresaId,
+          caller: "tryFetchChatChannelsFromPg",
+        });
+        console.error("[fetchChatChannels][pg-pool-exhausted]", {
+          schema: dataSchema,
+          empresa_id: empresaId,
+          stage: "minimal",
+        });
+        console.error("[chat-list][pg-pool-exhausted]", {
+          schema: dataSchema,
+          empresa_id: empresaId,
+          surface: "channels",
+          stage: "minimal",
+        });
+      }
       return undefined;
     }
   }
@@ -1265,12 +1320,28 @@ async function tryFetchChatChannelByIdFromPg(
   return undefined;
 }
 
-export async function fetchChatChannels(): Promise<ChatChannelRow[]> {
-  const { supabase, empresa_id, dataSchema } = await requireEmpresaTenantServiceRole();
+async function loadChatChannelsUncached(
+  ctx: Awaited<ReturnType<typeof requireEmpresaTenantServiceRole>>
+): Promise<{ rows: ChatChannelRow[]; cacheable: boolean }> {
+  const { supabase, empresa_id, dataSchema } = ctx;
 
   if (isLikelyUnexposedTenantChatSchema(dataSchema)) {
     const rows = await tryFetchChatChannelsFromPg(dataSchema, empresa_id);
-    if (rows !== undefined) return rows;
+    if (rows !== undefined) return { rows, cacheable: true };
+
+    const pool = getChatPostgresPool();
+    if (pool) {
+      logPgPoolStats("fetchChatChannels_skip_postgrest", pool, {
+        schema: dataSchema,
+        empresa_id,
+      });
+    }
+    console.error("[pg_pool_exhausted]", {
+      kind: "channels_skip_postgrest",
+      schema: dataSchema,
+      empresa_id,
+    });
+    return { rows: [], cacheable: false };
   }
 
   const selectAttempts = [
@@ -1322,7 +1393,30 @@ export async function fetchChatChannels(): Promise<ChatChannelRow[]> {
     .map((r) => mapChatChannelRow(r))
     .filter((r) => typeof r.id === "string" && r.id.trim().length > 0);
   await enrichChatChannelsSecretFlagsFromPg(dataSchema, empresa_id, mapped);
-  return mapped;
+  return { rows: mapped, cacheable: true };
+}
+
+export async function fetchChatChannels(): Promise<ChatChannelRow[]> {
+  const ctx = await requireEmpresaTenantServiceRole();
+  const ck = chatChannelsCacheKey(ctx.empresa_id, ctx.dataSchema);
+
+  const cached = chatChannelsCache.get(ck);
+  if (cached && Date.now() - cached.at < CHAT_CHANNELS_CACHE_TTL_MS) {
+    return cached.rows;
+  }
+
+  const inflight = chatChannelsInflight.get(ck);
+  if (inflight) return inflight;
+
+  const promise = loadChatChannelsUncached(ctx).then(({ rows, cacheable }) => {
+    if (cacheable) chatChannelsCache.set(ck, { at: Date.now(), rows });
+    return rows;
+  });
+  chatChannelsInflight.set(ck, promise);
+  void promise.finally(() => {
+    chatChannelsInflight.delete(ck);
+  });
+  return promise;
 }
 
 export async function fetchChatChannelById(channelId: string): Promise<ChatChannelRow | null> {

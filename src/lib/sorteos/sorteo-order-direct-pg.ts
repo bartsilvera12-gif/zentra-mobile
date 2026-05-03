@@ -7,40 +7,15 @@
 import "server-only";
 
 import pg from "pg";
+import { getChatPostgresPool } from "@/lib/supabase/chat-pg-pool";
 
 const FLOW_SORTEO_LOG = "[flow-sorteo]" as const;
-
-export function getSupabaseDirectPgConnectionString(): string | null {
-  const direct = process.env.SUPABASE_DB_URL?.trim();
-  if (direct) return direct;
-  const password = process.env.SUPABASE_DB_PASSWORD?.trim();
-  const base = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim();
-  const m = base?.match(/https:\/\/([^.]+)\.supabase\.co/i);
-  if (!password || !m?.[1]) return null;
-  const ref = m[1];
-  return `postgresql://postgres:${encodeURIComponent(password)}@db.${ref}.supabase.co:5432/postgres`;
-}
 
 function quoteIdent(schema: string): string {
   if (!/^[a-z_][a-z0-9_]*$/i.test(schema)) {
     throw new Error("schema inválido");
   }
   return `"${schema.replace(/"/g, '""')}"`;
-}
-
-let pool: pg.Pool | null = null;
-
-function getPool(): pg.Pool | null {
-  const cs = getSupabaseDirectPgConnectionString();
-  if (!cs) return null;
-  if (!pool) {
-    pool = new pg.Pool({
-      connectionString: cs,
-      max: 4,
-      ssl: cs.includes("supabase") ? { rejectUnauthorized: false } : undefined,
-    });
-  }
-  return pool;
 }
 
 export type DirectPgSorteoInput = {
@@ -124,7 +99,7 @@ export async function ensureSorteoOrderViaDirectPostgres(
   input: DirectPgSorteoInput
 ): Promise<DirectPgSorteoOk | DirectPgSorteoFail> {
   const sch = input.schema.trim();
-  const poolInst = getPool();
+  const poolInst = getChatPostgresPool();
   if (!poolInst) {
     return { ok: false, message: "No hay conexión directa a la base de datos configurada." };
   }
@@ -413,7 +388,7 @@ export async function fetchSorteoRowTicketFieldsFromPg(
   ticket_delivery_mode: string | null;
   ticket_image_config: unknown;
 } | null> {
-  const pool = getPool();
+  const pool = getChatPostgresPool();
   if (!pool) return null;
   const schemaSql = quoteIdent(schema);
   try {
