@@ -7,13 +7,13 @@ LANGUAGE plpgsql
 AS $$
 BEGIN
   EXECUTE format(
-    'UPDATE %I.chat_flow_nodes SET is_active = false, updated_at = now()
+    'UPDATE %I.chat_flow_nodes SET is_active = false
      WHERE flow_code = ''Papu_store'' AND node_code = ''combos_explosivos_2''',
     schema_name
   );
 
   EXECUTE format(
-    'UPDATE %I.chat_flow_nodes SET next_node_code = ''combos_populares'', updated_at = now()
+    'UPDATE %I.chat_flow_nodes SET next_node_code = ''combos_populares''
      WHERE flow_code = ''Papu_store'' AND next_node_code = ''combos_explosivos_2''',
     schema_name
   );
