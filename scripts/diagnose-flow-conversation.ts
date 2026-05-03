@@ -11,6 +11,12 @@
 import { config } from "dotenv";
 import path from "node:path";
 import pg from "pg";
+import {
+  buildActiveFlowMatchSet,
+  buildFlowSessionMap,
+  explainConversationBotClassification,
+  type FlowSessionRowMin,
+} from "../src/lib/chat/inbox-bot-tab-classification";
 
 config({ path: path.resolve(process.cwd(), ".env.local") });
 
@@ -57,10 +63,10 @@ async function main() {
     const sessions = await client.query(
       `
       SELECT id::text, conversation_id::text, flow_code::text, status::text,
-             created_at, updated_at
+             created_at
       FROM ${schema}.chat_flow_sessions
       WHERE conversation_id = $1::uuid AND empresa_id = $2::uuid
-      ORDER BY updated_at DESC NULLS LAST
+      ORDER BY created_at DESC NULLS LAST
       LIMIT 5
       `,
       [conversationId, empresaId]
@@ -108,6 +114,62 @@ async function main() {
       [schema]
     );
     console.log("[fk chat_flow_events → chat_flow_options]", fk.rows);
+
+    const flowCat = await client.query(
+      `SELECT id::text, flow_code::text, COALESCE(label, '')::text AS label
+       FROM ${schema}.chat_flows
+       WHERE empresa_id = $1::uuid AND COALESCE(activo, false) = true`,
+      [empresaId]
+    );
+    const matchSet = buildActiveFlowMatchSet(flowCat.rows);
+
+    const sessActive = await client.query(
+      `
+      SELECT id::text, status::text, flow_code::text, conversation_id::text
+      FROM ${schema}.chat_flow_sessions
+      WHERE empresa_id = $1::uuid
+        AND conversation_id = $2::uuid
+        AND lower(trim(status)) = ANY($3::text[])
+      `,
+      [empresaId, conversationId, ["active", "running"]]
+    );
+    const pointer = String((conv.rows[0] as { active_flow_session_id?: string } | undefined)?.active_flow_session_id ?? "").trim();
+    const sessionIds = [...new Set([pointer, ...sessActive.rows.map((r: { id?: string }) => String(r.id ?? "").trim())].filter(Boolean))];
+    const sessionById = new Map<string, FlowSessionRowMin>();
+    if (sessionIds.length > 0) {
+      const sr = await client.query(
+        `
+        SELECT id::text, status::text, flow_code::text, conversation_id::text
+        FROM ${schema}.chat_flow_sessions
+        WHERE empresa_id = $1::uuid AND id = ANY($2::uuid[])
+        `,
+        [empresaId, sessionIds]
+      );
+      for (const [k, v] of buildFlowSessionMap(sr.rows as FlowSessionRowMin[]).entries()) {
+        sessionById.set(k, v);
+      }
+    }
+    const activeSessionByConversationId = new Map<string, FlowSessionRowMin>();
+    for (const r of sessActive.rows as FlowSessionRowMin[]) {
+      const cid = String(r.conversation_id ?? "").trim();
+      const id = String(r.id ?? "").trim();
+      const row = sessionById.get(id);
+      if (cid && row) activeSessionByConversationId.set(cid, row);
+    }
+
+    const convRecord = (conv.rows[0] ?? {}) as Record<string, unknown>;
+    const ex = explainConversationBotClassification(convRecord, {
+      activeFlowCodeSet: matchSet,
+      sessionById,
+      activeSessionByConversationId,
+    });
+    console.log("[bot-inbox classification]", {
+      isBot: ex.isBot,
+      reason: ex.reason,
+      resolved_session_id: ex.resolvedSessionId,
+      flags: ex.flags,
+      flow_token_matches_catalog: ex.flags.runningFlowInCatalog,
+    });
   } finally {
     await client.end();
   }

@@ -42,7 +42,11 @@ async function main() {
   const sqlPath = join(process.cwd(), rel);
   const sql = readFileSync(sqlPath, "utf-8");
 
-  const client = new Client({ connectionString: getDbUrl() });
+  const conn = getDbUrl();
+  const client = new Client({
+    connectionString: conn,
+    ssl: conn.includes("supabase") ? { rejectUnauthorized: false } : undefined,
+  });
   try {
     await client.connect();
     console.log("Conectado. Ejecutando:", rel);
