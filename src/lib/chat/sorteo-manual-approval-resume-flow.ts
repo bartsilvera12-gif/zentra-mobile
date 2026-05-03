@@ -220,17 +220,7 @@ export async function runManualApprovalResumeParticipantFlow(input: {
 
   const nowIso = new Date().toISOString();
 
-  await input.supabase
-    .from("chat_flow_sessions")
-    .update({
-      status: "active",
-      ended_at: null,
-      end_reason: null,
-    })
-    .eq("id", sid)
-    .eq("empresa_id", input.empresaId);
-
-  /** Una sola sesión activa por conversación: el motor y chat_flow_data usan active_flow_session_id. */
+  /** Primero cerrar otras sesiones activas (índice único 1 active/conversación), luego reactivar `sid`. */
   await input.supabase
     .from("chat_flow_sessions")
     .update({
@@ -242,6 +232,16 @@ export async function runManualApprovalResumeParticipantFlow(input: {
     .eq("conversation_id", input.conversationId)
     .eq("status", "active")
     .neq("id", sid);
+
+  await input.supabase
+    .from("chat_flow_sessions")
+    .update({
+      status: "active",
+      ended_at: null,
+      end_reason: null,
+    })
+    .eq("id", sid)
+    .eq("empresa_id", input.empresaId);
 
   const adv = await advanceConversationToNode(input.supabase, {
     conversationId: input.conversationId,
@@ -323,4 +323,100 @@ export async function runManualApprovalResumeParticipantFlow(input: {
   return {
     whatsappWarning: sendIntro.ok ? undefined : sendIntro.error,
   };
+}
+
+/**
+ * Corrige solo el puntero `chat_conversations.active_flow_session_id` hacia la sesión de la validación.
+ * Sin WhatsApp ni `sendCurrentFlowNode` (reintento seguro si un caso quedó desalineado antes del fix de sesión).
+ */
+export async function realignManualApprovalFlowSessionPointer(input: {
+  supabase: AppSupabaseClient;
+  empresaId: string;
+  conversationId: string;
+  flowCode: string;
+  validationFlowSessionId: string;
+  validationId?: string;
+  usuarioId?: string;
+}): Promise<{ ok: boolean; realigned: boolean; error?: string }> {
+  const sid = input.validationFlowSessionId.trim();
+  const fc = input.flowCode.trim();
+  if (!sid || !fc) return { ok: false, realigned: false, error: "Falta flow_session_id o flow_code" };
+
+  const { data: conv, error: cErr } = await input.supabase
+    .from("chat_conversations")
+    .select("id, active_flow_session_id, flow_code, flow_current_node")
+    .eq("id", input.conversationId)
+    .eq("empresa_id", input.empresaId)
+    .maybeSingle();
+  if (cErr || !conv) return { ok: false, realigned: false, error: cErr?.message ?? "Conversación no encontrada" };
+
+  const convFc = String((conv as { flow_code?: string | null }).flow_code ?? "").trim();
+  if (convFc && convFc !== fc) {
+    return {
+      ok: false,
+      realigned: false,
+      error: "flow_code de conversación no coincide con la validación",
+    };
+  }
+
+  const cur = String((conv as { active_flow_session_id?: string | null }).active_flow_session_id ?? "").trim();
+  if (cur === sid) return { ok: true, realigned: false };
+
+  const nowIso = new Date().toISOString();
+
+  await input.supabase
+    .from("chat_flow_sessions")
+    .update({
+      status: "abandoned",
+      ended_at: nowIso,
+      end_reason: "manual_approval_realign_other_sessions",
+    })
+    .eq("empresa_id", input.empresaId)
+    .eq("conversation_id", input.conversationId)
+    .eq("status", "active")
+    .neq("id", sid);
+
+  const { error: actErr } = await input.supabase
+    .from("chat_flow_sessions")
+    .update({
+      status: "active",
+      ended_at: null,
+      end_reason: null,
+    })
+    .eq("id", sid)
+    .eq("empresa_id", input.empresaId);
+  if (actErr) return { ok: false, realigned: false, error: actErr.message };
+
+  const flowCurrentNode = String((conv as { flow_current_node?: string | null }).flow_current_node ?? "").trim();
+
+  const { error: uErr } = await input.supabase
+    .from("chat_conversations")
+    .update({
+      active_flow_session_id: sid,
+      flow_status: "bot",
+      human_taken_over: false,
+      updated_at: nowIso,
+    })
+    .eq("id", input.conversationId)
+    .eq("empresa_id", input.empresaId);
+  if (uErr) return { ok: false, realigned: false, error: uErr.message };
+
+  await input.supabase.from("chat_flow_events").insert({
+    empresa_id: input.empresaId,
+    conversation_id: input.conversationId,
+    flow_code: fc,
+    node_code: flowCurrentNode || null,
+    flow_session_id: sid,
+    event_type: "sorteo_manual_approval_session_realign",
+    payload: {
+      validation_id: input.validationId ?? null,
+      previous_active_flow_session_id: cur || null,
+      validation_flow_session_id: sid,
+      flow_current_node: flowCurrentNode || null,
+      approved_by: input.usuarioId ?? null,
+      reason: "pointer_mismatch_pending_manual_approval",
+    },
+  });
+
+  return { ok: true, realigned: true };
 }

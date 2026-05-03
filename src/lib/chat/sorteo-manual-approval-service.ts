@@ -12,6 +12,7 @@ import {
 } from "@/lib/chat/comprobante-validation-types";
 import {
   findResumeNodeForMissingFields,
+  realignManualApprovalFlowSessionPointer,
   runManualApprovalResumeParticipantFlow,
 } from "@/lib/chat/sorteo-manual-approval-resume-flow";
 import {
@@ -49,6 +50,8 @@ export type ManualSorteoApprovalResult =
       missingFields: string[];
       nextNodeCode: string | null;
       whatsappWarning?: string;
+      /** true si solo se corrigió active_flow_session_id (caso viejo desalineado). */
+      sessionRealigned?: boolean;
     }
   | { ok: false; code: string; message: string };
 
@@ -242,17 +245,62 @@ export async function approveComprobanteAndCloseSorteoPurchase(input: {
       row.estado_validacion === "aprobado_manual" &&
       String(row.motivo_validacion ?? "").trim() === MOTIVO_VALIDACION_ASESOR_PENDIENTE_DATOS
     ) {
-      logManual("idempotent-pending-skip", {
+      const { data: convAlign } = await tenantSb
+        .from("chat_conversations")
+        .select("active_flow_session_id")
+        .eq("id", row.conversation_id)
+        .eq("empresa_id", input.empresaId)
+        .maybeSingle();
+      const convSid = String(
+        (convAlign as { active_flow_session_id?: string | null } | null)?.active_flow_session_id ?? ""
+      ).trim();
+      const valSid = flowSessionId.trim();
+      if (convSid === valSid) {
+        logManual("idempotent-pending-skip", {
+          schema: dataSchema,
+          empresa_id: input.empresaId,
+          validation_id: row.id,
+        });
+        return {
+          ok: true,
+          mode: "pending_participant_data",
+          reused: true,
+          missingFields: missingKinds,
+          nextNodeCode: null,
+        };
+      }
+
+      logManual("pending-session-realign", {
         schema: dataSchema,
         empresa_id: input.empresaId,
         validation_id: row.id,
+        conversation_active_flow_session_id: convSid || null,
+        validation_flow_session_id: valSid,
       });
+      const ra = await realignManualApprovalFlowSessionPointer({
+        supabase: tenantSb,
+        empresaId: input.empresaId,
+        conversationId: row.conversation_id,
+        flowCode,
+        validationFlowSessionId: valSid,
+        validationId: row.id,
+        usuarioId: input.usuarioId,
+      });
+      if (!ra.ok) {
+        logManual("error", { phase: "session_realign", message: ra.error ?? "unknown" });
+        return {
+          ok: false,
+          code: "session_realign",
+          message: ra.error ?? "No se pudo alinear la sesión del flujo con la validación.",
+        };
+      }
       return {
         ok: true,
         mode: "pending_participant_data",
         reused: true,
         missingFields: missingKinds,
         nextNodeCode: null,
+        sessionRealigned: ra.realigned,
       };
     }
 
