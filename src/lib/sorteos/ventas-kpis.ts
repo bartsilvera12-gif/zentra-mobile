@@ -1,6 +1,6 @@
 "use server";
 
-import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { getUserAndEmpresa } from "@/lib/middleware/auth";
 import { fetchDataSchemaForEmpresaId } from "@/lib/supabase/empresa-data-schema";
 import { getChatServiceClientForEmpresa } from "@/lib/supabase/chat-service-role-empresa";
 import { asuncionDayBoundsUtc, asuncionMonthBoundsUtc } from "@/lib/sorteos/kpis-time-bounds";
@@ -28,6 +28,7 @@ export type SorteosVentasKpis = {
 };
 
 const LOG_ERR = "[sorteos][dashboard-summary][error]";
+const LOG_DBG = "[sorteos][dashboard-summary][debug]";
 
 function logDashboardError(empresaId: string, schema: string, err: unknown) {
   const message =
@@ -48,6 +49,80 @@ function sumRows(
     monto += Number(r.monto_total) || 0;
   }
   return { boletos, monto };
+}
+
+async function logDashboardDebug(
+  pool: Pool | null,
+  schema: string,
+  empresaId: string,
+  day: { start: string; end: string },
+  month: { start: string; end: string },
+  source: "pg" | "postgrest",
+  kpis: SorteosVentasKpis
+): Promise<void> {
+  if (process.env.SORTEOS_KPIS_DEBUG?.trim() !== "1") return;
+  let entradasHoy = 0;
+  let entradasMes = 0;
+  let cuponesHoy = 0;
+  let cuponesMes = 0;
+  if (pool) {
+    try {
+      const sch = assertAllowedChatDataSchema(schema);
+      const tent = quoteSchemaTable(sch, "sorteo_entradas");
+      const tcup = quoteSchemaTable(sch, "sorteo_cupones");
+      const [eh, em, ch, cm] = await Promise.all([
+        pool.query(
+          `SELECT COUNT(*)::bigint AS n FROM ${tent} e
+           WHERE e.empresa_id = $1::uuid AND e.created_at >= $2::timestamptz AND e.created_at <= $3::timestamptz
+           AND e.estado_pago <> 'rechazado'`,
+          [empresaId, day.start, day.end]
+        ),
+        pool.query(
+          `SELECT COUNT(*)::bigint AS n FROM ${tent} e
+           WHERE e.empresa_id = $1::uuid AND e.created_at >= $2::timestamptz AND e.created_at <= $3::timestamptz
+           AND e.estado_pago <> 'rechazado'`,
+          [empresaId, month.start, month.end]
+        ),
+        pool.query(
+          `SELECT COUNT(c.id)::bigint AS n FROM ${tcup} c
+           INNER JOIN ${tent} e ON e.id = c.entrada_id
+           WHERE e.empresa_id = $1::uuid AND e.created_at >= $2::timestamptz AND e.created_at <= $3::timestamptz
+           AND e.estado_pago <> 'rechazado'`,
+          [empresaId, day.start, day.end]
+        ),
+        pool.query(
+          `SELECT COUNT(c.id)::bigint AS n FROM ${tcup} c
+           INNER JOIN ${tent} e ON e.id = c.entrada_id
+           WHERE e.empresa_id = $1::uuid AND e.created_at >= $2::timestamptz AND e.created_at <= $3::timestamptz
+           AND e.estado_pago <> 'rechazado'`,
+          [empresaId, month.start, month.end]
+        ),
+      ]);
+      entradasHoy = Number((eh.rows?.[0] as { n?: string } | undefined)?.n) || 0;
+      entradasMes = Number((em.rows?.[0] as { n?: string } | undefined)?.n) || 0;
+      cuponesHoy = Number((ch.rows?.[0] as { n?: string } | undefined)?.n) || 0;
+      cuponesMes = Number((cm.rows?.[0] as { n?: string } | undefined)?.n) || 0;
+    } catch {
+      /* no ensuciar: el error ya va por LOG_ERR si la query principal falló */
+    }
+  }
+  console.info(LOG_DBG, {
+    empresa_id: empresaId,
+    schema,
+    source,
+    day_from: day.start,
+    day_to: day.end,
+    month_from: month.start,
+    month_to: month.end,
+    entradas_hoy_count: entradasHoy,
+    entradas_mes_count: entradasMes,
+    cupones_hoy_count: cuponesHoy,
+    cupones_mes_count: cuponesMes,
+    monto_hoy: kpis.montoHoy,
+    monto_mes: kpis.montoMes,
+    boletos_hoy: kpis.boletosHoy,
+    boletos_mes: kpis.boletosMes,
+  });
 }
 
 type PgKpiRow = { boletos: string | number | null; monto: string | number | null };
@@ -93,26 +168,13 @@ async function fetchKpiWindowFromPg(
 export async function getSorteosVentasKpis(): Promise<SorteosVentasKpis> {
   const empty: SorteosVentasKpis = { boletosHoy: 0, boletosMes: 0, montoHoy: 0, montoMes: 0 };
 
-  const catalog = await createSupabaseServerClient();
-  const {
-    data: { user },
-  } = await catalog.auth.getUser();
-  if (!user?.email) {
+  /** Misma resolución que `/api/sorteos`: `auth_user_id`, variantes de email, `ilike` (no solo `eq` email). */
+  const auth = await getUserAndEmpresa(null);
+  if (!auth?.empresa_id) {
     return empty;
   }
 
-  const { data: urows, error: uErr } = await catalog
-    .from("usuarios")
-    .select("empresa_id")
-    .eq("email", user.email)
-    .limit(1);
-
-  const usuario = urows?.[0] as { empresa_id?: string } | undefined;
-  if (uErr || !usuario?.empresa_id) {
-    return empty;
-  }
-
-  const empresaId = usuario.empresa_id as string;
+  const empresaId = auth.empresa_id;
   const schema = await fetchDataSchemaForEmpresaId(empresaId);
 
   const day = asuncionDayBoundsUtc();
@@ -125,12 +187,14 @@ export async function getSorteosVentasKpis(): Promise<SorteosVentasKpis> {
         fetchKpiWindowFromPg(pool, schema, empresaId, day.start, day.end),
         fetchKpiWindowFromPg(pool, schema, empresaId, month.start, month.end),
       ]);
-      return {
+      const out: SorteosVentasKpis = {
         boletosHoy: d.boletos,
         montoHoy: d.monto,
         boletosMes: m.boletos,
         montoMes: m.monto,
       };
+      void logDashboardDebug(pool, schema, empresaId, day, month, "pg", out);
+      return out;
     } catch (e) {
       logDashboardError(empresaId, schema, e);
     }
@@ -161,12 +225,14 @@ export async function getSorteosVentasKpis(): Promise<SorteosVentasKpis> {
 
     const sD = sumRows(dayRes.data ?? []);
     const sM = sumRows(monthRes.data ?? []);
-    return {
+    const out: SorteosVentasKpis = {
       boletosHoy: sD.boletos,
       montoHoy: sD.monto,
       boletosMes: sM.boletos,
       montoMes: sM.monto,
     };
+    void logDashboardDebug(pool, schema, empresaId, day, month, "postgrest", out);
+    return out;
   } catch (e) {
     logDashboardError(empresaId, schema, e);
     return empty;
