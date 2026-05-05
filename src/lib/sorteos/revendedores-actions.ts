@@ -1,5 +1,4 @@
-import { getEmpresaId } from "@/lib/db/empresa";
-import { getBrowserSupabaseForEmpresaData } from "@/lib/supabase/browser-data-client";
+import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
 
 export type SorteoRevendedorRow = {
   id: string;
@@ -32,18 +31,31 @@ function mapRev(r: Record<string, unknown>): SorteoRevendedorRow {
   };
 }
 
-export async function listRevendedoresBySorteo(sorteoId: string): Promise<SorteoRevendedorRow[]> {
-  const supabase = await getBrowserSupabaseForEmpresaData();
-  const empresaId = await getEmpresaId();
-  const { data, error } = await supabase
-    .from("sorteo_revendedores")
-    .select("*")
-    .eq("sorteo_id", sorteoId)
-    .eq("empresa_id", empresaId)
-    .order("created_at", { ascending: false });
+async function readApiError(res: Response): Promise<string> {
+  const t = await res.text().catch(() => "");
+  try {
+    const j = JSON.parse(t) as { error?: string };
+    if (typeof j?.error === "string" && j.error.trim()) return j.error;
+  } catch {
+    /* ignore */
+  }
+  return t.trim().slice(0, 400) || `${res.status}`;
+}
 
-  if (error) throw new Error(error.message);
-  return (data ?? []).map((x) => mapRev(x as Record<string, unknown>));
+/**
+ * Lee revendedores vía `/api/sorteos/:id/revendedores` para soportar schemas tenant
+ * no expuestos en PostgREST (mismo patrón que listado de sorteos).
+ */
+export async function listRevendedoresBySorteo(sorteoId: string): Promise<SorteoRevendedorRow[]> {
+  const res = await fetchWithSupabaseSession(`/api/sorteos/${encodeURIComponent(sorteoId)}/revendedores`, {
+    cache: "no-store",
+  });
+  if (!res.ok) {
+    throw new Error(await readApiError(res));
+  }
+  const json = (await res.json()) as { success?: boolean; data?: unknown[] };
+  if (!json.success || !Array.isArray(json.data)) return [];
+  return json.data.map((x) => mapRev(x as Record<string, unknown>));
 }
 
 export type RevendedorInput = {
@@ -54,79 +66,64 @@ export type RevendedorInput = {
 };
 
 export async function createRevendedor(sorteoId: string, input: RevendedorInput): Promise<SorteoRevendedorRow> {
-  const supabase = await getBrowserSupabaseForEmpresaData();
-  const empresa_id = await getEmpresaId();
-  const codigo = input.codigo_referido.trim();
-  const nombre = input.nombre.trim();
-  if (!nombre) throw new Error("El nombre es obligatorio.");
-  if (!codigo) throw new Error("El código de referido es obligatorio.");
-  if (codigo.length > 48) throw new Error("El código no puede superar 48 caracteres.");
-
-  const { data: sorteo, error: se } = await supabase
-    .from("sorteos")
-    .select("id")
-    .eq("id", sorteoId)
-    .eq("empresa_id", empresa_id)
-    .maybeSingle();
-  if (se) throw new Error(se.message);
-  if (!sorteo) throw new Error("Sorteo no encontrado.");
-
-  const { data, error } = await supabase
-    .from("sorteo_revendedores")
-    .insert({
-      empresa_id,
-      sorteo_id: sorteoId,
-      nombre,
+  const res = await fetchWithSupabaseSession(`/api/sorteos/${encodeURIComponent(sorteoId)}/revendedores`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      nombre: input.nombre.trim(),
       telefono: input.telefono?.trim() || null,
-      codigo_referido: codigo,
+      codigo_referido: input.codigo_referido.trim(),
       activo: input.activo !== false,
-    })
-    .select("*")
-    .single();
-
-  if (error) throw new Error(error.message);
-  return mapRev(data as Record<string, unknown>);
+    }),
+  });
+  const json = (await res.json().catch(() => ({}))) as {
+    success?: boolean;
+    data?: Record<string, unknown>;
+    error?: string;
+  };
+  if (!res.ok) {
+    throw new Error(json.error || `${res.status}`);
+  }
+  if (!json.success || !json.data) throw new Error(json.error || "Respuesta inválida");
+  return mapRev(json.data);
 }
 
 export async function updateRevendedor(
   id: string,
   input: RevendedorInput
 ): Promise<SorteoRevendedorRow> {
-  const supabase = await getBrowserSupabaseForEmpresaData();
-  const empresa_id = await getEmpresaId();
-  const codigo = input.codigo_referido.trim();
-  const nombre = input.nombre.trim();
-  if (!nombre) throw new Error("El nombre es obligatorio.");
-  if (!codigo) throw new Error("El código de referido es obligatorio.");
-
-  const { data, error } = await supabase
-    .from("sorteo_revendedores")
-    .update({
-      nombre,
+  const res = await fetchWithSupabaseSession(`/api/sorteos/revendedores/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      nombre: input.nombre.trim(),
       telefono: input.telefono?.trim() || null,
-      codigo_referido: codigo,
+      codigo_referido: input.codigo_referido.trim(),
       activo: input.activo !== false,
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", id)
-    .eq("empresa_id", empresa_id)
-    .select("*")
-    .single();
-
-  if (error) throw new Error(error.message);
-  return mapRev(data as Record<string, unknown>);
+    }),
+  });
+  const json = (await res.json().catch(() => ({}))) as {
+    success?: boolean;
+    data?: Record<string, unknown>;
+    error?: string;
+  };
+  if (!res.ok) {
+    throw new Error(json.error || `${res.status}`);
+  }
+  if (!json.success || !json.data) throw new Error(json.error || "Respuesta inválida");
+  return mapRev(json.data);
 }
 
 export async function setRevendedorActivo(id: string, activo: boolean): Promise<void> {
-  const supabase = await getBrowserSupabaseForEmpresaData();
-  const empresa_id = await getEmpresaId();
-  const { error } = await supabase
-    .from("sorteo_revendedores")
-    .update({ activo, updated_at: new Date().toISOString() })
-    .eq("id", id)
-    .eq("empresa_id", empresa_id);
-
-  if (error) throw new Error(error.message);
+  const res = await fetchWithSupabaseSession(`/api/sorteos/revendedores/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ activo }),
+  });
+  const json = (await res.json().catch(() => ({}))) as { success?: boolean; error?: string };
+  if (!res.ok) {
+    throw new Error(json.error || `${res.status}`);
+  }
 }
 
 export type RevendedorStats = {
@@ -139,55 +136,20 @@ export type RevendedorStats = {
 };
 
 export async function getRevendedorStats(revendedorId: string): Promise<RevendedorStats> {
-  const supabase = await getBrowserSupabaseForEmpresaData();
-  const empresa_id = await getEmpresaId();
-
-  const { count: clicks, error: e1 } = await supabase
-    .from("sorteo_revendedor_clicks")
-    .select("id", { count: "exact", head: true })
-    .eq("revendedor_id", revendedorId)
-    .eq("empresa_id", empresa_id);
-  if (e1) throw new Error(e1.message);
-
-  const { count: clicksRedeemed, error: e2 } = await supabase
-    .from("sorteo_revendedor_clicks")
-    .select("id", { count: "exact", head: true })
-    .eq("revendedor_id", revendedorId)
-    .eq("empresa_id", empresa_id)
-    .not("redeemed_at", "is", null);
-  if (e2) throw new Error(e2.message);
-
-  const { count: sesiones, error: e3 } = await supabase
-    .from("chat_flow_sessions")
-    .select("id", { count: "exact", head: true })
-    .eq("revendedor_id", revendedorId)
-    .eq("empresa_id", empresa_id);
-  if (e3) throw new Error(e3.message);
-
-  const { data: ordenesRows, error: e4 } = await supabase
-    .from("sorteo_entradas")
-    .select("id, monto_total, cantidad_boletos")
-    .eq("revendedor_id", revendedorId)
-    .eq("empresa_id", empresa_id);
-  if (e4) throw new Error(e4.message);
-
-  const ordenes = ordenesRows?.length ?? 0;
-  let monto_total = 0;
-  let cupones = 0;
-  for (const r of ordenesRows ?? []) {
-    const row = r as { monto_total?: unknown; cantidad_boletos?: unknown };
-    const m = Number(row.monto_total);
-    if (Number.isFinite(m)) monto_total += m;
-    const c = Number(row.cantidad_boletos);
-    if (Number.isFinite(c) && c > 0) cupones += Math.trunc(c);
-  }
-
-  return {
-    clicks: clicks ?? 0,
-    clicks_redeemed: clicksRedeemed ?? 0,
-    sesiones_atribuidas: sesiones ?? 0,
-    ordenes,
-    monto_total,
-    cupones,
+  const res = await fetchWithSupabaseSession(
+    `/api/sorteos/revendedores/${encodeURIComponent(revendedorId)}/stats`,
+    { cache: "no-store" }
+  );
+  const json = (await res.json().catch(() => ({}))) as {
+    success?: boolean;
+    data?: RevendedorStats;
+    error?: string;
   };
+  if (!res.ok) {
+    throw new Error(json.error || `${res.status}`);
+  }
+  if (!json.success || !json.data) {
+    throw new Error(json.error || "Respuesta inválida");
+  }
+  return json.data;
 }
