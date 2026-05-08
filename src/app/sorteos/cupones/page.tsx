@@ -6,6 +6,7 @@ import {
 } from "@/lib/sorteos/server-queries";
 import type { SorteoEntradaEstadoPago } from "@/lib/sorteos/types";
 import SorteosCuponesManualClient from "@/components/sorteos/SorteosCuponesManualClient";
+import SorteoCuponesPagoCell from "@/components/sorteos/SorteoCuponesPagoCell";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -53,14 +54,6 @@ function formatFecha(iso: string) {
   } catch {
     return iso;
   }
-}
-
-function estadoLabel(e: string) {
-  if (e === "pendiente_revision") return "Pendiente revisión";
-  if (e === "pendiente") return "Pendiente";
-  if (e === "confirmado") return "Confirmado";
-  if (e === "rechazado") return "Rechazado";
-  return e;
 }
 
 export default async function SorteoCuponesPage({
@@ -239,7 +232,7 @@ export default async function SorteoCuponesPage({
                       ) : null}
                     </td>
                     <td className="px-5 py-3 text-sm font-mono text-slate-800">{r.numeros_cupon.join(", ")}</td>
-                    <td className="px-5 py-3 text-sm text-slate-700">{estadoLabel(r.estado_pago)}</td>
+                    <SorteoCuponesPagoCell entradaId={r.entrada_id} estadoPago={r.estado_pago} />
                     <td className="px-5 py-3 text-sm text-slate-600 whitespace-nowrap">{formatFecha(r.created_at)}</td>
                     <td className="px-5 py-3 text-sm">
                       {r.chat_conversation_id ? (

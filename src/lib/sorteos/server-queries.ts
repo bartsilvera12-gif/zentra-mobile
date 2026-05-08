@@ -804,6 +804,18 @@ export async function fetchSorteoEntradasServer(
   return promise;
 }
 
+/** Invalida listas cacheadas de Entradas/Cupones para una empresa tras mutaciones (p. ej. estado de pago). */
+export function invalidateSorteosListCachesForEmpresa(empresaId: string, dataSchema: string): void {
+  const p1 = `cup:${dataSchema}:${empresaId}:`;
+  const p2 = `ent:${dataSchema}:${empresaId}:`;
+  for (const k of listCache.keys()) {
+    if (k.startsWith(p1) || k.startsWith(p2)) listCache.delete(k);
+  }
+  for (const k of listInflight.keys()) {
+    if (k.startsWith(p1) || k.startsWith(p2)) listInflight.delete(k);
+  }
+}
+
 export async function fetchSorteoCuponesOrdenesServer(
   params?: SorteoEntradasListParams
 ): Promise<SorteoCuponesServerResult> {
