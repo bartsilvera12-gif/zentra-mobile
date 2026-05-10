@@ -7,6 +7,10 @@ import type {
   RecontactButtonAction,
   RecontactRuleRowOut,
 } from "@/lib/chat/recontact-rules-validation";
+import {
+  RECONTACT_DRY_RUN_SKIP_LABELS,
+  type RecontactDryRunRow,
+} from "@/lib/chat/recontact-dry-run-shared";
 import { WA_META_REPLY_BUTTON_MAX, WA_META_REPLY_TITLE_MAX } from "@/lib/chat/whatsapp-send-service";
 
 export type FlowRecontactPickerNode = {
@@ -321,6 +325,19 @@ export function FlowRecontactAutomationsPanel(props: {
   const [saving, setSaving] = useState(false);
   const [draft, setDraft] = useState<Draft>(() => emptyDraft());
 
+  const [dryRunOpen, setDryRunOpen] = useState(false);
+  const [dryRunRuleLabel, setDryRunRuleLabel] = useState("");
+  const [dryRunLoading, setDryRunLoading] = useState(false);
+  const [dryRunError, setDryRunError] = useState<string | null>(null);
+  const [dryRunData, setDryRunData] = useState<{
+    scanned: number;
+    limit: number;
+    limitReached: boolean;
+    candidates: number;
+    skipped: number;
+    rows: RecontactDryRunRow[];
+  } | null>(null);
+
   const baseUrl = useMemo(
     () => `/api/chat/flows/${encodeURIComponent(flowCode)}/recontact-rules`,
     [flowCode]
@@ -407,6 +424,52 @@ export function FlowRecontactAutomationsPanel(props: {
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Error");
+    }
+  }
+
+  async function runDryRun(rule: RecontactRuleRowOut) {
+    setDryRunRuleLabel(rule.nombre);
+    setDryRunOpen(true);
+    setDryRunLoading(true);
+    setDryRunError(null);
+    setDryRunData(null);
+    try {
+      const res = await fetchWithSupabaseSession(`${baseUrl}/${encodeURIComponent(rule.id)}/dry-run`, {
+        method: "POST",
+        credentials: "same-origin",
+      });
+      const json = (await res.json()) as {
+        ok?: boolean;
+        error?: string;
+        scanned?: number;
+        limit?: number;
+        limitReached?: boolean;
+        candidates?: number;
+        skipped?: number;
+        rows?: RecontactDryRunRow[];
+      };
+      if (!res.ok || !json.ok) throw new Error(json.error ?? "Error en simulación");
+      setDryRunData({
+        scanned: json.scanned ?? 0,
+        limit: json.limit ?? 200,
+        limitReached: Boolean(json.limitReached),
+        candidates: json.candidates ?? 0,
+        skipped: json.skipped ?? 0,
+        rows: json.rows ?? [],
+      });
+    } catch (e) {
+      setDryRunError(e instanceof Error ? e.message : "Error");
+    } finally {
+      setDryRunLoading(false);
+    }
+  }
+
+  function formatInboundAt(ts: string | null): string {
+    if (!ts) return "—";
+    try {
+      return new Date(ts).toLocaleString();
+    } catch {
+      return ts;
     }
   }
 
@@ -549,6 +612,13 @@ export function FlowRecontactAutomationsPanel(props: {
                   <td className="px-3 py-2 text-slate-600">{Math.round(row.cooldown_seconds / 60)} min</td>
                   <td className="px-3 py-2 text-slate-600">{msgLabel(row)}</td>
                   <td className="px-3 py-2 text-right space-x-2 whitespace-nowrap">
+                    <button
+                      type="button"
+                      className="text-slate-700 hover:underline text-xs font-medium"
+                      onClick={() => void runDryRun(row)}
+                    >
+                      Ver candidatos
+                    </button>
                     <button
                       type="button"
                       className="text-[#0EA5E9] hover:underline text-xs font-medium"
@@ -963,6 +1033,129 @@ export function FlowRecontactAutomationsPanel(props: {
                 onClick={() => void saveDraft()}
               >
                 {saving ? "Guardando…" : "Guardar"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {dryRunOpen && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4 overflow-y-auto">
+          <div className="bg-white rounded-xl shadow-xl max-w-5xl w-full max-h-[90vh] overflow-hidden flex flex-col border border-slate-200">
+            <div className="flex justify-between items-start gap-2 px-5 py-4 border-b border-slate-100">
+              <div>
+                <h3 className="text-lg font-semibold text-slate-800">Simulación de recontacto</h3>
+                <p className="text-xs text-slate-500 mt-0.5">{dryRunRuleLabel}</p>
+              </div>
+              <button
+                type="button"
+                className="text-slate-400 hover:text-slate-700 text-xl leading-none"
+                onClick={() => setDryRunOpen(false)}
+              >
+                ×
+              </button>
+            </div>
+            <div className="px-5 py-3 space-y-3 overflow-y-auto flex-1">
+              <div className="rounded-lg border border-amber-100 bg-amber-50/90 px-3 py-2 text-sm text-amber-950">
+                Esto es una simulación. <strong>No se enviará ningún mensaje.</strong> No se modifican conversaciones ni datos.
+              </div>
+
+              {dryRunLoading && <p className="text-sm text-slate-600">Analizando conversaciones…</p>}
+              {dryRunError && (
+                <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{dryRunError}</div>
+              )}
+
+              {!dryRunLoading && dryRunData && (
+                <>
+                  <div className="flex flex-wrap gap-4 text-sm">
+                    <span className="font-medium text-slate-800">
+                      Candidatos: <span className="text-emerald-700">{dryRunData.candidates}</span>
+                    </span>
+                    <span className="font-medium text-slate-800">
+                      Omitidos: <span className="text-slate-600">{dryRunData.skipped}</span>
+                    </span>
+                    <span className="text-slate-500">
+                      Evaluadas: {dryRunData.scanned} / hasta {dryRunData.limit} por simulación
+                    </span>
+                  </div>
+                  {dryRunData.limitReached && (
+                    <p className="text-xs text-amber-800 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
+                      Se alcanzó el límite de {dryRunData.limit} conversaciones en esta simulación. Puede haber más chats en
+                      el flujo que no se analizaron aquí.
+                    </p>
+                  )}
+
+                  {dryRunData.scanned === 0 ? (
+                    <p className="text-sm text-slate-600">No hay conversaciones en este flujo para evaluar.</p>
+                  ) : dryRunData.candidates === 0 ? (
+                    <p className="text-sm text-slate-700 font-medium">
+                      No hay conversaciones que cumplan las condiciones actualmente.
+                    </p>
+                  ) : null}
+
+                  <div className="overflow-x-auto rounded-lg border border-slate-200">
+                    <table className="min-w-full text-xs">
+                      <thead className="bg-slate-50 text-left text-[10px] uppercase tracking-wide text-slate-500">
+                        <tr>
+                          <th className="px-2 py-2">Cliente</th>
+                          <th className="px-2 py-2">Nodo actual</th>
+                          <th className="px-2 py-2">Último mensaje (cliente)</th>
+                          <th className="px-2 py-2">Inactividad</th>
+                          <th className="px-2 py-2">Sorteo confirmado</th>
+                          <th className="px-2 py-2">Resultado</th>
+                          <th className="px-2 py-2">Motivo</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {dryRunData.rows.map((r) => (
+                          <tr key={r.conversation_id} className="hover:bg-slate-50/80">
+                            <td className="px-2 py-2 text-slate-800 align-top">
+                              <div className="font-medium">{r.contact_name ?? "—"}</div>
+                              {r.phone_masked && <div className="text-[10px] text-slate-500">{r.phone_masked}</div>}
+                            </td>
+                            <td className="px-2 py-2 font-mono text-[11px] text-slate-700 align-top">
+                              {r.current_node ?? "—"}
+                            </td>
+                            <td className="px-2 py-2 text-slate-600 align-top whitespace-nowrap">
+                              {formatInboundAt(r.last_inbound_at)}
+                            </td>
+                            <td className="px-2 py-2 text-slate-600 align-top whitespace-nowrap">
+                              {r.idle_minutes !== null ? `${r.idle_minutes} min` : "—"}
+                            </td>
+                            <td className="px-2 py-2 text-slate-600 align-top whitespace-nowrap">
+                              {r.has_confirmed_purchase ? "Sí" : "No"}
+                            </td>
+                            <td className="px-2 py-2 align-top">
+                              <span
+                                className={
+                                  r.status === "candidate"
+                                    ? "font-semibold text-emerald-700"
+                                    : "font-medium text-slate-600"
+                                }
+                              >
+                                {r.status === "candidate" ? "Candidato" : "Omitido"}
+                              </span>
+                            </td>
+                            <td className="px-2 py-2 text-slate-600 align-top max-w-[14rem]">
+                              {r.skip_reason
+                                ? RECONTACT_DRY_RUN_SKIP_LABELS[r.skip_reason] ?? r.skip_reason
+                                : "—"}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
+              )}
+            </div>
+            <div className="px-5 py-3 border-t border-slate-100 flex justify-end">
+              <button
+                type="button"
+                className="px-4 py-2 text-sm rounded-lg border border-slate-200 text-slate-700 hover:bg-slate-50"
+                onClick={() => setDryRunOpen(false)}
+              >
+                Cerrar
               </button>
             </div>
           </div>
