@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
 import { slaDeadlineBadge, type SlaBadge } from "@/lib/proyectos/sla-badge";
+import ProyectoDetalleModal from "./components/ProyectoDetalleModal";
 
 type EstadoRow = {
   id: string;
@@ -76,6 +77,7 @@ export default function ProyectosKanbanClient() {
   const [filtroRt, setFiltroRt] = useState("");
   const [tipoOpts, setTipoOpts] = useState<{ id: string; nombre: string }[]>([]);
   const [userOpts, setUserOpts] = useState<{ id: string; nombre?: string }[]>([]);
+  const [modalProjectId, setModalProjectId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -289,7 +291,11 @@ export default function ProyectosKanbanClient() {
                         key={p.id}
                         className="rounded-lg border border-slate-200 bg-white p-3 shadow-sm hover:shadow-md"
                       >
-                        <Link href={`/dashboard/proyectos/${p.id}`} className="block">
+                        <button
+                          type="button"
+                          className="block w-full cursor-pointer text-left"
+                          onClick={() => setModalProjectId(p.id)}
+                        >
                           <div className="text-sm font-semibold text-indigo-700 hover:underline">{p.titulo}</div>
                           <div className="mt-1 text-xs text-slate-600">{cli}</div>
                           <div className="mt-2 flex flex-wrap gap-1">
@@ -315,11 +321,21 @@ export default function ProyectosKanbanClient() {
                             <div>Prometido: {fmtDate(p.fecha_prometida)}</div>
                             <div>Actividad: {fmtDateTime(p.last_activity_at)}</div>
                           </div>
-                        </Link>
+                        </button>
+                        <div className="mt-2" onClick={(e) => e.stopPropagation()}>
+                          <Link
+                            href={`/dashboard/proyectos/${p.id}`}
+                            className="text-[10px] font-medium text-sky-600 hover:underline"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            Abrir en página completa
+                          </Link>
+                        </div>
                         <label className="mt-2 block text-[10px] font-medium uppercase text-slate-500">Mover a</label>
                         <select
                           className="mt-1 w-full rounded border border-slate-200 px-2 py-1.5 text-xs"
                           value={p.estado_id}
+                          onClick={(e) => e.stopPropagation()}
                           onChange={(e) => void cambiarEstado(p.id, e.target.value)}
                         >
                           {estados.map((e) => (
@@ -344,6 +360,13 @@ export default function ProyectosKanbanClient() {
       <p className="text-center text-xs text-slate-400">
         Arrastrar tarjetas: próxima fase — por ahora usá el selector de estado.
       </p>
+
+      <ProyectoDetalleModal
+        projectId={modalProjectId}
+        open={modalProjectId != null}
+        onClose={() => setModalProjectId(null)}
+        onUpdated={() => void load()}
+      />
     </div>
   );
 }

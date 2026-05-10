@@ -5,31 +5,12 @@ import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
 import { ClienteSearchSelect } from "@/app/dashboard/proyectos/components/ClienteSearchSelect";
+import { PROYECTO_DATOS_BRIEF_FIELDS } from "@/lib/proyectos/brief-data";
 
 type Tipo = { id: string; nombre: string; codigo: string };
 type Estado = { id: string; nombre: string };
 type Cliente = { id: string; empresa?: string | null; nombre_contacto?: string | null };
 type Usuario = { id: string; nombre?: string | null };
-
-/** Campos del brief web guardados en `brief_data` (JSON). Sin checkbox de logo ni dominio existente (compat.: datos viejos siguen en JSON al editar desde detalle). */
-type BriefFieldDef =
-  | { kind: "checkbox"; key: string; label: string }
-  | { kind: "text"; key: string; label: string; placeholder?: string };
-
-const WEB_BRIEF_FIELDS: BriefFieldDef[] = [
-  { kind: "text", key: "marca", label: "Nombre de la marca" },
-  { kind: "text", key: "rubro", label: "Rubro" },
-  { kind: "text", key: "objetivo", label: "Objetivo de la web" },
-  { kind: "text", key: "tipo_web", label: "Tipo de web (institucional, ecommerce, etc.)" },
-  { kind: "text", key: "secciones", label: "Secciones necesarias" },
-  { kind: "text", key: "estilo_colores", label: "Colores o estilo deseado" },
-  { kind: "text", key: "logo_cliente", label: "Logo del cliente", placeholder: "https://..." },
-  { kind: "text", key: "redes_sociales", label: "Redes sociales" },
-  { kind: "text", key: "whatsapp_contacto", label: "WhatsApp de contacto" },
-  { kind: "text", key: "dominio_usar", label: "Dominio a usar" },
-  { kind: "checkbox", key: "hosting_existente", label: "Hosting existente" },
-  { kind: "text", key: "referencias_urls", label: "Referencias de páginas" },
-];
 
 export default function ProyectoNuevoClient() {
   const router = useRouter();
@@ -93,7 +74,7 @@ export default function ProyectoNuevoClient() {
     const brief_data =
       esWeb
         ? Object.fromEntries(
-            WEB_BRIEF_FIELDS.map(({ key }) => [key, brief[key] ?? ""]).filter(([, v]) => v !== "")
+            PROYECTO_DATOS_BRIEF_FIELDS.map(({ key }) => [key, brief[key] ?? ""]).filter(([, v]) => v !== "")
           )
         : {};
 
@@ -268,9 +249,9 @@ export default function ProyectoNuevoClient() {
 
         {esWeb ? (
           <div className="space-y-3 rounded-lg border border-indigo-100 bg-indigo-50/40 p-4">
-            <h2 className="text-sm font-semibold text-indigo-900">Brief web</h2>
+            <h2 className="text-sm font-semibold text-indigo-900">Datos del proyecto (web)</h2>
             <div className="grid gap-3 sm:grid-cols-2">
-              {WEB_BRIEF_FIELDS.map((f) =>
+              {PROYECTO_DATOS_BRIEF_FIELDS.map((f) =>
                 f.kind === "checkbox" ? (
                   <label key={f.key} className="flex items-center gap-2 text-sm">
                     <input

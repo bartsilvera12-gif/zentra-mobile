@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
 import { getChatServiceClientForEmpresa } from "@/app/api/chat/_chat-service-client";
 import { errorResponse, successResponse } from "@/lib/api/response";
+import { mergeBriefDataPatch } from "@/lib/proyectos/brief-data";
 import { enrichProyectosRows } from "@/lib/proyectos/enrich-proyectos";
+import { enrichProyectoHistorialRows } from "@/lib/proyectos/historial-enrich";
 import { computeSlaTotales, type HistorialRow } from "@/lib/proyectos/sla-from-historial";
 import { requireProyectosApiAccess } from "@/lib/proyectos/proyectos-auth";
 import { createServiceRoleClient } from "@/lib/supabase/service-admin";
@@ -61,6 +63,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
 
     const histRows = (hist.data ?? []) as HistorialRow[];
     const sla = computeSlaTotales(histRows);
+    const historialEnriched = await enrichProyectoHistorialRows(sb, empresaId, hist.data ?? []);
 
     const comRows = (comentarios.data ?? []) as { usuario_id: string }[];
     const uids = [...new Set(comRows.map((c) => c.usuario_id))];
@@ -89,7 +92,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     return NextResponse.json(
       successResponse({
         proyecto: base,
-        historial: hist.data ?? [],
+        historial: historialEnriched,
         sla,
         tareas: tareas.data ?? [],
         comentarios: comentariosRich,
@@ -126,6 +129,8 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
         status: 400,
       });
     }
+
+    const sb = await getChatServiceClientForEmpresa(auth.empresaId);
 
     const patch: Record<string, unknown> = {
       updated_by: auth.usuarioCatalogId,
@@ -174,7 +179,20 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
         typeof body.observaciones_comerciales === "string" ? body.observaciones_comerciales : null;
     }
     if (body.brief_data && typeof body.brief_data === "object" && !Array.isArray(body.brief_data)) {
-      patch.brief_data = body.brief_data;
+      const { data: curBrief, error: eBrief } = await sb
+        .from("proyectos")
+        .select("brief_data")
+        .eq("empresa_id", auth.empresaId)
+        .eq("id", pid)
+        .maybeSingle();
+      if (eBrief) return NextResponse.json(errorResponse(eBrief.message), { status: 400 });
+      const existing = (curBrief as { brief_data?: unknown } | null)?.brief_data;
+      patch.brief_data = mergeBriefDataPatch(
+        existing && typeof existing === "object" && !Array.isArray(existing)
+          ? (existing as Record<string, unknown>)
+          : {},
+        body.brief_data as Record<string, unknown>
+      );
     }
     if (body.metadata && typeof body.metadata === "object" && !Array.isArray(body.metadata)) {
       patch.metadata = body.metadata;
@@ -193,7 +211,6 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       return NextResponse.json(errorResponse("Nada para actualizar"), { status: 400 });
     }
 
-    const sb = await getChatServiceClientForEmpresa(auth.empresaId);
     const { data: updated, error } = await sb
       .from("proyectos")
       .update(patch)
