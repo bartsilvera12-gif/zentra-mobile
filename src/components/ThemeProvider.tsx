@@ -1,41 +1,47 @@
 "use client";
 
-import { createContext, useContext, useEffect, useState } from "react";
+import { createContext, useContext, useEffect } from "react";
 
-type Theme = "light" | "dark";
+/**
+ * Tema visual del ERP: forzado a "light" para todos los usuarios.
+ *
+ * El modo nocturno previo se determinaba por `localStorage.neura_theme` o por
+ * `prefers-color-scheme: dark` del sistema operativo. Confundía clientes y en algunas
+ * pantallas la legibilidad caía. Decisión: ERP siempre en modo día.
+ *
+ * Este provider sigue presente para preservar el contrato del contexto (`useTheme`)
+ * por si algún componente lo consume, pero:
+ *  - Nunca aplica la clase `dark` al `<html>`.
+ *  - Quita la clase `dark` si quedó persistida (DevTools / inercia previa).
+ *  - Limpia `localStorage.neura_theme` para que un valor "dark" guardado no reactive nada.
+ *  - `toggleTheme` queda como no-op intencional.
+ *
+ * Si en el futuro se quiere reintroducir dark mode, hay que reescribir este archivo;
+ * no alcanza con cambiar variables en otra parte.
+ */
+
+type Theme = "light";
+
+const STORAGE_KEY = "neura_theme";
 
 const ThemeContext = createContext<{
   theme: Theme;
   toggleTheme: () => void;
 }>({ theme: "light", toggleTheme: () => {} });
 
-const STORAGE_KEY = "neura_theme";
-
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  const [theme, setTheme] = useState<Theme>("light");
-  const [mounted, setMounted] = useState(false);
-
   useEffect(() => {
-    setMounted(true);
-    const stored = localStorage.getItem(STORAGE_KEY) as Theme | null;
-    if (stored === "dark" || stored === "light") {
-      setTheme(stored);
-      document.documentElement.classList.toggle("dark", stored === "dark");
-    } else if (window.matchMedia("(prefers-color-scheme: dark)").matches) {
-      setTheme("dark");
-      document.documentElement.classList.add("dark");
+    if (typeof document === "undefined") return;
+    document.documentElement.classList.remove("dark");
+    try {
+      window.localStorage.removeItem(STORAGE_KEY);
+    } catch {
+      /** Algunos navegadores bloquean localStorage (modo privado / cookies off); ignorar. */
     }
   }, []);
 
-  const toggleTheme = () => {
-    const next = theme === "light" ? "dark" : "light";
-    setTheme(next);
-    localStorage.setItem(STORAGE_KEY, next);
-    document.documentElement.classList.toggle("dark", next === "dark");
-  };
-
   return (
-    <ThemeContext.Provider value={{ theme, toggleTheme }}>
+    <ThemeContext.Provider value={{ theme: "light", toggleTheme: () => {} }}>
       {children}
     </ThemeContext.Provider>
   );
