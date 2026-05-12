@@ -54,6 +54,7 @@ const ALLOWED_TABLES = new Set([
   "marketing_comentarios",
   "marketing_historial_estados",
   "empresa_sifen_config",
+  "cliente_tipos_servicio_catalogo",
 ]);
 
 function pgErr(message: string, code?: string): { message: string; code?: string } {
