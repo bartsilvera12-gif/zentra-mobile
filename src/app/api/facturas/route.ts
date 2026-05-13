@@ -4,7 +4,7 @@ import { successResponse, errorResponse } from "@/lib/api/response";
 import { API_ERRORS } from "@/lib/api/errors";
 import { emitEvent, EVENT_TYPES } from "@/lib/integrations/events";
 import { fechaMasDiasCalendario, fechaVencimientoSuscripcion, toCalendarDateStr } from "@/lib/fechas/calendario";
-import { montosFacturaItemParaInsert } from "@/lib/facturacion/factura-item-montos";
+import { montosFacturaItemParaInsert, tasaIvaDesdeIvaTipo } from "@/lib/facturacion/factura-item-montos";
 import { descripcionLineaFacturaPorDefecto, parseFacturaPostTipo } from "@/lib/facturacion/factura-post-tipo";
 import { obtenerSiguienteNumeroFacturaEmpresa } from "@/lib/facturacion/factura-suscripcion-servidor";
 
@@ -97,6 +97,20 @@ export async function POST(request: NextRequest) {
     const descripcion_linea =
       typeof body.descripcion_linea === "string" ? body.descripcion_linea.trim() : "";
     const dia_vencimiento_susc = Number(body.dia_vencimiento);
+    /**
+     * `iva_tipo` (opcional): permite emitir esta factura puntual como Exenta, IVA 5% o IVA 10%.
+     * Si no viene, se asume IVA 10% (comportamiento histórico). Solo afecta esta factura y sus ítems;
+     * no toca defaults globales, productos, ni clientes.
+     */
+    const ivaTipoRaw =
+      typeof body.iva_tipo === "string" ? body.iva_tipo.trim().toLowerCase() : "";
+    if (ivaTipoRaw && !["exenta", "iva_5", "iva_10"].includes(ivaTipoRaw)) {
+      return NextResponse.json(
+        errorResponse("iva_tipo inválido: use 'exenta', 'iva_5' o 'iva_10'."),
+        { status: 400 }
+      );
+    }
+    const tasaIvaItem = tasaIvaDesdeIvaTipo(ivaTipoRaw);
 
     if (!String(cliente_id ?? "").trim()) {
       return NextResponse.json(errorResponse("cliente_id es obligatorio"), { status: 400 });
@@ -162,6 +176,7 @@ export async function POST(request: NextRequest) {
       moneda: mon,
       cantidad: 1,
       precioUnitario: Number(monto),
+      tasaIva: tasaIvaItem,
     });
     const { error: errItem } = await supabase.from("factura_items").insert({
       factura_id: data.id,

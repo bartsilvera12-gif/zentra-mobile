@@ -262,7 +262,11 @@ export default function ClienteDetailPage() {
   const [formPago, setFormPago] = useState({ factura_id: "" as string, monto: "", fecha_pago: "", metodo_pago: "efectivo" as const, referencia: "" });
   const [guardandoPago, setGuardandoPago] = useState(false);
   const [modalFacturaContado, setModalFacturaContado] = useState(false);
-  const [formFacturaContado, setFormFacturaContado] = useState({ monto: "", descripcion: "Venta al contado" });
+  const [formFacturaContado, setFormFacturaContado] = useState<{
+    monto: string;
+    descripcion: string;
+    iva_tipo: "exenta" | "iva_5" | "iva_10";
+  }>({ monto: "", descripcion: "Venta al contado", iva_tipo: "iva_10" });
   const [guardandoFacturaContado, setGuardandoFacturaContado] = useState(false);
   /** Error visible en el modal "Factura al contado". Antes la API podía fallar (p. ej. PGRST106
    *  para tenants erp_* no expuestos) y el botón parecía "no hacer nada". Ahora exponemos el motivo. */
@@ -866,13 +870,14 @@ export default function ClienteDetailPage() {
         tipo: "contado",
         moneda: cliente.moneda_preferida ?? "GS",
         descripcion_linea: formFacturaContado.descripcion.trim() || "Venta al contado",
+        iva_tipo: formFacturaContado.iva_tipo,
       });
       if (!result.ok) {
         setErrorFacturaContado(result.error);
         return;
       }
       setModalFacturaContado(false);
-      setFormFacturaContado({ monto: "", descripcion: "Venta al contado" });
+      setFormFacturaContado({ monto: "", descripcion: "Venta al contado", iva_tipo: "iva_10" });
       setActiveTab("estado_cuenta");
       getFacturas(id).then(setFacturas);
     } catch (err) {
@@ -1038,7 +1043,7 @@ export default function ClienteDetailPage() {
             <button
               type="button"
               onClick={() => {
-                setFormFacturaContado({ monto: "", descripcion: "Venta al contado" });
+                setFormFacturaContado({ monto: "", descripcion: "Venta al contado", iva_tipo: "iva_10" });
                 setErrorFacturaContado(null);
                 setModalFacturaContado(true);
               }}
@@ -1929,7 +1934,7 @@ export default function ClienteDetailPage() {
                   <button
                     type="button"
                     onClick={() => {
-                      setFormFacturaContado({ monto: "", descripcion: "Venta al contado" });
+                      setFormFacturaContado({ monto: "", descripcion: "Venta al contado", iva_tipo: "iva_10" });
                       setErrorFacturaContado(null);
                       setModalFacturaContado(true);
                     }}
@@ -2245,6 +2250,26 @@ export default function ClienteDetailPage() {
                   className={inputClass}
                   placeholder="Venta al contado"
                 />
+              </div>
+              <div>
+                <label className={labelClass}>IVA de esta factura</label>
+                <select
+                  value={formFacturaContado.iva_tipo}
+                  onChange={(e) =>
+                    setFormFacturaContado((p) => ({
+                      ...p,
+                      iva_tipo: e.target.value as "exenta" | "iva_5" | "iva_10",
+                    }))
+                  }
+                  className={inputClass}
+                >
+                  <option value="iva_10">IVA 10%</option>
+                  <option value="iva_5">IVA 5%</option>
+                  <option value="exenta">Exenta</option>
+                </select>
+                <p className="text-[11px] text-slate-500 mt-1">
+                  Aplica solo a esta factura. Default IVA 10%.
+                </p>
               </div>
               {errorFacturaContado ? (
                 <div

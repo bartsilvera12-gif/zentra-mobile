@@ -212,12 +212,15 @@ async function generarFacturaDesdeSuscripcion(
   return factura;
 }
 
+export type IvaTipoFactura = "exenta" | "iva_5" | "iva_10";
+
 /** Crea factura inicial para cliente Contado (venta al contado). */
 export async function crearFacturaContado(
   clienteId: string,
   monto: number,
   descripcion: string,
-  moneda: "GS" | "USD" = "GS"
+  moneda: "GS" | "USD" = "GS",
+  ivaTipo: IvaTipoFactura = "iva_10"
 ): Promise<Factura | null> {
   const hoy = hoyYmdLocal();
   const res = await fetchWithSupabaseSession("/api/facturas", {
@@ -231,6 +234,7 @@ export async function crearFacturaContado(
       tipo: "contado",
       moneda,
       descripcion_linea: descripcion || "Venta al contado",
+      iva_tipo: ivaTipo,
     }),
   });
   const json = (await res.json().catch(() => ({}))) as { success?: boolean; data?: Factura };
