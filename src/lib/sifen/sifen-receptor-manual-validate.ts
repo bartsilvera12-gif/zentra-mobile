@@ -4,6 +4,7 @@
  */
 import { splitRucParaXml } from "./sifen-cdc";
 import {
+  assertCoherenciaTiOpePais,
   descripcionTipoDocRecepXml,
   normalizarTipoDocReceptorSifen,
   resolveCodigoPaisIso3Receptor,
@@ -100,7 +101,24 @@ export function validateReceptorExplicitManual(
         "Falta el nombre del receptor: complete en el cliente al menos uno de: empresa, nombre_contacto o nombre.",
     };
   }
-  const nat = trimStr(cliente.sifen_receptor_naturaleza) as SifenReceptorNaturalezaManual | "";
+  let nat = trimStr(cliente.sifen_receptor_naturaleza) as SifenReceptorNaturalezaManual | "";
+  /**
+   * Auto-promoción a "extranjero" cuando el cliente fue cargado como "no_contribuyente"
+   * pero los demás campos indican inequívocamente receptor extranjero (B2F + país no-PRY +
+   * flag de extranjero). Evita el bug histórico que generaba B2F+PRY (rechazo SET GENFE025).
+   */
+  if (nat === "no_contribuyente") {
+    const tiRaw = cliente.sifen_ti_ope;
+    const tiCheck = typeof tiRaw === "number" ? tiRaw : parseInt(String(tiRaw ?? ""), 10);
+    const codigoPaisCheck = resolveCodigoPaisIso3Receptor({
+      sifenCodigoPais: cliente.sifen_codigo_pais,
+      paisTexto: cliente.pais,
+    });
+    const extranjeroFlag = parseBoolCliente(cliente.sifen_receptor_extranjero);
+    if (tiCheck === 4 && codigoPaisCheck && codigoPaisCheck !== "PRY" && extranjeroFlag) {
+      nat = "extranjero";
+    }
+  }
   if (nat !== "contribuyente_paraguayo" && nat !== "no_contribuyente" && nat !== "extranjero") {
     return {
       ok: false,
@@ -147,6 +165,11 @@ export function validateReceptorExplicitManual(
           "SIFEN receptor manual (contribuyente): el RUC no es válido como RUC paraguayo SIFEN. Corregí el RUC o desactivá el modo manual.",
       };
     }
+    try {
+      assertCoherenciaTiOpePais(tiOpe, "PRY");
+    } catch (e) {
+      return { ok: false, error: e instanceof Error ? e.message : String(e) };
+    }
     return {
       ok: true,
       receptor: {
@@ -186,6 +209,11 @@ export function validateReceptorExplicitManual(
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       return { ok: false, error: msg };
+    }
+    try {
+      assertCoherenciaTiOpePais(tiOpe, "PRY");
+    } catch (e) {
+      return { ok: false, error: e instanceof Error ? e.message : String(e) };
     }
     return {
       ok: true,
@@ -231,6 +259,11 @@ export function validateReceptorExplicitManual(
     return { ok: false, error: msg };
   }
 
+  try {
+    assertCoherenciaTiOpePais(tiOpe, codigoPais);
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : String(e) };
+  }
   return {
     ok: true,
     receptor: {

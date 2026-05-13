@@ -54,6 +54,16 @@ export function ClienteDatosSifenReceptorForm({ value, onChange }: Props) {
   const manual = Boolean(value.sifen_receptor_manual);
   const tipoDoc = value.sifen_tipo_doc_receptor != null ? String(value.sifen_tipo_doc_receptor) : "";
   const showDescTipo9 = manual && tipoDoc === "9";
+  const tiOpeNum = value.sifen_ti_ope != null ? Number(value.sifen_ti_ope) : null;
+  const codigoPaisUp = (value.sifen_codigo_pais ?? "").trim().toUpperCase();
+  const nat = value.sifen_receptor_naturaleza ?? "";
+  const warnB2FconPRY =
+    manual && tiOpeNum === 4 && (codigoPaisUp === "" || codigoPaisUp === "PRY");
+  const warnLocalConExtranjero =
+    manual && tiOpeNum != null && tiOpeNum !== 4 && codigoPaisUp !== "" && codigoPaisUp !== "PRY";
+  const warnNatExtranjeroSinB2F = manual && nat === "extranjero" && tiOpeNum != null && tiOpeNum !== 4;
+  const warnNatLocalConB2F =
+    manual && (nat === "contribuyente_paraguayo" || nat === "no_contribuyente") && tiOpeNum === 4;
 
   return (
     <details className="rounded-xl border border-slate-200 bg-slate-50/40 open:bg-white">
@@ -179,6 +189,25 @@ export function ClienteDatosSifenReceptorForm({ value, onChange }: Props) {
                 placeholder="Si vacío, se intenta con la dirección del cliente (si no coincide con el nombre)"
               />
             </div>
+            {warnB2FconPRY || warnLocalConExtranjero || warnNatExtranjeroSinB2F || warnNatLocalConB2F ? (
+              <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-[12px] text-amber-800 leading-snug">
+                <div className="font-semibold mb-1">Combinación inválida para SIFEN</div>
+                <ul className="list-disc pl-4 space-y-0.5">
+                  {warnB2FconPRY ? (
+                    <li>Operación B2F requiere país ISO3 distinto de PRY (ej. PER, ARG, BRA).</li>
+                  ) : null}
+                  {warnLocalConExtranjero ? (
+                    <li>Operaciones B2B/B2C/B2G requieren país PRY.</li>
+                  ) : null}
+                  {warnNatExtranjeroSinB2F ? (
+                    <li>Naturaleza “extranjero” requiere operación B2F (4).</li>
+                  ) : null}
+                  {warnNatLocalConB2F ? (
+                    <li>Para B2F use naturaleza “extranjero”; los receptores paraguayos van con B2B/B2C/B2G.</li>
+                  ) : null}
+                </ul>
+              </div>
+            ) : null}
             <div>
               <label className={labelClass}>Número de casa en el DE (dNumCasRec)</label>
               <input

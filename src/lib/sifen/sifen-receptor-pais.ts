@@ -116,6 +116,29 @@ export function normalizarTipoDocReceptorSifen(v: unknown): number | null {
 /**
  * Literal `dDTipIDRec` alineado a `tdDtipDocRec` (enumeración o texto 9–41 para tipo 9).
  */
+/**
+ * Coherencia SIFEN entre tipo de operación (iTiOpe / GENFE027) y país receptor (cPaisRec / GENFE005):
+ * - iTiOpe = 4 (B2F) ⇔ cPaisRec ≠ PRY
+ * - iTiOpe ∈ {1,2,3} (B2B/B2C/B2G) ⇔ cPaisRec = PRY
+ * Falla antes de generar XML para evitar rechazo SET "Código de país del receptor inválido para el tipo de operación informado".
+ */
+export function assertCoherenciaTiOpePais(tiOpe: number, codigoPaisIso3: string): void {
+  const pais = trimStr(codigoPaisIso3).toUpperCase();
+  if (tiOpe === 4) {
+    if (!pais || pais === "PRY") {
+      throw new Error(
+        "Datos del receptor inválidos: operación B2F (iTiOpe=4) requiere país receptor extranjero distinto de PRY."
+      );
+    }
+  } else {
+    if (pais !== "PRY") {
+      throw new Error(
+        "Datos del receptor inválidos: operaciones B2B/B2C/B2G (iTiOpe≠4) requieren país receptor PRY."
+      );
+    }
+  }
+}
+
 export function descripcionTipoDocRecepXml(tipo: number, custom: string | null | undefined): string {
   const c = trimStr(custom);
   if (tipo === 9) {
