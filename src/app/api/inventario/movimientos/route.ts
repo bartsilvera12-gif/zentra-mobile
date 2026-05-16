@@ -5,6 +5,7 @@ import { successResponse, errorResponse } from "@/lib/api/response";
 import { API_ERRORS } from "@/lib/api/errors";
 import { getChatPostgresPool, quoteSchemaTable } from "@/lib/supabase/chat-pg-pool";
 import { assertAllowedChatDataSchema } from "@/lib/supabase/chat-data-schema";
+import { queryWithRetry } from "@/lib/supabase/pg-retry";
 
 /**
  * GET /api/inventario/movimientos — lista movimientos via PG directo.
@@ -19,7 +20,7 @@ export async function GET(request: NextRequest) {
     const pool = getChatPostgresPool();
     if (!pool) return NextResponse.json(errorResponse("Pool no disponible."), { status: 500 });
     const t = quoteSchemaTable(schema, "movimientos_inventario");
-    const { rows } = await pool.query(
+    const { rows } = await queryWithRetry(pool,
       `SELECT id, empresa_id, producto_id, producto_nombre, producto_sku,
               tipo, cantidad, costo_unitario, origen, referencia, fecha, created_at, updated_at,
               created_by, usuario_nombre

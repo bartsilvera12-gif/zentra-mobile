@@ -3,6 +3,7 @@ import { getTenantSupabaseFromAuth } from "@/lib/supabase/tenant-api";
 import { fetchDataSchemaForEmpresaId } from "@/lib/supabase/empresa-data-schema";
 import { getChatPostgresPool, quoteSchemaTable } from "@/lib/supabase/chat-pg-pool";
 import { assertAllowedChatDataSchema } from "@/lib/supabase/chat-data-schema";
+import { queryWithRetry } from "@/lib/supabase/pg-retry";
 import { successResponse, errorResponse } from "@/lib/api/response";
 import { API_ERRORS } from "@/lib/api/errors";
 import type { Venta, LineaVenta, TipoIvaVenta } from "@/lib/ventas/types";
@@ -71,14 +72,14 @@ export async function GET(request: NextRequest) {
     const tI = quoteSchemaTable(schema, "ventas_items");
 
     // Serializado (no Promise.all) para no agotar el pool session-mode (limite 15).
-    const ventasQ = await pool.query<VentaRow>(
+    const ventasQ = await queryWithRetry<VentaRow>(pool,
       `SELECT id, empresa_id, numero_control, moneda, tipo_cambio, subtotal, monto_iva,
               total, tipo_venta, plazo_dias, fecha
          FROM ${tV} WHERE empresa_id = $1::uuid
         ORDER BY fecha DESC LIMIT 500`,
       [empresaId]
     );
-    const itemsQ = await pool.query<VentaItemRow>(
+    const itemsQ = await queryWithRetry<VentaItemRow>(pool,
       `SELECT venta_id, producto_id, producto_nombre, sku, cantidad,
               precio_venta_original, precio_venta, tipo_iva, subtotal, monto_iva, total_linea
          FROM ${tI} WHERE empresa_id = $1::uuid`,

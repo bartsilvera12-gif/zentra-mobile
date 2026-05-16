@@ -10,6 +10,7 @@ import {
   DuplicadoError,
 } from "@/lib/inventario/server/productos-pg";
 import { getChatPostgresPool, quoteSchemaTable } from "@/lib/supabase/chat-pg-pool";
+import { queryWithRetry } from "@/lib/supabase/pg-retry";
 import { assertAllowedChatDataSchema } from "@/lib/supabase/chat-data-schema";
 import { normalizeUpperText, normalizeUpperCodigoBarras } from "@/lib/text/normalize";
 
@@ -31,7 +32,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json(errorResponse("Pool no disponible."), { status: 500 });
     }
     const t = quoteSchemaTable(schema, "productos");
-    const { rows } = await pool.query(
+    const { rows } = await queryWithRetry(pool,
       `SELECT id, empresa_id, nombre, sku, costo_promedio, precio_venta, stock_actual, stock_minimo,
               unidad_medida, metodo_valuacion, activo, created_at, updated_at,
               codigo_barras, codigo_barras_interno, imagen_path, imagen_url,

@@ -57,6 +57,46 @@ async function fallbackComprasPg(schemaRaw: string, empresaId: string): Promise<
   }
 }
 
+async function fallbackVentasPg(schemaRaw: string, empresaId: string): Promise<unknown[]> {
+  try {
+    const schema = assertAllowedChatDataSchema(schemaRaw);
+    const pool = getChatPostgresPool();
+    if (!pool) return [];
+    const t = quoteSchemaTable(schema, "ventas");
+    const { rows } = await pool.query(
+      `SELECT * FROM ${t} WHERE empresa_id = $1::uuid`,
+      [empresaId]
+    );
+    return rows;
+  } catch (e) {
+    console.error("[dashboard/tenant-tables] fallbackVentasPg", {
+      schema: schemaRaw,
+      message: e instanceof Error ? e.message : String(e),
+    });
+    return [];
+  }
+}
+
+async function fallbackVentasItemsPg(schemaRaw: string, empresaId: string): Promise<unknown[]> {
+  try {
+    const schema = assertAllowedChatDataSchema(schemaRaw);
+    const pool = getChatPostgresPool();
+    if (!pool) return [];
+    const t = quoteSchemaTable(schema, "ventas_items");
+    const { rows } = await pool.query(
+      `SELECT * FROM ${t} WHERE empresa_id = $1::uuid`,
+      [empresaId]
+    );
+    return rows;
+  } catch (e) {
+    console.error("[dashboard/tenant-tables] fallbackVentasItemsPg", {
+      schema: schemaRaw,
+      message: e instanceof Error ? e.message : String(e),
+    });
+    return [];
+  }
+}
+
 type TableKey =
   | "clientes"
   | "facturas"
@@ -173,6 +213,16 @@ export async function GET(request: NextRequest) {
       comprasRows = await fallbackComprasPg(dataSchema, empresaId);
       if (comprasRows.length > 0) delete queryErrors.compras;
     }
+    let ventasRows = pickRows("ventas", ventasQ, queryErrors);
+    if ((ventasRows.length === 0 && queryErrors.ventas) || (usarPg && ventasRows.length === 0)) {
+      ventasRows = await fallbackVentasPg(dataSchema, empresaId);
+      if (ventasRows.length > 0) delete queryErrors.ventas;
+    }
+    let ventasItemsRows = pickRows("ventas_items", ventasItemsQ, queryErrors);
+    if ((ventasItemsRows.length === 0 && queryErrors.ventas_items) || (usarPg && ventasItemsRows.length === 0)) {
+      ventasItemsRows = await fallbackVentasItemsPg(dataSchema, empresaId);
+      if (ventasItemsRows.length > 0) delete queryErrors.ventas_items;
+    }
 
     const payload = {
       clientes: pickRows("clientes", clientesQ, queryErrors),
@@ -180,8 +230,8 @@ export async function GET(request: NextRequest) {
       pagos: pickRows("pagos", pagosQ, queryErrors),
       tipificaciones: pickRows("tipificaciones", tipificacionesQ, queryErrors),
       productos: productosRows,
-      ventas: pickRows("ventas", ventasQ, queryErrors),
-      ventas_items: pickRows("ventas_items", ventasItemsQ, queryErrors),
+      ventas: ventasRows,
+      ventas_items: ventasItemsRows,
       compras: comprasRows,
       gastos: pickRows("gastos", gastosQ, queryErrors),
       suscripciones: pickRows("suscripciones", suscripcionesDashQ, queryErrors),
