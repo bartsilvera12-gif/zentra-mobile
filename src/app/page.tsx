@@ -91,7 +91,23 @@ function formatGs(n: number): string {
   return n.toLocaleString("es-PY");
 }
 
-/** Formato abreviado: 2.500.000 → 2.5M, 25.000.000 → 25M */
+/**
+ * Formato completo con separadores de miles. Para KPIs operativas donde el
+ * usuario necesita ver el monto real (ej. "Gs. 286.000" en lugar de "286K").
+ * Solo abrevia cuando el numero es muy grande (>= 1.000 millones) y mostrarlo
+ * completo romperia la tarjeta.
+ */
+function formatGsFull(n: number): string {
+  const num = Number(n);
+  if (!Number.isFinite(num)) return "0";
+  if (Math.abs(num) >= 1_000_000_000) {
+    const b = num / 1_000_000_000;
+    return `${b.toFixed(2).replace(".", ",")} MM`;
+  }
+  return Math.round(num).toLocaleString("es-PY");
+}
+
+/** Formato abreviado (mantengo para charts/ejes donde el espacio es limitado). */
 function formatGsM(n: number): string {
   const num = Number(n);
   if (!Number.isFinite(num) || num < 0) return "0";
@@ -535,7 +551,7 @@ function KpiCard({
           </span>
         )}
       </div>
-      <p className={`mt-3 text-3xl font-bold tabular-nums ${color}`}>{value}</p>
+      <p className={`mt-3 text-2xl xl:text-3xl font-bold tabular-nums leading-tight tracking-tight ${color}`}>{value}</p>
       <p className="mt-1 text-xs font-medium text-[#475569]">{label}</p>
       {sub && <p className="mt-1 text-xs text-[#475569]">{sub}</p>}
     </motion.div>
@@ -1633,7 +1649,7 @@ function DashInventario({
           sub={bajosStock > 0 ? "requieren reposición" : "todo en orden"}
           color={bajosStock > 0 ? "text-red-600" : "text-[#0EA5E9]"}
           variation={bajosStock > 0 ? -2 : undefined} />
-        <KpiCard icon="💎" label="Valor del inventario"   value={`Gs. ${formatGsM(valorTotal)}`} color="text-[#0EA5E9]" variation={12} />
+        <KpiCard icon="💎" label="Valor del inventario"   value={`Gs. ${formatGsFull(valorTotal)}`} color="text-[#0EA5E9]" variation={12} />
       </div>
 
       {/* Donut + Críticos */}
@@ -1831,11 +1847,11 @@ function DashVentas({
 
       {/* KPIs principales */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-        <KpiCard icon="📅" label="Ventas del día"    value={`Gs. ${formatGsM(totalHoy)}`}
+        <KpiCard icon="📅" label="Ventas del día"    value={`Gs. ${formatGsFull(totalHoy)}`}
           sub={`${ventasHoy.length} transacciones`} color="text-blue-600" />
-        <KpiCard icon="📆" label="Ventas del mes"    value={`Gs. ${formatGsM(totalMes)}`}
+        <KpiCard icon="📆" label="Ventas del mes"    value={`Gs. ${formatGsFull(totalMes)}`}
           sub={`${ventasMes.length} transacciones`} color="text-indigo-600" />
-        <KpiCard icon="🎫" label="Ticket promedio"   value={`Gs. ${formatGsM(ticketProm)}`}
+        <KpiCard icon="🎫" label="Ticket promedio"   value={`Gs. ${formatGsFull(ticketProm)}`}
           sub={`periodo: ${periodo}`} />
         <KpiCard icon="📦" label="Unidades vendidas" value={formatGs(unidades)}
           sub={`en el periodo`} />
@@ -1847,7 +1863,7 @@ function DashVentas({
           <span className="text-2xl">💰</span>
           <div>
             <p className={`text-2xl font-bold tabular-nums ${gananciaHoy >= 0 ? "text-green-600" : "text-red-600"}`}>
-              Gs. {formatGsM(gananciaHoy)}
+              Gs. {formatGsFull(gananciaHoy)}
             </p>
             <p className="text-xs font-semibold text-gray-700 mt-0.5">Ganancia del día</p>
             <p className="text-xs text-gray-400">precio venta − costo promedio × cant.</p>
