@@ -88,11 +88,9 @@ export default function CategoriasProductosPage() {
           <h1 className="text-3xl font-bold text-gray-800">Categorías de productos</h1>
           <p className="text-gray-600">Clasificá tus productos para reportes y búsqueda.</p>
           <div className="mt-3 max-w-2xl rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-800">
-            Estas categorías aparecen en el selector <strong>Categoría principal</strong> de
-            Nuevo producto. Para clasificar proveedores (textil, importación, etc.) usá{" "}
-            <Link href="/proveedores/categorias" className="underline font-medium">
-              Proveedores / Rubros
-            </Link>.
+            Estas categorías aparecen en el selector <strong>Categoría principal</strong> de Nuevo producto.
+            Los <Link href="/proveedores/categorias" className="underline font-medium">rubros de proveedor</Link>{" "}
+            también se importan automáticamente acá, así no tenés que cargarlos dos veces.
           </div>
         </div>
         <Link href="/inventario" className="text-sm text-sky-700 hover:text-sky-900 underline">

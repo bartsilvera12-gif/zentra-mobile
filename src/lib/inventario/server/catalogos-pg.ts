@@ -32,12 +32,51 @@ export interface CategoriaProductoRow {
   updated_at: string;
 }
 
+/**
+ * Auto-sync: importa a categorias_productos cualquier rubro de proveedor
+ * (proveedor_categorias) activo que no exista todavia, comparando por
+ * lower(trim(nombre)). Idempotente y protegido por UNIQUE INDEX
+ * uq_categorias_productos_empresa_nombre.
+ *
+ * Esto unifica los dos catalogos desde el punto de vista del usuario:
+ * lo que cargo como rubro del proveedor aparece tambien como categoria
+ * de producto, sin obligar al usuario a duplicar la carga.
+ */
+async function seedCategoriasFromProveedor(schema: string, empresaId: string): Promise<void> {
+  const tProd = quoteSchemaTable(schema, "categorias_productos");
+  const tProv = quoteSchemaTable(schema, "proveedor_categorias");
+  try {
+    await pool().query(
+      `INSERT INTO ${tProd} (empresa_id, nombre, activo)
+       SELECT pc.empresa_id, pc.nombre, true
+         FROM ${tProv} pc
+        WHERE pc.empresa_id = $1::uuid
+          AND pc.activo = true
+          AND NOT EXISTS (
+            SELECT 1 FROM ${tProd} cp
+             WHERE cp.empresa_id = pc.empresa_id
+               AND lower(trim(cp.nombre)) = lower(trim(pc.nombre))
+          )`,
+      [empresaId]
+    );
+  } catch (err) {
+    // Si proveedor_categorias no existe en este schema, ignorar.
+    const msg = err instanceof Error ? err.message : "";
+    if (!/proveedor_categorias.*does not exist|relation .* does not exist/i.test(msg)) {
+      console.error("[catalogos-pg] seedCategoriasFromProveedor", { schema, message: msg });
+    }
+  }
+}
+
 export async function listCategoriasProducto(
   schemaRaw: string,
   empresaId: string,
   opts: { soloActivas?: boolean } = {}
 ): Promise<CategoriaProductoRow[]> {
   const schema = assertAllowedChatDataSchema(schemaRaw);
+  // Sync rubros de proveedor antes de listar — best-effort, no bloquea.
+  await seedCategoriasFromProveedor(schema, empresaId);
+
   const t = quoteSchemaTable(schema, "categorias_productos");
   const where = ["empresa_id = $1::uuid"];
   if (opts.soloActivas !== false) where.push("activo = true");
