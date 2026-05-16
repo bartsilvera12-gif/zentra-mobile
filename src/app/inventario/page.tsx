@@ -5,6 +5,8 @@ import Link from "next/link";
 import { getProductos } from "@/lib/inventario/storage";
 import type { Producto, MetodoValuacion } from "@/lib/inventario/types";
 import ExportExcelButton from "@/components/ui/ExportExcelButton";
+import ImportExcelButton from "@/components/ui/ImportExcelButton";
+import { useIsAdmin } from "@/lib/auth/use-is-admin";
 
 const inputFilterClass =
   "border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-[#0EA5E9] focus:outline-none";
@@ -33,8 +35,10 @@ function margenColor(margen: number): string {
 interface UbicacionMin { id: string; nombre: string; tipo: string }
 
 export default function InventarioPage() {
+  const { isAdmin } = useIsAdmin();
   const [todos, setTodos] = useState<Producto[]>([]);
   const [ubicaciones, setUbicaciones] = useState<UbicacionMin[]>([]);
+  const [refreshKey, setRefreshKey] = useState(0);
 
   // Filtros por columna
   const [filtroPorNombre,  setFiltroPorNombre]  = useState("");
@@ -59,7 +63,7 @@ export default function InventarioPage() {
       })
       .catch(() => undefined);
     return () => { cancelled = true; };
-  }, []);
+  }, [refreshKey]);
 
   const ubicacionById = new Map(ubicaciones.map((u) => [u.id, u]));
 
@@ -142,6 +146,15 @@ export default function InventarioPage() {
               Nuevo producto
             </Link>
             <ExportExcelButton url="/api/inventario/productos/export" />
+            <ImportExcelButton
+              entidad="Productos"
+              previewUrl="/api/inventario/productos/import/preview"
+              commitUrl="/api/inventario/productos/import/commit"
+              templateUrl="/api/inventario/productos/import/template"
+              permiteCrearFaltantes
+              visible={isAdmin}
+              onCompleted={() => setRefreshKey((k) => k + 1)}
+            />
           </div>
           <p className="text-xs text-gray-400">
             Los productos ingresan desde <span className="font-medium text-gray-500">Compras</span>

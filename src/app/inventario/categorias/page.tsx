@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import ExportExcelButton from "@/components/ui/ExportExcelButton";
+import ImportExcelButton from "@/components/ui/ImportExcelButton";
+import { useIsAdmin } from "@/lib/auth/use-is-admin";
 
 interface Categoria {
   id: string;
@@ -14,6 +16,7 @@ interface Categoria {
 }
 
 export default function CategoriasProductosPage() {
+  const { isAdmin } = useIsAdmin();
   const [items, setItems] = useState<Categoria[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -96,6 +99,15 @@ export default function CategoriasProductosPage() {
         </div>
         <div className="flex items-center gap-3">
           <ExportExcelButton url="/api/inventario/categorias/export" />
+          <ImportExcelButton
+            entidad="Categorías"
+            previewUrl="/api/inventario/categorias/import/preview"
+            commitUrl="/api/inventario/categorias/import/commit"
+            templateUrl="/api/inventario/categorias/import/template"
+            permiteCrearFaltantes
+            visible={isAdmin}
+            onCompleted={load}
+          />
           <Link href="/inventario" className="text-sm text-sky-700 hover:text-sky-900 underline">
             ← Volver a Inventario
           </Link>

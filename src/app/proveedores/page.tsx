@@ -4,12 +4,16 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { getProveedores } from "@/lib/proveedores/storage";
 import ExportExcelButton from "@/components/ui/ExportExcelButton";
+import ImportExcelButton from "@/components/ui/ImportExcelButton";
+import { useIsAdmin } from "@/lib/auth/use-is-admin";
 import type { Proveedor } from "@/lib/proveedores/types";
 
 export default function ProveedoresPage() {
+  const { isAdmin } = useIsAdmin();
   const [lista, setLista] = useState<Proveedor[]>([]);
   const [busqueda, setBusqueda] = useState("");
   const [cargando, setCargando] = useState(true);
+  const [refreshKey, setRefreshKey] = useState(0);
 
   useEffect(() => {
     let cancel = false;
@@ -23,7 +27,7 @@ export default function ProveedoresPage() {
     return () => {
       cancel = true;
     };
-  }, []);
+  }, [refreshKey]);
 
   const filtradas = useMemo(() => {
     const t = busqueda.trim().toLowerCase();
@@ -50,6 +54,15 @@ export default function ProveedoresPage() {
         </div>
         <div className="flex flex-wrap gap-2">
           <ExportExcelButton url="/api/proveedores/export" />
+          <ImportExcelButton
+            entidad="Proveedores"
+            previewUrl="/api/proveedores/import/preview"
+            commitUrl="/api/proveedores/import/commit"
+            templateUrl="/api/proveedores/import/template"
+            permiteCrearFaltantes
+            visible={isAdmin}
+            onCompleted={() => setRefreshKey((k) => k + 1)}
+          />
           <Link
             href="/proveedores/categorias"
             className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50"
