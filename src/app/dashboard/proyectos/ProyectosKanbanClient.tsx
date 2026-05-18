@@ -18,6 +18,12 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
 import { readSaasBriefData } from "@/lib/proyectos/brief-data";
 import ProyectoDetalleModal from "./components/ProyectoDetalleModal";
+import ProyectoNuevoModal from "./components/ProyectoNuevoModal";
+
+const TURQUOISE_CHEVRON_BG =
+  "url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%234FAEB2' stroke-width='2.5'><path stroke-linecap='round' stroke-linejoin='round' d='M6 9l6 6 6-6'/></svg>\")";
+const FILTER_SELECT_CLS =
+  "shrink-0 appearance-none rounded-xl border border-slate-200 bg-white bg-[length:14px_14px] bg-[right_0.85rem_center] bg-no-repeat px-3.5 py-2.5 pr-9 text-sm font-medium text-slate-700 shadow-sm transition-colors hover:border-[#4FAEB2]/60 focus:border-[#4FAEB2] focus:outline-none focus:ring-2 focus:ring-[#4FAEB2]/20";
 
 type EstadoRow = {
   id: string;
@@ -210,6 +216,7 @@ export default function ProyectosKanbanClient() {
   const [tipoOpts, setTipoOpts] = useState<{ id: string; nombre: string }[]>([]);
   const [userOpts, setUserOpts] = useState<{ id: string; nombre?: string }[]>([]);
   const [modalProjectId, setModalProjectId] = useState<string | null>(null);
+  const [nuevoModalOpen, setNuevoModalOpen] = useState(false);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
@@ -408,15 +415,38 @@ export default function ProyectosKanbanClient() {
     <div className="mx-auto max-w-[1800px] space-y-6 p-4 md:p-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 className="text-xl font-semibold text-slate-900">Proyectos</h1>
+          <div className="flex items-center gap-2">
+            <span
+              aria-hidden="true"
+              className="inline-block h-2 w-2 shrink-0 rounded-full bg-[#4FAEB2] shadow-[0_0_0_3px_rgba(79,174,178,0.18)]"
+            />
+            <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[#4FAEB2]">
+              Tablero
+            </p>
+          </div>
+          <h1 className="mt-1 text-2xl font-semibold tracking-tight text-slate-900">Proyectos</h1>
           <p className="text-sm text-slate-500">Kanban configurable por empresa — producción, clientes y SLA.</p>
         </div>
-        <Link
-          href="/dashboard/proyectos/nuevo"
-          className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700"
+        <button
+          type="button"
+          onClick={() => setNuevoModalOpen(true)}
+          className="inline-flex items-center gap-2 rounded-xl bg-[#4FAEB2] px-4 py-2.5 text-sm font-semibold text-white shadow-sm shadow-[#4FAEB2]/20 transition-colors hover:bg-[#3F8E91]"
         >
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            className="h-4 w-4"
+            aria-hidden="true"
+          >
+            <path d="M12 5v14M5 12h14" />
+          </svg>
           Nuevo proyecto
-        </Link>
+        </button>
       </div>
 
       {err ? <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">{err}</div> : null}
@@ -434,23 +464,44 @@ export default function ProyectosKanbanClient() {
         </div>
       </div>
 
-      <div className="flex flex-col gap-2 rounded-xl border border-slate-200 bg-white p-4 shadow-sm xl:flex-row xl:flex-wrap xl:items-center">
-        <input
-          className="min-w-[200px] flex-1 rounded-md border border-slate-200 px-3 py-2 text-sm"
-          placeholder="Buscar título o cliente…"
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && void load()}
-        />
+      <div className="flex flex-col gap-2 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm xl:flex-row xl:flex-wrap xl:items-center">
+        <div className="relative min-w-[220px] flex-1">
+          <span
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-[#4FAEB2]"
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="h-4 w-4"
+            >
+              <circle cx="11" cy="11" r="7" />
+              <path d="m20 20-3.5-3.5" />
+            </svg>
+          </span>
+          <input
+            className="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-9 pr-3 text-sm text-slate-900 shadow-sm transition-colors placeholder:text-slate-400 hover:border-[#4FAEB2]/60 focus:border-[#4FAEB2] focus:outline-none focus:ring-2 focus:ring-[#4FAEB2]/20"
+            placeholder="Buscar título o cliente…"
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && void load()}
+          />
+        </div>
         <button
           type="button"
-          className="shrink-0 rounded-md bg-slate-100 px-3 py-2 text-sm font-medium text-slate-800 hover:bg-slate-200"
+          className="shrink-0 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-sm transition-colors hover:border-[#4FAEB2]/60 hover:text-[#4FAEB2]"
           onClick={() => void load()}
         >
           Buscar
         </button>
         <select
-          className="min-w-[160px] shrink-0 rounded-md border border-slate-200 px-2 py-2 text-sm"
+          className={`min-w-[160px] ${FILTER_SELECT_CLS}`}
+          style={{ backgroundImage: TURQUOISE_CHEVRON_BG }}
           value={filtroEstado}
           onChange={(e) => setFiltroEstado(e.target.value)}
         >
@@ -462,7 +513,8 @@ export default function ProyectosKanbanClient() {
           ))}
         </select>
         <select
-          className="min-w-[140px] shrink-0 rounded-md border border-slate-200 px-2 py-2 text-sm"
+          className={`min-w-[140px] ${FILTER_SELECT_CLS}`}
+          style={{ backgroundImage: TURQUOISE_CHEVRON_BG }}
           value={filtroTipo}
           onChange={(e) => setFiltroTipo(e.target.value)}
         >
@@ -474,7 +526,8 @@ export default function ProyectosKanbanClient() {
           ))}
         </select>
         <select
-          className="min-w-[170px] shrink-0 rounded-md border border-slate-200 px-2 py-2 text-sm"
+          className={`min-w-[170px] ${FILTER_SELECT_CLS}`}
+          style={{ backgroundImage: TURQUOISE_CHEVRON_BG }}
           value={filtroRc}
           onChange={(e) => setFiltroRc(e.target.value)}
         >
@@ -486,7 +539,8 @@ export default function ProyectosKanbanClient() {
           ))}
         </select>
         <select
-          className="min-w-[170px] shrink-0 rounded-md border border-slate-200 px-2 py-2 text-sm"
+          className={`min-w-[170px] ${FILTER_SELECT_CLS}`}
+          style={{ backgroundImage: TURQUOISE_CHEVRON_BG }}
           value={filtroRt}
           onChange={(e) => setFiltroRt(e.target.value)}
         >
@@ -497,6 +551,21 @@ export default function ProyectosKanbanClient() {
             </option>
           ))}
         </select>
+        {(q || filtroEstado || filtroTipo || filtroRc || filtroRt) ? (
+          <button
+            type="button"
+            className="shrink-0 rounded-xl border border-transparent px-3 py-2.5 text-xs font-medium text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700"
+            onClick={() => {
+              setQ("");
+              setFiltroEstado("");
+              setFiltroTipo("");
+              setFiltroRc("");
+              setFiltroRt("");
+            }}
+          >
+            Limpiar filtros
+          </button>
+        ) : null}
       </div>
 
       <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
@@ -565,6 +634,16 @@ export default function ProyectosKanbanClient() {
         onClose={() => setModalProjectId(null)}
         onUpdated={() => void load()}
       />
+
+      <ProyectoNuevoModal
+        open={nuevoModalOpen}
+        onClose={() => setNuevoModalOpen(false)}
+        onCreated={(id) => {
+          setNuevoModalOpen(false);
+          void load();
+          setModalProjectId(id);
+        }}
+      />
     </div>
   );
 }
@@ -581,7 +660,7 @@ function KanbanColumnView({ col, children }: KanbanColumnViewProps) {
       ref={setNodeRef}
       className={`flex w-[300px] shrink-0 flex-col rounded-xl border bg-slate-50/80 transition-colors ${
         isOver && !col.inactiveFallback
-          ? "border-indigo-300 bg-indigo-50/70 ring-2 ring-indigo-100"
+          ? "border-[#4FAEB2]/50 bg-[#4FAEB2]/8 ring-2 ring-[#4FAEB2]/20"
           : "border-slate-200"
       }`}
     >
@@ -690,7 +769,7 @@ function ProjectCardView({
           <div className="mt-3 flex items-center justify-between gap-2 border-t border-slate-100 pt-3" onClick={(e) => e.stopPropagation()}>
             <Link
               href={`/dashboard/proyectos/${p.id}`}
-              className="text-[11px] font-semibold text-sky-700 hover:text-sky-800 hover:underline"
+              className="text-[11px] font-semibold text-[#4FAEB2] hover:text-[#3F8E91] hover:underline"
               onClick={(e) => e.stopPropagation()}
             >
               Abrir en página completa
@@ -699,7 +778,8 @@ function ProjectCardView({
           <div className="mt-2 rounded-xl border border-slate-200 bg-slate-50 px-2.5 py-2" onClick={(e) => e.stopPropagation()}>
             <label className="block text-[10px] font-semibold uppercase tracking-wide text-slate-500">Mover a</label>
             <select
-              className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs font-medium text-slate-700 outline-none transition-colors hover:border-slate-300 focus:border-sky-400 focus:ring-2 focus:ring-sky-100"
+              className="mt-1 w-full appearance-none rounded-lg border border-slate-200 bg-white bg-[length:12px_12px] bg-[right_0.6rem_center] bg-no-repeat px-3 py-1.5 pr-7 text-xs font-medium text-slate-700 shadow-sm outline-none transition-colors hover:border-[#4FAEB2]/60 focus:border-[#4FAEB2] focus:ring-2 focus:ring-[#4FAEB2]/20"
+              style={{ backgroundImage: TURQUOISE_CHEVRON_BG }}
               value={p.estado_id}
               onPointerDown={(e) => e.stopPropagation()}
               onClick={(e) => e.stopPropagation()}

@@ -320,61 +320,89 @@ export default function ProyectoDetalleInner({
 
   if (!projectId) return null;
   if (loading && !data) {
-    return <div className="p-6 text-sm text-slate-400">Cargando…</div>;
+    return <div className="p-8 text-sm text-slate-500">Cargando…</div>;
   }
-  if (err && !data) return <div className="p-6 text-sm text-red-400">{err}</div>;
+  if (err && !data) return <div className="p-8 text-sm text-rose-600">{err}</div>;
   if (!data || !proyecto) return null;
 
-  const panelCls = "rounded-xl border border-slate-700/80 bg-slate-800/40 p-4 shadow-sm";
-  const labelCls = "text-slate-400";
+  const panelCls =
+    "rounded-2xl border border-slate-200 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]";
+  const labelCls = "text-xs font-medium uppercase tracking-wide text-slate-500";
   const inputCls =
-    "mt-1 w-full rounded-lg border border-slate-600 bg-slate-900/80 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500";
+    "mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 shadow-sm transition-colors hover:border-[#4FAEB2]/60 focus:border-[#4FAEB2] focus:outline-none focus:ring-2 focus:ring-[#4FAEB2]/20";
+  const selectCls =
+    "mt-1.5 w-full appearance-none rounded-xl border border-slate-200 bg-white bg-[length:14px_14px] bg-[right_0.85rem_center] bg-no-repeat px-3.5 py-2.5 pr-9 text-sm text-slate-900 shadow-sm transition-colors hover:border-[#4FAEB2]/60 focus:border-[#4FAEB2] focus:outline-none focus:ring-2 focus:ring-[#4FAEB2]/20";
+  const chevronStyle = {
+    backgroundImage:
+      "url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%234FAEB2' stroke-width='2.5'><path stroke-linecap='round' stroke-linejoin='round' d='M6 9l6 6 6-6'/></svg>\")",
+  } as const;
+
+  const rootClass =
+    variant === "modal"
+      ? "flex h-full min-h-0 flex-col bg-white"
+      : "mx-auto max-w-5xl space-y-6 p-6";
 
   return (
-    <div
-      className={
-        variant === "modal"
-          ? "flex max-h-[94vh] flex-col p-4 sm:p-6"
-          : "mx-auto max-w-5xl space-y-6 p-6"
-      }
-    >
+    <div className={rootClass}>
       {variant === "page" ? (
         <div className="flex flex-wrap items-center gap-3">
-          <Link href="/dashboard/proyectos" className="text-sm text-sky-400 hover:text-sky-300 hover:underline">
+          <Link
+            href="/dashboard/proyectos"
+            className="text-sm font-medium text-[#4FAEB2] hover:text-[#3F8E91] hover:underline"
+          >
             ← Kanban
           </Link>
         </div>
       ) : null}
 
-      <div className="flex flex-wrap items-start justify-between gap-4 border-b border-slate-700/80 pb-4">
+      <div
+        className={
+          variant === "modal"
+            ? "flex flex-wrap items-start justify-between gap-4 border-b border-slate-100 bg-gradient-to-br from-white via-white to-[#4FAEB2]/5 px-6 pb-5 pt-6"
+            : "flex flex-wrap items-start justify-between gap-4 border-b border-slate-200 pb-4"
+        }
+      >
         <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2">
+            <span
+              aria-hidden="true"
+              className="inline-block h-2 w-2 shrink-0 rounded-full bg-[#4FAEB2] shadow-[0_0_0_3px_rgba(79,174,178,0.18)]"
+            />
+            <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[#4FAEB2]">
+              Proyecto
+            </p>
+          </div>
           <h1
             id={variant === "modal" ? "proyecto-detalle-titulo" : undefined}
-            className="truncate text-xl font-semibold text-slate-100"
+            className="mt-1 truncate text-2xl font-semibold tracking-tight text-slate-900"
           >
             {String(proyecto.titulo ?? "")}
           </h1>
-          <p className="text-sm text-slate-400">
-            {(proyecto as { proyecto_tipo?: { nombre?: string } }).proyecto_tipo?.nombre ?? "—"} · Avance{" "}
-            {data.avance_pct ?? "—"}%
+          <p className="mt-1 text-sm text-slate-500">
+            {(proyecto as { proyecto_tipo?: { nombre?: string } }).proyecto_tipo?.nombre ?? "—"} ·{" "}
+            <span className="text-slate-600">Avance {data.avance_pct ?? "—"}%</span>
           </p>
         </div>
-        <div className="flex flex-wrap gap-2">
-          <select
-            className="rounded-lg border border-slate-600 bg-slate-900 px-3 py-2 text-sm text-slate-100"
-            value={String(proyecto.estado_id ?? "")}
-            onChange={(e) => void cambiarEstado(e.target.value)}
-          >
-            {estados.map((e) => (
-              <option key={e.id} value={e.id}>
-                {e.nombre}
-              </option>
-            ))}
-          </select>
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="relative">
+            <select
+              className={selectCls}
+              style={chevronStyle}
+              value={String(proyecto.estado_id ?? "")}
+              onChange={(e) => void cambiarEstado(e.target.value)}
+              aria-label="Cambiar estado"
+            >
+              {estados.map((e) => (
+                <option key={e.id} value={e.id}>
+                  {e.nombre}
+                </option>
+              ))}
+            </select>
+          </div>
           {variant === "modal" ? (
             <button
               type="button"
-              className="rounded-lg border border-slate-600 px-3 py-2 text-sm text-slate-200 hover:bg-slate-800"
+              className="rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm font-medium text-slate-700 shadow-sm transition-colors hover:border-[#4FAEB2]/60 hover:text-[#4FAEB2]"
               onClick={() => onClose?.()}
             >
               Cerrar
@@ -382,7 +410,7 @@ export default function ProyectoDetalleInner({
           ) : (
             <button
               type="button"
-              className="rounded-lg border border-slate-600 px-3 py-2 text-sm text-slate-200 hover:bg-slate-800"
+              className="rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm font-medium text-slate-700 shadow-sm transition-colors hover:border-[#4FAEB2]/60 hover:text-[#4FAEB2]"
               onClick={() => router.push("/dashboard/proyectos")}
             >
               Cerrar
@@ -391,50 +419,78 @@ export default function ProyectoDetalleInner({
         </div>
       </div>
 
-      {err ? <div className="rounded-lg border border-amber-700/50 bg-amber-950/40 px-3 py-2 text-sm text-amber-100">{err}</div> : null}
+      {err ? (
+        <div
+          className={
+            variant === "modal"
+              ? "mx-6 mt-4 rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-2 text-sm text-amber-900"
+              : "rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-2 text-sm text-amber-900"
+          }
+        >
+          {err}
+        </div>
+      ) : null}
 
-      <div className="flex flex-wrap gap-2 border-b border-slate-700/80 pb-2">
-        {TAB_IDS.map((t) => (
-          <button
-            key={t}
-            type="button"
-            onClick={() => setTab(t)}
-            className={`rounded-full px-3 py-1.5 text-sm font-medium transition-colors ${
-              tab === t
-                ? "border border-sky-600/40 bg-sky-600/20 text-sky-100"
-                : "text-slate-400 hover:bg-slate-800 hover:text-slate-200"
-            }`}
-          >
-            {TAB_LABELS[t]}
-          </button>
-        ))}
+      <div
+        className={
+          variant === "modal"
+            ? "flex flex-wrap gap-1.5 border-b border-slate-100 bg-white px-6 pb-3 pt-4"
+            : "flex flex-wrap gap-1.5 border-b border-slate-200 pb-2"
+        }
+      >
+        {TAB_IDS.map((t) => {
+          const active = tab === t;
+          return (
+            <button
+              key={t}
+              type="button"
+              onClick={() => setTab(t)}
+              className={`relative rounded-full px-4 py-1.5 text-sm font-medium transition-colors ${
+                active
+                  ? "border border-[#4FAEB2]/30 bg-[#4FAEB2]/10 text-[#3F8E91] shadow-sm"
+                  : "border border-transparent text-slate-500 hover:bg-slate-100 hover:text-slate-700"
+              }`}
+            >
+              {TAB_LABELS[t]}
+            </button>
+          );
+        })}
       </div>
 
-      <div className={variant === "modal" ? "min-h-0 flex-1 overflow-y-auto pr-1" : ""}>
+      <div
+        className={
+          variant === "modal"
+            ? "min-h-0 flex-1 overflow-y-auto bg-slate-50/50 px-6 py-5"
+            : ""
+        }
+      >
         {tab === "resumen" ? (
           <div className="grid gap-4 md:grid-cols-2">
             <div className={panelCls}>
-              <h2 className="text-sm font-semibold text-slate-200">Resumen del proyecto</h2>
+              <div className="flex items-center gap-2">
+                <span className="h-5 w-1 rounded-full bg-[#4FAEB2]" />
+                <h2 className="text-sm font-semibold text-slate-900">Resumen del proyecto</h2>
+              </div>
               <dl className="mt-4 space-y-3 text-sm">
-                <div className="flex justify-between gap-3 border-b border-slate-700/50 pb-2">
+                <div className="flex items-baseline justify-between gap-3 border-b border-slate-100 pb-2.5">
                   <dt className={labelCls}>Cliente</dt>
-                  <dd className="text-right text-slate-100">{clienteNombre(proyecto)}</dd>
+                  <dd className="text-right font-medium text-slate-900">{clienteNombre(proyecto)}</dd>
                 </div>
-                <div className="flex justify-between gap-3 border-b border-slate-700/50 pb-2">
+                <div className="flex items-baseline justify-between gap-3 border-b border-slate-100 pb-2.5">
                   <dt className={labelCls}>Vendedor / comercial</dt>
-                  <dd className="text-right text-slate-100">
+                  <dd className="text-right font-medium text-slate-900">
                     {(proyecto as { responsable_comercial?: { nombre?: string } }).responsable_comercial?.nombre ?? "—"}
                   </dd>
                 </div>
-                <div className="flex justify-between gap-3 border-b border-slate-700/50 pb-2">
+                <div className="flex items-baseline justify-between gap-3 border-b border-slate-100 pb-2.5">
                   <dt className={labelCls}>Técnico responsable</dt>
-                  <dd className="text-right text-slate-100">
+                  <dd className="text-right font-medium text-slate-900">
                     {(proyecto as { responsable_tecnico?: { nombre?: string } }).responsable_tecnico?.nombre ?? "—"}
                   </dd>
                 </div>
-                <div className="flex justify-between gap-3 border-b border-slate-700/50 pb-2">
+                <div className="flex items-baseline justify-between gap-3 border-b border-slate-100 pb-2.5">
                   <dt className={labelCls}>Fecha prometida</dt>
-                  <dd className="text-right text-slate-100">
+                  <dd className="text-right font-medium text-slate-900">
                     {proyecto.fecha_prometida != null && String(proyecto.fecha_prometida).trim() !== ""
                       ? formatFechaPyFull(String(proyecto.fecha_prometida))
                       : "—"}
@@ -442,69 +498,72 @@ export default function ProyectoDetalleInner({
                 </div>
                 {esSaas ? (
                   <>
-                    <div className="flex justify-between gap-3 border-b border-slate-700/50 pb-2">
+                    <div className="flex items-baseline justify-between gap-3 border-b border-slate-100 pb-2.5">
                       <dt className={labelCls}>Empresa SaaS / ERP</dt>
-                      <dd className="max-w-[55%] text-right text-slate-100">
+                      <dd className="max-w-[55%] text-right font-medium text-slate-900">
                         {saasForm.empresa_nombre.trim() || "—"}
                       </dd>
                     </div>
-                    <div className="flex justify-between gap-3 border-b border-slate-700/50 pb-2">
+                    <div className="flex items-baseline justify-between gap-3 border-b border-slate-100 pb-2.5">
                       <dt className={labelCls}>Módulos necesarios</dt>
-                      <dd className="max-w-[55%] text-right text-slate-100">
+                      <dd className="max-w-[55%] text-right font-medium text-slate-900">
                         {saasForm.modulos_necesarios.length > 0
                           ? saasForm.modulos_necesarios.map((m) => m.nombre).join(", ")
                           : "—"}
                       </dd>
                     </div>
-                    <div className="flex justify-between gap-3 border-b border-slate-700/50 pb-2">
+                    <div className="flex items-baseline justify-between gap-3 border-b border-slate-100 pb-2.5">
                       <dt className={labelCls}>WhatsApp contacto</dt>
-                      <dd className="max-w-[55%] text-right text-slate-100">
+                      <dd className="max-w-[55%] text-right font-medium text-slate-900">
                         {saasForm.whatsapp_contacto.trim() || "—"}
                       </dd>
                     </div>
                   </>
                 ) : (
                   <>
-                    <div className="flex justify-between gap-3 border-b border-slate-700/50 pb-2">
+                    <div className="flex items-baseline justify-between gap-3 border-b border-slate-100 pb-2.5">
                       <dt className={labelCls}>Nombre de la marca</dt>
-                      <dd className="max-w-[55%] text-right text-slate-100">
+                      <dd className="max-w-[55%] text-right font-medium text-slate-900">
                         {(briefCoerced.marca || "").trim() || "—"}
                       </dd>
                     </div>
-                    <div className="flex justify-between gap-3 border-b border-slate-700/50 pb-2">
+                    <div className="flex items-baseline justify-between gap-3 border-b border-slate-100 pb-2.5">
                       <dt className={labelCls}>Dominio a usar</dt>
-                      <dd className="max-w-[55%] break-all text-right text-slate-100">
+                      <dd className="max-w-[55%] break-all text-right font-medium text-slate-900">
                         {(briefCoerced.dominio_usar || "").trim() || "—"}
                       </dd>
                     </div>
-                    <div className="flex justify-between gap-3 border-b border-slate-700/50 pb-2">
+                    <div className="flex items-baseline justify-between gap-3 border-b border-slate-100 pb-2.5">
                       <dt className={labelCls}>Tipo de web</dt>
-                      <dd className="max-w-[55%] text-right text-slate-100">
+                      <dd className="max-w-[55%] text-right font-medium text-slate-900">
                         {(briefCoerced.tipo_web || "").trim() || "—"}
                       </dd>
                     </div>
                   </>
                 )}
-                <div className="flex justify-between gap-3">
+                <div className="flex items-baseline justify-between gap-3">
                   <dt className={labelCls}>Prioridad</dt>
-                  <dd className="text-right text-slate-100">{prioridadLabel(proyecto.prioridad)}</dd>
+                  <dd className="text-right font-medium text-slate-900">{prioridadLabel(proyecto.prioridad)}</dd>
                 </div>
               </dl>
             </div>
             <div className={panelCls}>
-              <h2 className="text-sm font-semibold text-slate-200">SLA acumulado</h2>
+              <div className="flex items-center gap-2">
+                <span className="h-5 w-1 rounded-full bg-[#4FAEB2]" />
+                <h2 className="text-sm font-semibold text-slate-900">SLA acumulado</h2>
+              </div>
               <dl className="mt-4 space-y-3 text-sm">
-                <div className="flex justify-between gap-2">
+                <div className="flex items-baseline justify-between gap-2 rounded-xl bg-slate-50 px-3 py-2.5">
                   <dt className={labelCls}>Tiempo interno</dt>
-                  <dd className="text-slate-100">{slaFmt?.interno}</dd>
+                  <dd className="font-semibold tabular-nums text-slate-900">{slaFmt?.interno}</dd>
                 </div>
-                <div className="flex justify-between gap-2">
+                <div className="flex items-baseline justify-between gap-2 rounded-xl bg-slate-50 px-3 py-2.5">
                   <dt className={labelCls}>Espera cliente</dt>
-                  <dd className="text-slate-100">{slaFmt?.cliente}</dd>
+                  <dd className="font-semibold tabular-nums text-slate-900">{slaFmt?.cliente}</dd>
                 </div>
-                <div className="flex justify-between gap-2">
+                <div className="flex items-baseline justify-between gap-2 rounded-xl bg-slate-50 px-3 py-2.5">
                   <dt className={labelCls}>Pausado</dt>
-                  <dd className="text-slate-100">{slaFmt?.pausado}</dd>
+                  <dd className="font-semibold tabular-nums text-slate-900">{slaFmt?.pausado}</dd>
                 </div>
               </dl>
             </div>
@@ -512,17 +571,20 @@ export default function ProyectoDetalleInner({
         ) : null}
 
         {tab === "datos" ? (
-          <div className={`space-y-4 ${panelCls}`}>
-            <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className={`space-y-5 ${panelCls}`}>
+            <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
-                <h2 className="text-sm font-semibold text-slate-200">Datos del proyecto</h2>
-                <p className="mt-1 text-xs text-slate-500">
+                <div className="flex items-center gap-2">
+                  <span className="h-5 w-1 rounded-full bg-[#4FAEB2]" />
+                  <h2 className="text-sm font-semibold text-slate-900">Datos del proyecto</h2>
+                </div>
+                <p className="mt-1.5 text-xs text-slate-500">
                   Editá los campos guardados en el proyecto. Los datos previos se conservan al guardar.
                 </p>
               </div>
               <button
                 type="button"
-                className="rounded-lg bg-sky-600 px-4 py-2 text-xs font-medium text-white hover:bg-sky-500 disabled:opacity-50"
+                className="rounded-xl bg-[#4FAEB2] px-4 py-2 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-[#3F8E91] disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400 disabled:shadow-none"
                 disabled={!datosDirty}
                 onClick={() => void guardarDatos()}
               >
@@ -531,12 +593,12 @@ export default function ProyectoDetalleInner({
             </div>
 
             {esWeb ? (
-              <p className="text-xs text-slate-500">
+              <p className="rounded-lg bg-[#4FAEB2]/8 px-3 py-2 text-xs text-[#3F8E91]">
                 Tipo &quot;Proyecto Web&quot;: campos adicionales del brief comercial.
               </p>
             ) : null}
             {esSaas ? (
-              <p className="text-xs text-slate-500">
+              <p className="rounded-lg bg-[#4FAEB2]/8 px-3 py-2 text-xs text-[#3F8E91]">
                 Tipo &quot;SaaS / ERP&quot;: snapshot de módulos requeridos, sin activar permisos ni módulos reales.
               </p>
             ) : null}
@@ -545,7 +607,8 @@ export default function ProyectoDetalleInner({
               <label className="block text-sm">
                 <span className={labelCls}>Técnico responsable</span>
                 <select
-                  className={inputCls}
+                  className={selectCls}
+                  style={chevronStyle}
                   value={responsableTecnicoId}
                   onChange={(e) => setResponsableTecnicoId(e.target.value)}
                 >
@@ -575,10 +638,13 @@ export default function ProyectoDetalleInner({
               <div className="grid gap-3 sm:grid-cols-2">
                 {PROYECTO_DATOS_BRIEF_FIELDS.map((f) =>
                   f.kind === "checkbox" ? (
-                    <label key={f.key} className="flex items-center gap-2 text-sm text-slate-200">
+                    <label
+                      key={f.key}
+                      className="flex cursor-pointer items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-700 transition-colors hover:border-[#4FAEB2]/60"
+                    >
                       <input
                         type="checkbox"
-                        className="rounded border-slate-600 bg-slate-900"
+                        className="h-4 w-4 rounded border-slate-300 text-[#4FAEB2] accent-[#4FAEB2] focus:ring-[#4FAEB2]/30"
                         checked={briefForm[f.key] === "1"}
                         onChange={(e) =>
                           setBriefForm((b) => ({ ...b, [f.key]: e.target.checked ? "1" : "" }))
@@ -622,12 +688,11 @@ export default function ProyectoDetalleInner({
                 </label>
                 <div className="block text-sm sm:col-span-2">
                   <span className={labelCls}>Módulos necesarios</span>
-                  <div className="mt-1">
+                  <div className="mt-1.5">
                     <ProyectoModuloSelector
                       modulos={modulosCatalogo}
                       selectedIds={saasModuloIds}
                       onChange={updateSaasModulos}
-                      variant="dark"
                     />
                   </div>
                 </div>
@@ -645,7 +710,7 @@ export default function ProyectoDetalleInner({
 
             {Object.keys(briefCoerced).length === 0 &&
             !observaciones.trim() ? (
-              <p className="rounded-lg border border-dashed border-slate-600 bg-slate-900/50 px-4 py-6 text-center text-sm text-slate-500">
+              <p className="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-6 text-center text-sm text-slate-500">
                 Todavía no hay datos cargados. Completá el formulario y guardá.
               </p>
             ) : null}
@@ -654,6 +719,10 @@ export default function ProyectoDetalleInner({
 
         {tab === "tareas" ? (
           <div className={`space-y-4 ${panelCls}`}>
+            <div className="flex items-center gap-2">
+              <span className="h-5 w-1 rounded-full bg-[#4FAEB2]" />
+              <h2 className="text-sm font-semibold text-slate-900">Tareas</h2>
+            </div>
             <form onSubmit={agregarTarea} className="flex flex-wrap gap-2">
               <input
                 className={`min-w-[200px] flex-1 ${inputCls}`}
@@ -663,20 +732,21 @@ export default function ProyectoDetalleInner({
               />
               <button
                 type="submit"
-                className="rounded-lg bg-slate-100 px-4 py-2 text-sm font-medium text-slate-900 hover:bg-white"
+                className="rounded-xl bg-[#4FAEB2] px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-[#3F8E91]"
               >
                 Agregar
               </button>
             </form>
-            <ul className="divide-y divide-slate-700/80">
+            <ul className="divide-y divide-slate-100">
               {(data.tareas ?? []).map((t) => {
                 const tid = String(t.id ?? "");
                 const estado = String(t.estado ?? "");
                 return (
                   <li key={tid} className="flex flex-wrap items-center gap-2 py-3 text-sm">
-                    <span className="flex-1 font-medium text-slate-100">{String(t.titulo ?? "")}</span>
+                    <span className="flex-1 font-medium text-slate-800">{String(t.titulo ?? "")}</span>
                     <select
-                      className="rounded-lg border border-slate-600 bg-slate-900 px-2 py-1 text-xs text-slate-100"
+                      className="appearance-none rounded-lg border border-slate-200 bg-white bg-[length:12px_12px] bg-[right_0.6rem_center] bg-no-repeat px-3 py-1.5 pr-7 text-xs font-medium text-slate-700 shadow-sm transition-colors hover:border-[#4FAEB2]/60 focus:border-[#4FAEB2] focus:outline-none focus:ring-2 focus:ring-[#4FAEB2]/20"
+                      style={chevronStyle}
                       value={estado}
                       onChange={(e) => void patchTarea(tid, { estado: e.target.value })}
                     >
@@ -688,15 +758,22 @@ export default function ProyectoDetalleInner({
                   </li>
                 );
               })}
+              {(data.tareas ?? []).length === 0 ? (
+                <li className="py-6 text-center text-xs text-slate-400">Sin tareas registradas.</li>
+              ) : null}
             </ul>
           </div>
         ) : null}
 
         {tab === "comentarios" ? (
           <div className={`space-y-4 ${panelCls}`}>
+            <div className="flex items-center gap-2">
+              <span className="h-5 w-1 rounded-full bg-[#4FAEB2]" />
+              <h2 className="text-sm font-semibold text-slate-900">Comentarios internos</h2>
+            </div>
             <form onSubmit={agregarComentario} className="space-y-2">
               <textarea
-                className={`${inputCls} min-h-[80px]`}
+                className={`${inputCls} min-h-[88px]`}
                 rows={3}
                 placeholder="Comentario interno"
                 value={comTexto}
@@ -704,38 +781,57 @@ export default function ProyectoDetalleInner({
               />
               <button
                 type="submit"
-                className="rounded-lg bg-sky-600 px-4 py-2 text-sm font-medium text-white hover:bg-sky-500"
+                className="rounded-xl bg-[#4FAEB2] px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-[#3F8E91]"
               >
                 Publicar
               </button>
             </form>
             <ul className="space-y-3">
               {(data.comentarios ?? []).map((c) => (
-                <li key={String(c.id)} className="rounded-lg border border-slate-700/60 bg-slate-900/40 px-3 py-2 text-sm">
-                  <div className="text-xs text-slate-500">
-                    {String((c as { usuario_nombre?: string }).usuario_nombre ?? "")} ·{" "}
-                    {formatFechaPyFull(String(c.created_at ?? ""))}
+                <li
+                  key={String(c.id)}
+                  className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm shadow-sm"
+                >
+                  <div className="flex flex-wrap items-center gap-x-2 text-xs text-slate-500">
+                    <span className="font-medium text-[#4FAEB2]">
+                      {String((c as { usuario_nombre?: string }).usuario_nombre ?? "")}
+                    </span>
+                    <span className="text-slate-300">·</span>
+                    <span>{formatFechaPyFull(String(c.created_at ?? ""))}</span>
                   </div>
-                  <div className="mt-1 text-slate-200">{String(c.comentario ?? "")}</div>
+                  <div className="mt-1.5 text-slate-700">{String(c.comentario ?? "")}</div>
                 </li>
               ))}
+              {(data.comentarios ?? []).length === 0 ? (
+                <li className="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-6 text-center text-sm text-slate-500">
+                  Aún no hay comentarios.
+                </li>
+              ) : null}
             </ul>
           </div>
         ) : null}
 
         {tab === "archivos" ? (
-          <div className="rounded-xl border border-dashed border-slate-600 bg-slate-900/30 p-6 text-sm text-slate-400">
-            <p className="font-medium text-slate-200">Archivos del proyecto</p>
-            <p className="mt-2 text-xs">
+          <div className={`${panelCls}`}>
+            <div className="flex items-center gap-2">
+              <span className="h-5 w-1 rounded-full bg-[#4FAEB2]" />
+              <h2 className="text-sm font-semibold text-slate-900">Archivos del proyecto</h2>
+            </div>
+            <p className="mt-2 text-xs text-slate-500">
               Registro en base de datos listo; subida a almacenamiento en una siguiente iteración.
             </p>
             <ul className="mt-4 space-y-2">
               {(data.archivos ?? []).length === 0 ? (
-                <li className="text-slate-500">Sin archivos registrados.</li>
+                <li className="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-6 text-center text-sm text-slate-500">
+                  Sin archivos registrados.
+                </li>
               ) : (
                 (data.archivos ?? []).map((a) => (
-                  <li key={String(a.id)} className="text-slate-300">
-                    {String(a.nombre ?? "")}{" "}
+                  <li
+                    key={String(a.id)}
+                    className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-700 shadow-sm"
+                  >
+                    <span className="font-medium text-slate-800">{String(a.nombre ?? "")}</span>
                     <span className="text-xs text-slate-500">{formatFechaPyFull(String(a.created_at ?? ""))}</span>
                   </li>
                 ))
@@ -745,21 +841,21 @@ export default function ProyectoDetalleInner({
         ) : null}
 
         {tab === "historial" ? (
-          <div className="overflow-hidden rounded-xl border border-slate-700/80 bg-slate-800/30 shadow-sm">
+          <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
             <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-slate-700 text-sm">
-                <thead className="bg-slate-900/50 text-left text-xs font-semibold uppercase tracking-wide text-slate-400">
+              <table className="min-w-full divide-y divide-slate-100 text-sm">
+                <thead className="bg-slate-50 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">
                   <tr>
-                    <th className="px-3 py-2">Estado anterior</th>
-                    <th className="px-3 py-2">Estado nuevo</th>
-                    <th className="px-3 py-2">Tipo SLA</th>
-                    <th className="px-3 py-2">Entrada</th>
-                    <th className="px-3 py-2">Salida</th>
-                    <th className="px-3 py-2">Duración</th>
-                    <th className="px-3 py-2">Usuario</th>
+                    <th className="px-3 py-2.5">Estado anterior</th>
+                    <th className="px-3 py-2.5">Estado nuevo</th>
+                    <th className="px-3 py-2.5">Tipo SLA</th>
+                    <th className="px-3 py-2.5">Entrada</th>
+                    <th className="px-3 py-2.5">Salida</th>
+                    <th className="px-3 py-2.5">Duración</th>
+                    <th className="px-3 py-2.5">Usuario</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-700/80">
+                <tbody className="divide-y divide-slate-100">
                   {(data.historial ?? []).map((h) => {
                     const hr = h as Record<string, unknown>;
                     const ant =
@@ -776,23 +872,30 @@ export default function ProyectoDetalleInner({
                       (hr.duration_label as string | undefined) ??
                       (hr.duration_seconds != null ? String(hr.duration_seconds) + " s" : "—");
                     return (
-                      <tr key={String(h.id)} className="text-slate-200">
+                      <tr key={String(h.id)} className="text-slate-700 hover:bg-slate-50/60">
                         <td className="px-3 py-2 text-xs">{ant}</td>
-                        <td className="px-3 py-2 text-xs font-medium">{nue}</td>
-                        <td className="px-3 py-2 text-xs text-slate-300">{slaL}</td>
-                        <td className="whitespace-nowrap px-3 py-2 text-xs tabular-nums text-slate-300">
+                        <td className="px-3 py-2 text-xs font-semibold text-slate-900">{nue}</td>
+                        <td className="px-3 py-2 text-xs text-slate-600">{slaL}</td>
+                        <td className="whitespace-nowrap px-3 py-2 text-xs tabular-nums text-slate-600">
                           {formatFechaPyFull(String(h.entered_at ?? ""))}
                         </td>
-                        <td className="whitespace-nowrap px-3 py-2 text-xs tabular-nums text-slate-300">
+                        <td className="whitespace-nowrap px-3 py-2 text-xs tabular-nums text-slate-600">
                           {h.exited_at ? formatFechaPyFull(String(h.exited_at)) : "—"}
                         </td>
-                        <td className="px-3 py-2 text-xs text-slate-300">{dur}</td>
-                        <td className="max-w-[140px] truncate px-3 py-2 text-xs text-slate-400" title={usr}>
+                        <td className="px-3 py-2 text-xs text-slate-600">{dur}</td>
+                        <td className="max-w-[140px] truncate px-3 py-2 text-xs text-slate-500" title={usr}>
                           {usr}
                         </td>
                       </tr>
                     );
                   })}
+                  {(data.historial ?? []).length === 0 ? (
+                    <tr>
+                      <td colSpan={7} className="px-3 py-6 text-center text-xs text-slate-400">
+                        Sin historial registrado.
+                      </td>
+                    </tr>
+                  ) : null}
                 </tbody>
               </table>
             </div>
