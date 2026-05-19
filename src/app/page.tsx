@@ -660,7 +660,7 @@ function DashComercial({
       .filter((e) => e.activo)
       .sort((a, b) => a.orden - b.orden);
     const fromCatalog: PipelineBarRowZ[] = actives.map((e) => {
-      const { dot, headerBg } = getEtapaClasses(e.color);
+      const { dot } = getEtapaClasses(e.color);
       const list = inFil(e.codigo);
       return {
         rowKey: e.id,
@@ -668,7 +668,8 @@ function DashComercial({
         count: list.length,
         valor: list.reduce((s, p) => s + (p.valor_estimado ?? 0), 0),
         dotClass: dot,
-        barClass: headerBg,
+        // Usa el mismo color saturado del dot para la barra (más contraste sobre el track).
+        barClass: dot,
       };
     });
     const catalogNorm = new Set(actives.map((e) => normalizeEtapaCodigo(e.codigo)));
