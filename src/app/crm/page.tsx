@@ -802,8 +802,22 @@ export default function CrmPage() {
     recargar();
   }
 
+  /**
+   * Cartas del Kanban ordenadas por fecha_creacion ASC (más antiguos primero,
+   * más nuevos al final). Decisión de UX local — la API sigue devolviendo
+   * DESC para el resto de consumidores.
+   */
   const porEtapa = (codigo: string) =>
-    prospectos.filter((p) => normalizeEtapaCodigo(p.etapa) === normalizeEtapaCodigo(codigo));
+    prospectos
+      .filter((p) => normalizeEtapaCodigo(p.etapa) === normalizeEtapaCodigo(codigo))
+      .slice()
+      .sort((a, b) => {
+        const ta = new Date(a.fecha_creacion).getTime();
+        const tb = new Date(b.fecha_creacion).getTime();
+        const sa = Number.isFinite(ta) ? ta : 0;
+        const sb = Number.isFinite(tb) ? tb : 0;
+        return sa - sb;
+      });
 
   // Mantenemos getEtapaClasses como import para no romper otros usos.
   void getEtapaClasses;
