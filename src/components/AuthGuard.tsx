@@ -10,6 +10,7 @@ import {
   isModuleSlugGranted,
   pathRequiresModuleSlug,
 } from "@/lib/modulos/route-slug-map";
+import ZentraLoader from "@/components/ZentraLoader";
 
 const PUBLIC_ROUTES = ["/login"];
 
@@ -101,11 +102,7 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
   }, [pathname, access, loading, isPublic, router]);
 
   if (loading && !isPublic) {
-    return (
-      <div className="flex items-center justify-center min-h-screen text-sm text-gray-400">
-        Cargando…
-      </div>
-    );
+    return <ZentraLoader />;
   }
 
   return <>{children}</>;
