@@ -73,6 +73,125 @@ function ZentraMark({ className = "" }: { className?: string }) {
   );
 }
 
+// ── Iconografía SVG común del dashboard ───────────────────────────────────────
+type IconProps = { className?: string };
+const Icon = {
+  Comercial: ({ className = "h-4 w-4" }: IconProps) => (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true">
+      <path d="M3 3v18h18" />
+      <rect x="7" y="13" width="3" height="5" rx="0.5" />
+      <rect x="12" y="9" width="3" height="9" rx="0.5" />
+      <rect x="17" y="6" width="3" height="12" rx="0.5" />
+    </svg>
+  ),
+  Financiero: ({ className = "h-4 w-4" }: IconProps) => (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true">
+      <line x1="12" y1="1" x2="12" y2="23" />
+      <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
+    </svg>
+  ),
+  Inventario: ({ className = "h-4 w-4" }: IconProps) => (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true">
+      <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
+      <polyline points="3.27 6.96 12 12.01 20.73 6.96" />
+      <line x1="12" y1="22.08" x2="12" y2="12" />
+    </svg>
+  ),
+  Ventas: ({ className = "h-4 w-4" }: IconProps) => (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true">
+      <circle cx="9" cy="21" r="1" />
+      <circle cx="20" cy="21" r="1" />
+      <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6" />
+    </svg>
+  ),
+  Target: ({ className = "h-4 w-4" }: IconProps) => (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true">
+      <circle cx="12" cy="12" r="10" />
+      <circle cx="12" cy="12" r="6" />
+      <circle cx="12" cy="12" r="2" />
+    </svg>
+  ),
+  Chat: ({ className = "h-4 w-4" }: IconProps) => (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true">
+      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+    </svg>
+  ),
+  CheckCircle: ({ className = "h-4 w-4" }: IconProps) => (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true">
+      <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+      <polyline points="22 4 12 14.01 9 11.01" />
+    </svg>
+  ),
+  TrendUp: ({ className = "h-4 w-4" }: IconProps) => (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true">
+      <polyline points="23 6 13.5 15.5 8.5 10.5 1 18" />
+      <polyline points="17 6 23 6 23 12" />
+    </svg>
+  ),
+  TrendDown: ({ className = "h-4 w-4" }: IconProps) => (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true">
+      <polyline points="23 18 13.5 8.5 8.5 13.5 1 6" />
+      <polyline points="17 18 23 18 23 12" />
+    </svg>
+  ),
+  Box: ({ className = "h-4 w-4" }: IconProps) => (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true">
+      <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
+    </svg>
+  ),
+  Hash: ({ className = "h-4 w-4" }: IconProps) => (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true">
+      <line x1="4" y1="9" x2="20" y2="9" />
+      <line x1="4" y1="15" x2="20" y2="15" />
+      <line x1="10" y1="3" x2="8" y2="21" />
+      <line x1="16" y1="3" x2="14" y2="21" />
+    </svg>
+  ),
+  Alert: ({ className = "h-4 w-4" }: IconProps) => (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true">
+      <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+      <line x1="12" y1="9" x2="12" y2="13" />
+      <line x1="12" y1="17" x2="12.01" y2="17" />
+    </svg>
+  ),
+  Diamond: ({ className = "h-4 w-4" }: IconProps) => (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true">
+      <path d="M6 3h12l4 6-10 12L2 9z" />
+      <path d="M11 3 8 9l4 12 4-12-3-6" />
+      <path d="M2 9h20" />
+    </svg>
+  ),
+  Calendar: ({ className = "h-4 w-4" }: IconProps) => (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true">
+      <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+      <line x1="16" y1="2" x2="16" y2="6" />
+      <line x1="8" y1="2" x2="8" y2="6" />
+      <line x1="3" y1="10" x2="21" y2="10" />
+    </svg>
+  ),
+  Ticket: ({ className = "h-4 w-4" }: IconProps) => (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true">
+      <path d="M3 7v2a2 2 0 0 1 0 4v2a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-2a2 2 0 0 1 0-4V7a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2z" />
+      <line x1="13" y1="5" x2="13" y2="7" />
+      <line x1="13" y1="11" x2="13" y2="13" />
+      <line x1="13" y1="17" x2="13" y2="19" />
+    </svg>
+  ),
+  Wallet: ({ className = "h-4 w-4" }: IconProps) => (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true">
+      <path d="M20 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-9a2 2 0 0 0-2-2z" />
+      <path d="M16 14h.01" />
+      <path d="M20 7V5a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v2" />
+    </svg>
+  ),
+  PieIcon: ({ className = "h-4 w-4" }: IconProps) => (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true">
+      <path d="M21.21 15.89A10 10 0 1 1 8 2.83" />
+      <path d="M22 12A10 10 0 0 0 12 2v10z" />
+    </svg>
+  ),
+};
+
 function labelClienteDimension(raw: string): string {
   const s = raw.trim();
   if (!s) return "Sin clasificar";
@@ -485,74 +604,82 @@ function KpiCard({
   label,
   value,
   sub,
-  color = "text-[#0F172A]",
+  color = "text-slate-900",
   icon,
   variation,
   variant = "light",
+  accent = "neutral",
 }: {
   label: string;
   value: string;
   sub?: string;
   color?: string;
-  icon: string;
+  icon?: React.ReactNode;
   variation?: number;
   variant?: "light" | "zentra";
+  /** `featured` aplica gradiente turquesa al chip y barra superior. */
+  accent?: "neutral" | "featured" | "warning" | "danger";
 }) {
-  if (variant === "zentra") {
-    return (
-      <motion.div
-        whileHover={{ y: -2 }}
-        className="rounded-2xl border border-[#4FAEB2]/45 bg-white p-6 shadow-[0_1px_2px_rgba(15,23,42,0.04)]"
-        style={{ backgroundColor: Z.card }}
-      >
-        <div className="flex items-start justify-between gap-2">
-          <div className="text-2xl opacity-90">{icon}</div>
-          {variation !== undefined && (
-            <span
-              className="inline-flex items-center gap-0.5 rounded-full px-2 py-0.5 text-xs font-semibold"
-              style={{
-                backgroundColor: variation >= 0 ? "rgba(34,197,94,0.2)" : "rgba(239,68,68,0.2)",
-                color: variation >= 0 ? Z.success : Z.error,
-              }}
-            >
-              {variation >= 0 ? "+" : ""}
-              {variation}%
-            </span>
-          )}
-        </div>
-        <p className={`mt-3 text-3xl font-bold tabular-nums ${color}`}>{value}</p>
-        <p className="mt-1 text-xs font-medium" style={{ color: Z.muted }}>
-          {label}
-        </p>
-        {sub && (
-          <p className="mt-1 text-xs" style={{ color: Z.muted }}>
-            {sub}
-          </p>
-        )}
-      </motion.div>
-    );
-  }
+  const chipCls =
+    accent === "featured"
+      ? "border-[#4FAEB2]/30 bg-[#4FAEB2]/12 text-[#4FAEB2]"
+      : accent === "warning"
+        ? "border-amber-200 bg-amber-50 text-amber-600"
+        : accent === "danger"
+          ? "border-rose-200 bg-rose-50 text-rose-600"
+          : "border-slate-200 bg-slate-50 text-slate-500";
+
+  const variationCls =
+    variation === undefined
+      ? ""
+      : variation >= 0
+        ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+        : "border-rose-200 bg-rose-50 text-rose-700";
+
+  const cardCls =
+    accent === "featured"
+      ? "relative overflow-hidden rounded-2xl border border-[#4FAEB2]/55 bg-gradient-to-br from-white via-white to-[#4FAEB2]/8 p-5 shadow-[0_4px_18px_rgba(79,174,178,0.08)] transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_8px_28px_rgba(79,174,178,0.14)] sm:p-6"
+      : "relative overflow-hidden rounded-2xl border border-[#4FAEB2]/45 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md sm:p-6";
+
   return (
-    <motion.div
-      whileHover={{ y: -2 }}
-      className="rounded-xl border border-[#4FAEB2]/45 bg-white p-6 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md"
-    >
-      <div className="flex items-start justify-between gap-2">
-        <div className="text-2xl">{icon}</div>
-        {variation !== undefined && (
-          <span
-            className={`inline-flex items-center gap-0.5 rounded-full px-2 py-0.5 text-xs font-semibold ${
-              variation >= 0 ? "bg-[var(--badge-success-bg)] text-[var(--badge-success-text)]" : "bg-[var(--badge-error-bg)] text-[var(--badge-error-text)]"
-            }`}
-          >
+    <motion.div whileHover={{ y: -2 }} className={cardCls}>
+      {accent === "featured" ? (
+        <span
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-x-0 top-0 h-[3px] bg-gradient-to-r from-[#4FAEB2] via-[#4FAEB2]/70 to-[#4FAEB2]/30"
+        />
+      ) : null}
+      <div className="flex items-start justify-between gap-3">
+        {icon ? (
+          <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border ${chipCls}`}>
+            {icon}
+          </span>
+        ) : null}
+        {variation !== undefined ? (
+          <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-semibold ${variationCls}`}>
+            {variation >= 0 ? (
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="h-3 w-3">
+                <polyline points="18 15 12 9 6 15" />
+              </svg>
+            ) : (
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="h-3 w-3">
+                <polyline points="6 9 12 15 18 9" />
+              </svg>
+            )}
             {variation >= 0 ? "+" : ""}
             {variation}%
           </span>
-        )}
+        ) : null}
       </div>
-      <p className={`mt-3 text-2xl xl:text-3xl font-bold tabular-nums leading-tight tracking-tight ${color}`}>{value}</p>
-      <p className="mt-1 text-xs font-medium text-[#475569]">{label}</p>
-      {sub && <p className="mt-1 text-xs text-[#475569]">{sub}</p>}
+      <p className="mt-3 text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-500">
+        {label}
+      </p>
+      <p className={`mt-1 text-3xl font-semibold tabular-nums leading-tight tracking-tight ${variant === "zentra" ? color : color}`}>
+        {value}
+      </p>
+      {sub ? (
+        <p className="mt-1 text-[11px] text-slate-500">{sub}</p>
+      ) : null}
     </motion.div>
   );
 }
@@ -769,32 +896,42 @@ function DashComercial({
 
   const panelClass = "rounded-2xl border border-[#4FAEB2]/45 bg-white p-6 shadow-[0_1px_2px_rgba(15,23,42,0.04)] sm:p-8";
   const panelStyle = { backgroundColor: Z.card } as const;
-  const titleClass = "text-xs font-bold uppercase tracking-wider";
-  const titleStyle = { color: Z.muted } as const;
+  const titleClass = "flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-600";
+  const titleStyle = undefined;
+  const panelDot = (
+    <span aria-hidden="true" className="inline-block h-1.5 w-1.5 rounded-full bg-[#4FAEB2]" />
+  );
+  const panelBar = (
+    <span aria-hidden="true" className="block h-5 w-1 rounded-full bg-[#4FAEB2]" />
+  );
 
   return (
     <div className="space-y-8">
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
         <KpiCard
-          variant="zentra"
-          icon="🎯"
+          icon={<Icon.Target className="h-4 w-4" />}
           label="Leads nuevos"
           value={String(leadsNuevos)}
-          color="text-[#4FAEB2]"
+          color="text-slate-900"
           variation={12}
         />
-        <KpiCard variant="zentra" icon="💬" label="En negociación" value={String(enNegociacion)} color="text-amber-600" />
         <KpiCard
-          variant="zentra"
-          icon="✅"
-          label="Clientes ganados (CRM)"
-          value={String(clientesGanados)}
-          color="text-[#4FAEB2]"
-          variation={8}
+          icon={<Icon.Chat className="h-4 w-4" />}
+          label="En negociación"
+          value={String(enNegociacion)}
+          color="text-amber-600"
+          accent="warning"
         />
         <KpiCard
-          variant="zentra"
-          icon="📈"
+          icon={<Icon.CheckCircle className="h-4 w-4" />}
+          label="Clientes ganados (CRM)"
+          value={String(clientesGanados)}
+          color="text-[#3F8E91]"
+          variation={8}
+          accent="featured"
+        />
+        <KpiCard
+          icon={<Icon.TrendUp className="h-4 w-4" />}
           label="Tasa de conversión"
           value={`${tasaConversion.toFixed(1)}%`}
           color={tasaConversion >= config.meta_conversion_leads ? "text-emerald-600" : "text-slate-900"}
@@ -804,17 +941,27 @@ function DashComercial({
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <motion.div whileHover={{ y: -2 }} className={panelClass} style={panelStyle}>
-          <h3 className={titleClass} style={titleStyle}>
-            Pipeline CRM
-          </h3>
+          <div className="flex items-center gap-2">
+            {panelBar}
+            <h3 className={titleClass} style={titleStyle}>
+              {panelDot}
+              Pipeline CRM
+            </h3>
+          </div>
+          <p className="mt-1 pl-3 text-[11px] text-slate-500">Distribución de prospectos por etapa</p>
           <div className="mt-5">
             <PipelineBar data={pipeline} tone="zentra" />
           </div>
         </motion.div>
         <motion.div whileHover={{ y: -2 }} className={panelClass} style={panelStyle}>
-          <h3 className={titleClass} style={titleStyle}>
-            Clientes ganados por vendedor
-          </h3>
+          <div className="flex items-center gap-2">
+            {panelBar}
+            <h3 className={titleClass} style={titleStyle}>
+              {panelDot}
+              Clientes ganados por vendedor
+            </h3>
+          </div>
+          <p className="mt-1 pl-3 text-[11px] text-slate-500">Ranking por cierres en el período</p>
           <div className="mt-5">
             <HBarChart data={rendimiento} color="bg-[#4FAEB2]" tone="zentra" />
           </div>
@@ -822,20 +969,28 @@ function DashComercial({
       </div>
 
       <motion.div whileHover={{ y: -2 }} className={panelClass} style={panelStyle}>
-        <h3 className={titleClass} style={titleStyle}>
-          Top planes vendidos · período seleccionado
-        </h3>
+        <div className="flex items-center gap-2">
+          {panelBar}
+          <h3 className={titleClass} style={titleStyle}>
+            {panelDot}
+            Top planes vendidos · período seleccionado
+          </h3>
+        </div>
         <div className="mt-5">
-          <HBarChart data={topPlanesVendidos} color="bg-emerald-500" tone="zentra" />
+          <HBarChart data={topPlanesVendidos} color="bg-[#4FAEB2]" tone="zentra" />
         </div>
       </motion.div>
 
       <motion.div whileHover={{ y: -2 }} className={panelClass} style={panelStyle}>
-        <h3 className={titleClass} style={titleStyle}>
-          Top planes en negociación
-        </h3>
+        <div className="flex items-center gap-2">
+          {panelBar}
+          <h3 className={titleClass} style={titleStyle}>
+            {panelDot}
+            Top planes en negociación
+          </h3>
+        </div>
         {topPlanesEnNegociacion.length === 0 ? (
-          <p className="mt-6 text-center text-sm" style={{ color: Z.muted }}>
+          <p className="mt-6 text-center text-sm text-slate-500">
             Sin prospectos en negociación
           </p>
         ) : (
@@ -1451,12 +1606,18 @@ function DashFinanciero({
       <div className={finCard}>
         <div className="flex flex-col gap-4 border-b border-slate-100 pb-5 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500">Cobrado por día</h3>
-            <p className="mt-1 text-[11px] text-slate-400">Pagos registrados por fecha de pago</p>
+            <div className="flex items-center gap-2">
+              <span aria-hidden="true" className="block h-5 w-1 rounded-full bg-[#4FAEB2]" />
+              <h3 className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-600">
+                <span aria-hidden="true" className="inline-block h-1.5 w-1.5 rounded-full bg-[#4FAEB2]" />
+                Cobrado por día
+              </h3>
+            </div>
+            <p className="mt-1 pl-3 text-[11px] text-slate-500">Pagos registrados por fecha de pago</p>
           </div>
           <div className="flex min-w-0 flex-col gap-0.5 sm:items-end sm:text-right">
-            <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Total cobrado</p>
-            <FinMontoGs monto={cobradoRegistradoPeriodo} dense className="text-[#4FAEB2]" />
+            <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-500">Total cobrado</p>
+            <FinMontoGs monto={cobradoRegistradoPeriodo} dense className="text-[#3F8E91]" />
           </div>
         </div>
         {cobradoPorDiaSerie.length === 0 ? (
@@ -1521,8 +1682,14 @@ function DashFinanciero({
       </div>
 
       <div className={finCard}>
-        <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500">Composición del período</h3>
-        <p className="mt-1 text-[11px] text-slate-400">Facturación emitida por tipo de factura</p>
+        <div className="flex items-center gap-2">
+          <span aria-hidden="true" className="block h-5 w-1 rounded-full bg-[#4FAEB2]" />
+          <h3 className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-600">
+            <span aria-hidden="true" className="inline-block h-1.5 w-1.5 rounded-full bg-[#4FAEB2]" />
+            Composición del período
+          </h3>
+        </div>
+        <p className="mt-1 pl-3 text-[11px] text-slate-500">Facturación emitida por tipo de factura</p>
         <div className="mt-5 flex h-4 w-full overflow-hidden rounded-full bg-slate-100 ring-1 ring-slate-200/70">
           {composicionModalidad.total > 0 ? (
             <>
@@ -1568,10 +1735,16 @@ function DashFinanciero({
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 lg:items-start">
         <div className={finCard}>
-          <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500">Deuda por tipo de cliente</h3>
-          <p className="mt-1 text-[11px] text-slate-400">
-            Σ <span className="font-medium text-slate-500">saldo</span> de facturas emitidas en el rango, por{" "}
-            <span className="font-medium text-slate-500">clientes.tipo_servicio_cliente</span> (nombre desde catálogo
+          <div className="flex items-center gap-2">
+            <span aria-hidden="true" className="block h-5 w-1 rounded-full bg-[#4FAEB2]" />
+            <h3 className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-600">
+              <span aria-hidden="true" className="inline-block h-1.5 w-1.5 rounded-full bg-[#4FAEB2]" />
+              Deuda por tipo de cliente
+            </h3>
+          </div>
+          <p className="mt-1 pl-3 text-[11px] text-slate-500">
+            Σ <span className="font-medium text-slate-600">saldo</span> de facturas emitidas en el rango, por{" "}
+            <span className="font-medium text-slate-600">clientes.tipo_servicio_cliente</span> (nombre desde catálogo
             CRM).
           </p>
           {deudaPorTipoServicio.list.length === 0 ? (
@@ -1614,12 +1787,18 @@ function DashFinanciero({
           )}
         </div>
         <div className={finCard}>
-          <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500">Cobrado por tipo de cliente</h3>
-          <p className="mt-1 text-[11px] text-slate-400">
-            Σ <span className="font-medium text-slate-500">monto de pagos</span> con fecha de pago en el rango (misma
-            lógica que <span className="font-medium text-slate-500">Cobrado por día</span> / factura no anulada),
-            asignado al <span className="font-medium text-slate-500">cliente</span> vía{" "}
-            <span className="font-medium text-slate-500">tipo_servicio_cliente</span> (nombre catálogo CRM). No
+          <div className="flex items-center gap-2">
+            <span aria-hidden="true" className="block h-5 w-1 rounded-full bg-[#4FAEB2]" />
+            <h3 className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-600">
+              <span aria-hidden="true" className="inline-block h-1.5 w-1.5 rounded-full bg-[#4FAEB2]" />
+              Cobrado por tipo de cliente
+            </h3>
+          </div>
+          <p className="mt-1 pl-3 text-[11px] text-slate-500">
+            Σ <span className="font-medium text-slate-600">monto de pagos</span> con fecha de pago en el rango (misma
+            lógica que <span className="font-medium text-slate-600">Cobrado por día</span> / factura no anulada),
+            asignado al <span className="font-medium text-slate-600">cliente</span> vía{" "}
+            <span className="font-medium text-slate-600">tipo_servicio_cliente</span> (nombre catálogo CRM). No
             incluye contado sin fila de pago.
           </p>
           {cobradoPorTipoServicio.list.length === 0 ? (
@@ -1665,7 +1844,14 @@ function DashFinanciero({
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-5 lg:gap-8">
         <motion.div whileHover={{ y: -2 }} className={`${finCard} lg:col-span-3`}>
-          <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500">Progreso de metas</h3>
+          <div className="flex items-center gap-2">
+            <span aria-hidden="true" className="block h-5 w-1 rounded-full bg-[#4FAEB2]" />
+            <h3 className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-600">
+              <span aria-hidden="true" className="inline-block h-1.5 w-1.5 rounded-full bg-[#4FAEB2]" />
+              Progreso de metas
+            </h3>
+          </div>
+          <p className="mt-1 pl-3 text-[11px] text-slate-500">Avance del mes calendario vs. objetivos configurados</p>
           <div className="mt-6 grid grid-cols-1 gap-8 sm:grid-cols-2">
             <ProgressBar
               variant="light"
@@ -1694,8 +1880,14 @@ function DashFinanciero({
           </div>
         </motion.div>
         <motion.div whileHover={{ y: -2 }} className={`${finCard} lg:col-span-2`}>
-          <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500">Distribución de clientes</h3>
-          <p className="mt-1 text-[11px] text-slate-400">
+          <div className="flex items-center gap-2">
+            <span aria-hidden="true" className="block h-5 w-1 rounded-full bg-[#4FAEB2]" />
+            <h3 className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-600">
+              <span aria-hidden="true" className="inline-block h-1.5 w-1.5 rounded-full bg-[#4FAEB2]" />
+              Distribución de clientes
+            </h3>
+          </div>
+          <p className="mt-1 pl-3 text-[11px] text-slate-500">
             Por{" "}
             {dimCliente === "tipo_servicio"
               ? "tipo de servicio"
@@ -1759,120 +1951,215 @@ function DashInventario({
     [productos]
   );
 
-  return (
-    <div className="space-y-5">
+  const invPanel =
+    "rounded-2xl border border-[#4FAEB2]/45 bg-white p-6 shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition-all duration-200 hover:shadow-md";
+  const invTitle =
+    "flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-600";
+  const invBar = (
+    <span aria-hidden="true" className="block h-5 w-1 rounded-full bg-[#4FAEB2]" />
+  );
 
+  return (
+    <div className="space-y-6">
       {/* KPIs */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-        <KpiCard icon="📦" label="Productos totales"      value={String(totalProductos)} color="text-[#0EA5E9]" variation={4} />
-        <KpiCard icon="🔢" label="Stock total (unidades)" value={formatGs(totalUnidades)} color="text-[#0EA5E9]" />
-        <KpiCard icon="⚠️" label="Bajo stock mínimo"      value={String(bajosStock)}
-          sub={bajosStock > 0 ? "requieren reposición" : "todo en orden"}
-          color={bajosStock > 0 ? "text-red-600" : "text-[#0EA5E9]"}
-          variation={bajosStock > 0 ? -2 : undefined} />
-        <KpiCard icon="💎" label="Valor del inventario"   value={`Gs. ${formatGsFull(valorTotal)}`} color="text-[#0EA5E9]" variation={12} />
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <KpiCard
+          icon={<Icon.Box className="h-4 w-4" />}
+          label="Productos totales"
+          value={String(totalProductos)}
+          color="text-slate-900"
+          variation={4}
+        />
+        <KpiCard
+          icon={<Icon.Hash className="h-4 w-4" />}
+          label="Stock total (unidades)"
+          value={formatGs(totalUnidades)}
+          color="text-slate-900"
+        />
+        <KpiCard
+          icon={<Icon.Alert className="h-4 w-4" />}
+          label="Bajo stock mínimo"
+          value={String(bajosStock)}
+          sub={bajosStock > 0 ? "Requieren reposición" : "Todo en orden"}
+          color={bajosStock > 0 ? "text-rose-600" : "text-emerald-600"}
+          accent={bajosStock > 0 ? "danger" : "neutral"}
+          variation={bajosStock > 0 ? -2 : undefined}
+        />
+        <KpiCard
+          icon={<Icon.Diamond className="h-4 w-4" />}
+          label="Valor del inventario"
+          value={`Gs. ${formatGsFull(valorTotal)}`}
+          color="text-[#3F8E91]"
+          accent="featured"
+          variation={12}
+        />
       </div>
 
       {/* Donut + Críticos */}
-      <div className="grid grid-cols-3 gap-4">
-        <motion.div whileHover={{ y: -2 }} className="bg-white border border-[#4FAEB2]/45 rounded-xl shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 p-6">
-          <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-4">Estado del stock</h3>
-          <DonutChart segments={[
-            { label: "Saludable", value: cntSaludable, color: "#22c55e" },
-            { label: "Bajo",      value: cntBajo,      color: "#f59e0b" },
-            { label: "Crítico",   value: cntCritico,   color: "#ef4444" },
-          ]} centerLabel="productos" />
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+        <motion.div whileHover={{ y: -2 }} className={invPanel}>
+          <div className="flex items-center gap-2">
+            {invBar}
+            <h3 className={invTitle}>
+              <span aria-hidden="true" className="inline-block h-1.5 w-1.5 rounded-full bg-[#4FAEB2]" />
+              Estado del stock
+            </h3>
+          </div>
+          <p className="mt-1 pl-3 text-[11px] text-slate-500">Distribución por nivel</p>
+          <div className="mt-5">
+            <DonutChart
+              segments={[
+                { label: "Saludable", value: cntSaludable, color: "#10B981" },
+                { label: "Bajo", value: cntBajo, color: "#F59E0B" },
+                { label: "Crítico", value: cntCritico, color: "#EF4444" },
+              ]}
+              centerLabel="productos"
+              legendDetail
+            />
+          </div>
         </motion.div>
-        <motion.div whileHover={{ y: -2 }} className="col-span-2 bg-white border border-[#4FAEB2]/45 rounded-xl shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 p-6 transition-shadow hover:shadow-md">
-          <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-4">
-            Productos críticos — stock bajo mínimo
-          </h3>
+
+        <motion.div whileHover={{ y: -2 }} className={`${invPanel} lg:col-span-2`}>
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              {invBar}
+              <h3 className={invTitle}>
+                <span aria-hidden="true" className="inline-block h-1.5 w-1.5 rounded-full bg-[#4FAEB2]" />
+                Productos críticos
+              </h3>
+            </div>
+            {criticos.length > 0 ? (
+              <span className="inline-flex items-center gap-1 rounded-full border border-rose-200 bg-rose-50 px-2.5 py-0.5 text-[11px] font-semibold text-rose-700">
+                {criticos.length} {criticos.length === 1 ? "ítem" : "ítems"}
+              </span>
+            ) : null}
+          </div>
+          <p className="mt-1 pl-3 text-[11px] text-slate-500">Stock por debajo del mínimo</p>
+
           {criticos.length === 0 ? (
-            <div className="flex items-center gap-2 text-[var(--badge-success-text)] bg-[var(--badge-success-bg)] rounded-lg px-4 py-3 text-sm">
-              <span>✅</span> Todos los productos tienen stock suficiente.
+            <div className="mt-5 flex items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3.5 text-sm text-emerald-700">
+              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-emerald-100 text-emerald-700">
+                <Icon.CheckCircle className="h-4 w-4" />
+              </span>
+              <span className="font-medium">Todos los productos tienen stock suficiente.</span>
             </div>
           ) : (
-            <div className="overflow-x-auto rounded-lg border border-[#4FAEB2]/45">
-              <table className="w-full text-sm">
-                <thead className="bg-slate-50 border-b border-slate-200">
-                  <tr>
-                    <th className="w-10 px-3 py-3">
-                      <input type="checkbox" className="rounded border-slate-300 text-[#0EA5E9] focus:ring-[#0EA5E9]" />
-                    </th>
-                    {["Producto", "Stock actual", "Stock mín.", "Estado", "Proveedor"].map(h => (
-                      <th key={h} className="text-left text-xs font-semibold text-slate-500 px-3 py-3 uppercase tracking-wide">{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-200">
-                  {criticos.map(p => (
-                    <tr key={p.id} className={`${p.stock_actual <= 0 ? "bg-red-50/40 dark:bg-red-900/10" : "bg-amber-50/30 dark:bg-amber-900/10"} hover:bg-opacity-80 transition-colors`}>
-                      <td className="px-3 py-2.5">
-                        <input type="checkbox" className="rounded border-slate-300 text-[#0EA5E9] focus:ring-[#0EA5E9]" />
-                      </td>
-                      <td className="px-3 py-2.5 text-xs font-medium text-slate-800 dark:text-slate-200">{p.nombre}</td>
-                      <td className="px-3 py-2.5">
-                        <span className={`text-xs font-bold tabular-nums ${p.stock_actual <= 0 ? "text-red-600 dark:text-red-400" : "text-amber-600 dark:text-amber-400"}`}>
-                          {p.stock_actual} {p.unidad_medida}
-                        </span>
-                      </td>
-                      <td className="px-3 py-2.5 text-xs text-slate-500 dark:text-slate-400 tabular-nums">{p.stock_minimo} {p.unidad_medida}</td>
-                      <td className="px-3 py-2.5">
-                        <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold ${
-                          p.stock_actual <= 0 ? "bg-[var(--badge-error-bg)] text-[var(--badge-error-text)]" : "bg-[var(--badge-warning-bg)] text-[var(--badge-warning-text)]"
-                        }`}>
-                          {p.stock_actual <= 0 ? "Crítico" : "Bajo"}
-                        </span>
-                      </td>
-                      <td className="px-3 py-2.5 text-xs text-slate-500 dark:text-slate-400">{proveedorMap[String(p.id)] ?? "—"}</td>
+            <div className="mt-5 overflow-hidden rounded-xl border border-[#4FAEB2]/30">
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-slate-50/80">
+                    <tr>
+                      {["Producto", "Stock actual", "Mínimo", "Estado", "Proveedor"].map((h) => (
+                        <th
+                          key={h}
+                          className="px-3 py-2.5 text-left text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-500"
+                        >
+                          {h}
+                        </th>
+                      ))}
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {criticos.map((p) => {
+                      const critico = p.stock_actual <= 0;
+                      return (
+                        <tr key={p.id} className="transition-colors hover:bg-[#4FAEB2]/5">
+                          <td className="px-3 py-3 text-xs font-medium text-slate-800">{p.nombre}</td>
+                          <td className="px-3 py-3">
+                            <span
+                              className={`text-xs font-semibold tabular-nums ${
+                                critico ? "text-rose-600" : "text-amber-600"
+                              }`}
+                            >
+                              {p.stock_actual} {p.unidad_medida}
+                            </span>
+                          </td>
+                          <td className="px-3 py-3 text-xs tabular-nums text-slate-500">
+                            {p.stock_minimo} {p.unidad_medida}
+                          </td>
+                          <td className="px-3 py-3">
+                            <span
+                              className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-semibold ${
+                                critico
+                                  ? "border-rose-200 bg-rose-50 text-rose-700"
+                                  : "border-amber-200 bg-amber-50 text-amber-700"
+                              }`}
+                            >
+                              <span
+                                aria-hidden="true"
+                                className={`h-1.5 w-1.5 rounded-full ${critico ? "bg-rose-500" : "bg-amber-500"}`}
+                              />
+                              {critico ? "Crítico" : "Bajo"}
+                            </span>
+                          </td>
+                          <td className="px-3 py-3 text-xs text-slate-500">
+                            {proveedorMap[String(p.id)] ?? "—"}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
             </div>
           )}
         </motion.div>
       </div>
 
       {/* Top por valor */}
-      <motion.div whileHover={{ y: -2 }} className="bg-white border border-[#4FAEB2]/45 rounded-xl shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 p-6 transition-shadow hover:shadow-md">
-        <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-4">
-          Top productos por valor de inventario
-        </h3>
+      <motion.div whileHover={{ y: -2 }} className={invPanel}>
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            {invBar}
+            <h3 className={invTitle}>
+              <span aria-hidden="true" className="inline-block h-1.5 w-1.5 rounded-full bg-[#4FAEB2]" />
+              Top productos por valor de inventario
+            </h3>
+          </div>
+          <span className="inline-flex items-center gap-1 rounded-full border border-[#4FAEB2]/30 bg-[#4FAEB2]/10 px-2.5 py-0.5 text-[11px] font-semibold text-[#3F8E91]">
+            Top {topPorValor.length}
+          </span>
+        </div>
+        <p className="mt-1 pl-3 text-[11px] text-slate-500">Stock × costo promedio</p>
+
         {topPorValor.length === 0 ? (
-          <p className="text-sm text-slate-400 text-center py-6">Sin productos registrados.</p>
+          <p className="mt-5 py-6 text-center text-sm text-slate-400">Sin productos registrados.</p>
         ) : (
-          <div className="overflow-x-auto rounded-lg border border-[#4FAEB2]/45">
-            <table className="w-full text-sm">
-              <thead className="bg-slate-50 border-b border-slate-200">
-                <tr>
-                  <th className="w-10 px-3 py-3">
-                    <input type="checkbox" className="rounded border-slate-300 text-[#0EA5E9] focus:ring-[#0EA5E9]" />
-                  </th>
-                  {["Producto", "SKU", "Stock", "Costo promedio", "Valor inventario"].map(h => (
-                    <th key={h} className="text-left text-xs font-semibold text-slate-500 px-3 py-3 uppercase tracking-wide">{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-200">
-                {topPorValor.map(p => (
-                  <tr key={p.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
-                    <td className="px-3 py-2.5">
-                      <input type="checkbox" className="rounded border-slate-300 text-[#0EA5E9] focus:ring-[#0EA5E9]" />
-                    </td>
-                    <td className="px-3 py-2.5 text-xs font-medium text-slate-800 dark:text-slate-200">{p.nombre}</td>
-                    <td className="px-3 py-2.5 font-mono text-xs text-slate-500 dark:text-slate-400">{p.sku}</td>
-                    <td className="px-3 py-2.5 text-xs tabular-nums text-slate-700 dark:text-slate-300">{p.stock_actual}</td>
-                    <td className="px-3 py-2.5 text-xs tabular-nums text-slate-500 dark:text-slate-400">Gs. {formatGs(p.costo_promedio)}</td>
-                    <td className="px-3 py-2.5 text-xs tabular-nums font-semibold text-slate-800 dark:text-slate-200">Gs. {formatGs(p.valor)}</td>
+          <div className="mt-5 overflow-hidden rounded-xl border border-[#4FAEB2]/30">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-slate-50/80">
+                  <tr>
+                    {["Producto", "SKU", "Stock", "Costo promedio", "Valor inventario"].map((h) => (
+                      <th
+                        key={h}
+                        className="px-3 py-2.5 text-left text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-500"
+                      >
+                        {h}
+                      </th>
+                    ))}
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {topPorValor.map((p) => (
+                    <tr key={p.id} className="transition-colors hover:bg-[#4FAEB2]/5">
+                      <td className="px-3 py-3 text-xs font-medium text-slate-800">{p.nombre}</td>
+                      <td className="px-3 py-3 font-mono text-xs text-slate-500">{p.sku}</td>
+                      <td className="px-3 py-3 text-xs tabular-nums text-slate-700">{p.stock_actual}</td>
+                      <td className="px-3 py-3 text-xs tabular-nums text-slate-500">
+                        Gs. {formatGs(p.costo_promedio)}
+                      </td>
+                      <td className="px-3 py-3 text-xs font-semibold tabular-nums text-[#3F8E91]">
+                        Gs. {formatGs(p.valor)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         )}
       </motion.div>
-
     </div>
   );
 }
@@ -1963,102 +2250,226 @@ function DashVentas({
     });
   }, [ventasFilt]);
 
-  return (
-    <div className="space-y-5">
+  const vtaPanel =
+    "rounded-2xl border border-[#4FAEB2]/45 bg-white p-6 shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition-all duration-200 hover:shadow-md";
+  const vtaTitle =
+    "flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-600";
+  const vtaBar = (
+    <span aria-hidden="true" className="block h-5 w-1 rounded-full bg-[#4FAEB2]" />
+  );
 
+  return (
+    <div className="space-y-6">
       {/* KPIs principales */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-        <KpiCard icon="📅" label="Ventas del día"    value={`Gs. ${formatGsFull(totalHoy)}`}
-          sub={`${ventasHoy.length} transacciones`} color="text-blue-600" />
-        <KpiCard icon="📆" label="Ventas del mes"    value={`Gs. ${formatGsFull(totalMes)}`}
-          sub={`${ventasMes.length} transacciones`} color="text-indigo-600" />
-        <KpiCard icon="🎫" label="Ticket promedio"   value={`Gs. ${formatGsFull(ticketProm)}`}
-          sub={`periodo: ${periodo}`} />
-        <KpiCard icon="📦" label="Unidades vendidas" value={formatGs(unidades)}
-          sub={`en el periodo`} />
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <KpiCard
+          icon={<Icon.Calendar className="h-4 w-4" />}
+          label="Ventas del día"
+          value={`Gs. ${formatGsFull(totalHoy)}`}
+          sub={`${ventasHoy.length} transacciones`}
+          color="text-slate-900"
+        />
+        <KpiCard
+          icon={<Icon.Calendar className="h-4 w-4" />}
+          label="Ventas del mes"
+          value={`Gs. ${formatGsFull(totalMes)}`}
+          sub={`${ventasMes.length} transacciones`}
+          color="text-[#3F8E91]"
+          accent="featured"
+        />
+        <KpiCard
+          icon={<Icon.Ticket className="h-4 w-4" />}
+          label="Ticket promedio"
+          value={`Gs. ${formatGsFull(ticketProm)}`}
+          sub={`Periodo: ${periodo}`}
+          color="text-slate-900"
+        />
+        <KpiCard
+          icon={<Icon.Box className="h-4 w-4" />}
+          label="Unidades vendidas"
+          value={formatGs(unidades)}
+          sub="En el periodo"
+          color="text-slate-900"
+        />
       </div>
 
       {/* KPIs rentabilidad */}
-      <div className="grid grid-cols-2 gap-4">
-        <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5 flex items-start gap-3">
-          <span className="text-2xl">💰</span>
-          <div>
-            <p className={`text-2xl font-bold tabular-nums ${gananciaHoy >= 0 ? "text-green-600" : "text-red-600"}`}>
-              Gs. {formatGsFull(gananciaHoy)}
-            </p>
-            <p className="text-xs font-semibold text-gray-700 mt-0.5">Ganancia del día</p>
-            <p className="text-xs text-gray-400">precio venta − costo promedio × cant.</p>
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <motion.div whileHover={{ y: -2 }} className={vtaPanel}>
+          <div className="flex items-start justify-between gap-3">
+            <span
+              className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border ${
+                gananciaHoy >= 0
+                  ? "border-emerald-200 bg-emerald-50 text-emerald-600"
+                  : "border-rose-200 bg-rose-50 text-rose-600"
+              }`}
+            >
+              <Icon.Wallet className="h-4 w-4" />
+            </span>
+            <span
+              className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-semibold ${
+                gananciaHoy >= 0
+                  ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                  : "border-rose-200 bg-rose-50 text-rose-700"
+              }`}
+            >
+              {gananciaHoy >= 0 ? "Positivo" : "Negativo"}
+            </span>
           </div>
-        </div>
-        <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5 flex items-start gap-3">
-          <span className="text-2xl">📊</span>
-          <div>
-            <p className={`text-2xl font-bold tabular-nums ${margenProm >= 20 ? "text-green-600" : margenProm >= 10 ? "text-amber-600" : "text-red-600"}`}>
-              {margenProm.toFixed(1)}%
-            </p>
-            <p className="text-xs font-semibold text-gray-700 mt-0.5">Margen promedio (hoy)</p>
-            <p className="text-xs text-gray-400">ganancia / precio venta</p>
+          <p className="mt-3 text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-500">
+            Ganancia del día
+          </p>
+          <p
+            className={`mt-1 text-3xl font-semibold tabular-nums tracking-tight ${
+              gananciaHoy >= 0 ? "text-emerald-600" : "text-rose-600"
+            }`}
+          >
+            Gs. {formatGsFull(gananciaHoy)}
+          </p>
+          <p className="mt-1 text-[11px] text-slate-500">precio venta − costo promedio × cant.</p>
+        </motion.div>
+
+        <motion.div whileHover={{ y: -2 }} className={vtaPanel}>
+          <div className="flex items-start justify-between gap-3">
+            <span
+              className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border ${
+                margenProm >= 20
+                  ? "border-emerald-200 bg-emerald-50 text-emerald-600"
+                  : margenProm >= 10
+                    ? "border-amber-200 bg-amber-50 text-amber-600"
+                    : "border-rose-200 bg-rose-50 text-rose-600"
+              }`}
+            >
+              <Icon.TrendUp className="h-4 w-4" />
+            </span>
+            <span
+              className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-semibold ${
+                margenProm >= 20
+                  ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                  : margenProm >= 10
+                    ? "border-amber-200 bg-amber-50 text-amber-700"
+                    : "border-rose-200 bg-rose-50 text-rose-700"
+              }`}
+            >
+              {margenProm >= 20 ? "Excelente" : margenProm >= 10 ? "Aceptable" : "Bajo"}
+            </span>
           </div>
-        </div>
+          <p className="mt-3 text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-500">
+            Margen promedio (hoy)
+          </p>
+          <p
+            className={`mt-1 text-3xl font-semibold tabular-nums tracking-tight ${
+              margenProm >= 20 ? "text-emerald-600" : margenProm >= 10 ? "text-amber-600" : "text-rose-600"
+            }`}
+          >
+            {margenProm.toFixed(1)}%
+          </p>
+          <p className="mt-1 text-[11px] text-slate-500">ganancia / precio venta</p>
+        </motion.div>
       </div>
 
       {/* Productos más vendidos + Ventas por hora */}
-      <div className="grid grid-cols-2 gap-4">
-        <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
-          <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-4">
-            Productos más vendidos
-          </h3>
-          {topProductos.length === 0
-            ? <p className="text-sm text-gray-400 text-center py-6">Sin ventas en el periodo.</p>
-            : <HBarChart data={topProductos} color="bg-indigo-400" />
-          }
-        </div>
-        <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
-          <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-4">
-            Ventas por hora — hoy
-          </h3>
-          {ventasPorHora.every(h => h.value === 0)
-            ? <p className="text-sm text-gray-400 text-center py-6">Sin ventas registradas hoy.</p>
-            : <AreaChart data={ventasPorHora} color="#10b981" />
-          }
-        </div>
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        <motion.div whileHover={{ y: -2 }} className={vtaPanel}>
+          <div className="flex items-center gap-2">
+            {vtaBar}
+            <h3 className={vtaTitle}>
+              <span aria-hidden="true" className="inline-block h-1.5 w-1.5 rounded-full bg-[#4FAEB2]" />
+              Productos más vendidos
+            </h3>
+          </div>
+          <p className="mt-1 pl-3 text-[11px] text-slate-500">Ranking de unidades</p>
+          <div className="mt-5">
+            {topProductos.length === 0 ? (
+              <p className="py-8 text-center text-sm text-slate-400">Sin ventas en el periodo.</p>
+            ) : (
+              <HBarChart data={topProductos} color="bg-[#4FAEB2]" />
+            )}
+          </div>
+        </motion.div>
+
+        <motion.div whileHover={{ y: -2 }} className={vtaPanel}>
+          <div className="flex items-center gap-2">
+            {vtaBar}
+            <h3 className={vtaTitle}>
+              <span aria-hidden="true" className="inline-block h-1.5 w-1.5 rounded-full bg-[#4FAEB2]" />
+              Ventas por hora — hoy
+            </h3>
+          </div>
+          <p className="mt-1 pl-3 text-[11px] text-slate-500">Curva intradía acumulada</p>
+          <div className="mt-5">
+            {ventasPorHora.every((h) => h.value === 0) ? (
+              <p className="py-8 text-center text-sm text-slate-400">Sin ventas registradas hoy.</p>
+            ) : (
+              <AreaChart data={ventasPorHora} color="#4FAEB2" />
+            )}
+          </div>
+        </motion.div>
       </div>
 
       {/* Desglose por tipo */}
-      <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
-        <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-4">
-          Desglose por tipo de venta
-        </h3>
-        {ventasFilt.length === 0 ? (
-          <p className="text-sm text-gray-400 text-center py-6">Sin ventas en el periodo seleccionado.</p>
-        ) : (
-          <table className="w-full text-sm">
-            <thead className="bg-gray-50 border-b border-gray-100">
-              <tr>
-                {["Tipo", "Cantidad", "Total", "Ticket promedio", "Unidades"].map(h => (
-                  <th key={h} className="text-left text-xs font-semibold text-gray-500 px-3 py-2.5 uppercase tracking-wide">{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-50">
-              {desglose.map(r => (
-                <tr key={r.tipo} className="hover:bg-gray-50/60 transition-colors">
-                  <td className="px-3 py-2.5">
-                    <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${r.tipo === "CONTADO" ? "bg-[var(--badge-success-bg)] text-[var(--badge-success-text)]" : "bg-[#E0F2FE] text-[#0284C7]"}`}>
-                      {r.tipo}
-                    </span>
-                  </td>
-                  <td className="px-3 py-2.5 text-xs tabular-nums text-gray-700">{r.ventas}</td>
-                  <td className="px-3 py-2.5 text-xs tabular-nums font-semibold text-gray-800">Gs. {formatGs(r.total)}</td>
-                  <td className="px-3 py-2.5 text-xs tabular-nums text-gray-500">Gs. {formatGs(Math.round(r.ticket))}</td>
-                  <td className="px-3 py-2.5 text-xs tabular-nums text-gray-500">{r.unid}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </div>
+      <motion.div whileHover={{ y: -2 }} className={vtaPanel}>
+        <div className="flex items-center gap-2">
+          {vtaBar}
+          <h3 className={vtaTitle}>
+            <span aria-hidden="true" className="inline-block h-1.5 w-1.5 rounded-full bg-[#4FAEB2]" />
+            Desglose por tipo de venta
+          </h3>
+        </div>
+        <p className="mt-1 pl-3 text-[11px] text-slate-500">Contado vs. crédito en el período</p>
 
+        {ventasFilt.length === 0 ? (
+          <p className="mt-6 py-6 text-center text-sm text-slate-400">Sin ventas en el periodo seleccionado.</p>
+        ) : (
+          <div className="mt-5 overflow-hidden rounded-xl border border-[#4FAEB2]/30">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-slate-50/80">
+                  <tr>
+                    {["Tipo", "Cantidad", "Total", "Ticket promedio", "Unidades"].map((h) => (
+                      <th
+                        key={h}
+                        className="px-3 py-2.5 text-left text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-500"
+                      >
+                        {h}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {desglose.map((r) => (
+                    <tr key={r.tipo} className="transition-colors hover:bg-[#4FAEB2]/5">
+                      <td className="px-3 py-3">
+                        <span
+                          className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-[11px] font-semibold ${
+                            r.tipo === "CONTADO"
+                              ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                              : "border-[#4FAEB2]/30 bg-[#4FAEB2]/10 text-[#3F8E91]"
+                          }`}
+                        >
+                          <span
+                            aria-hidden="true"
+                            className={`h-1.5 w-1.5 rounded-full ${r.tipo === "CONTADO" ? "bg-emerald-500" : "bg-[#4FAEB2]"}`}
+                          />
+                          {r.tipo}
+                        </span>
+                      </td>
+                      <td className="px-3 py-3 text-xs tabular-nums text-slate-700">{r.ventas}</td>
+                      <td className="px-3 py-3 text-xs font-semibold tabular-nums text-slate-900">
+                        Gs. {formatGs(r.total)}
+                      </td>
+                      <td className="px-3 py-3 text-xs tabular-nums text-slate-500">
+                        Gs. {formatGs(Math.round(r.ticket))}
+                      </td>
+                      <td className="px-3 py-3 text-xs tabular-nums text-slate-500">{r.unid}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+      </motion.div>
     </div>
   );
 }
@@ -2216,11 +2627,11 @@ export default function DashboardPage() {
   const effectiveTabs: TabDash[] = dashScope.kind === "scoped" ? dashScope.tabs : TAB_VALID;
   const showTabNav = !(dashScope.kind === "scoped" && effectiveTabs.length === 1);
 
-  const TAB_META: Record<TabDash, { label: string; icon: string }> = {
-    comercial: { label: "Comercial", icon: "📊" },
-    financiero: { label: "Financiero", icon: "💰" },
-    inventario: { label: "Inventario", icon: "📦" },
-    ventas: { label: "Ventas", icon: "🛒" },
+  const TAB_META: Record<TabDash, { label: string; Icon: (props: IconProps) => React.ReactElement }> = {
+    comercial: { label: "Comercial", Icon: Icon.Comercial },
+    financiero: { label: "Financiero", Icon: Icon.Financiero },
+    inventario: { label: "Inventario", Icon: Icon.Inventario },
+    ventas: { label: "Ventas", Icon: Icon.Ventas },
   };
 
   if (!config) {
@@ -2362,6 +2773,7 @@ export default function DashboardPage() {
         <nav className="flex w-full flex-wrap gap-1 rounded-2xl border border-[#4FAEB2]/45 bg-white p-1.5 shadow-sm sm:w-fit">
           {effectiveTabs.map((tid) => {
             const meta = TAB_META[tid];
+            const TabIcon = meta.Icon;
             const active = tab === tid;
             return (
               <button
@@ -2379,7 +2791,7 @@ export default function DashboardPage() {
                     : "text-slate-500 hover:bg-slate-100 hover:text-slate-700"
                 }`}
               >
-                <span aria-hidden>{meta.icon}</span>
+                <TabIcon className="h-4 w-4 shrink-0" />
                 {meta.label}
               </button>
             );
