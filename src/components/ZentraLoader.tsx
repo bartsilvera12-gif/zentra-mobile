@@ -1,12 +1,13 @@
 "use client";
 
 /**
- * Pantalla de carga premium con animación del logo ZENTRA.
+ * Pantalla de carga premium con el logo ZENTRA.
  *
- * El logo se compone de dos cursores tipo "mouse pointer" (silueta de
- * Lucide: cuerpo triangular + cola perpendicular) cruzados en el
- * centro formando la Z. La animación los separa diagonalmente hacia
- * sus respectivas esquinas (NE y SW) y los vuelve a juntar en loop.
+ * El logo se compone de dos cuadriláteros asimétricos (estilo "cursor"
+ * con barra horizontal + muesca en un extremo + punta aguda en el otro)
+ * que se cruzan superpuestos en el centro formando la Z. La animación
+ * los separa suavemente — superior sube, inferior baja — y los vuelve
+ * a juntar en loop.
  */
 export default function ZentraLoader({
   label = "Cargando",
@@ -24,7 +25,7 @@ export default function ZentraLoader({
       aria-busy="true"
       role="status"
     >
-      {/* Logo: dos cursores cruzados */}
+      {/* Logo: dos cursores cuadriláteros cruzados */}
       <div className="relative h-24 w-24">
         <svg
           viewBox="0 0 100 100"
@@ -34,47 +35,31 @@ export default function ZentraLoader({
           aria-hidden="true"
         >
           {/*
-            Cursor superior: silueta de "mouse pointer" apuntando NE.
-            Trazado (en viewBox 100):
-              · apex en (90, 8)
-              · cuerpo triangular cerrando contra el centro (50, 50)
-              · cola perpendicular saliendo hacia abajo-izquierda
-              · base inferior izquierda (44, 56) cierra el cursor
-
-            Construido a partir del path estándar de "mouse-pointer" de Lucide,
-            rotado para apuntar hacia top-right.
+            Cursor superior — 5 vértices (sentido horario):
+              · top-left  (10, 6)     ┐
+              · top-right (94, 6)     │  barra superior horizontal
+              · muesca    (75, 20)    ┘  pico hacia adentro debajo del corner derecho
+              · centro    (55, 52)       donde se cruza con el inferior
+              · left-tip  (4, 36)        punta aguda hacia la izquierda
           */}
           <path
-            d="
-              M 90 8
-              L 39 21
-              L 51 33
-              L 45 47
-              L 57 53
-              L 63 39
-              Z
-            "
+            d="M 10 6 L 94 6 L 75 20 L 55 52 L 4 36 Z"
             fill="#4FAEB2"
-            className="zentra-cursor-ne origin-[50%_50%]"
+            className="zentra-cursor-top origin-[50%_50%]"
           />
 
           {/*
-            Cursor inferior: el mismo cursor rotado 180° (espejo punto-simétrico
-            respecto al centro 50,50). Apunta hacia SW. Está coloreado en el
-            tono turquesa más oscuro para distinguirlo en estado quieto.
+            Cursor inferior — espejo punto-simétrico al centro (50,50):
+              · bottom-right (90, 94)
+              · bottom-left  (6, 94)
+              · muesca       (25, 80)
+              · centro       (45, 48)
+              · right-tip    (96, 64)
           */}
           <path
-            d="
-              M 10 92
-              L 61 79
-              L 49 67
-              L 55 53
-              L 43 47
-              L 37 61
-              Z
-            "
+            d="M 90 94 L 6 94 L 25 80 L 45 48 L 96 64 Z"
             fill="#3F8E91"
-            className="zentra-cursor-sw origin-[50%_50%]"
+            className="zentra-cursor-bot origin-[50%_50%]"
           />
         </svg>
 
@@ -105,11 +90,11 @@ export default function ZentraLoader({
       </div>
 
       <style jsx>{`
-        :global(.zentra-cursor-ne) {
-          animation: zentraCursorNE 2200ms cubic-bezier(0.4, 0, 0.2, 1) infinite;
+        :global(.zentra-cursor-top) {
+          animation: zentraCursorTop 2200ms cubic-bezier(0.4, 0, 0.2, 1) infinite;
         }
-        :global(.zentra-cursor-sw) {
-          animation: zentraCursorSW 2200ms cubic-bezier(0.4, 0, 0.2, 1) infinite;
+        :global(.zentra-cursor-bot) {
+          animation: zentraCursorBot 2200ms cubic-bezier(0.4, 0, 0.2, 1) infinite;
         }
         :global(.zentra-loader-halo) {
           animation: zentraHalo 2200ms ease-in-out infinite;
@@ -117,22 +102,24 @@ export default function ZentraLoader({
         .zentra-loader-dot {
           animation: zentraDot 1300ms ease-in-out infinite;
         }
-        @keyframes zentraCursorNE {
+        /* Cursor superior: sube ligeramente */
+        @keyframes zentraCursorTop {
           0%,
           100% {
-            transform: translate(0, 0);
+            transform: translateY(0);
           }
           50% {
-            transform: translate(12%, -12%);
+            transform: translateY(-7%);
           }
         }
-        @keyframes zentraCursorSW {
+        /* Cursor inferior: baja ligeramente */
+        @keyframes zentraCursorBot {
           0%,
           100% {
-            transform: translate(0, 0);
+            transform: translateY(0);
           }
           50% {
-            transform: translate(-12%, 12%);
+            transform: translateY(7%);
           }
         }
         @keyframes zentraHalo {
@@ -142,7 +129,7 @@ export default function ZentraLoader({
             opacity: 0.85;
           }
           50% {
-            transform: scale(1.28);
+            transform: scale(1.25);
             opacity: 1;
           }
         }
@@ -159,8 +146,8 @@ export default function ZentraLoader({
           }
         }
         @media (prefers-reduced-motion: reduce) {
-          :global(.zentra-cursor-ne),
-          :global(.zentra-cursor-sw),
+          :global(.zentra-cursor-top),
+          :global(.zentra-cursor-bot),
           :global(.zentra-loader-halo),
           .zentra-loader-dot {
             animation: none;
