@@ -4,8 +4,17 @@ import {
   matchesConversationRestartKeyword,
   restartWhatsappConversationToFlowStart,
 } from "@/lib/chat/resolve-whatsapp-active-flow";
+import { ensureCurrentNodePresentedAfterInbound } from "@/lib/chat/flow-engine-service";
 
 const LOG = "[purchase-intent-restart]" as const;
+
+const PRESENT_ERR_MAX = 280;
+function clipPresentError(msg: string | null | undefined): string | null {
+  if (!msg) return null;
+  const t = String(msg).trim();
+  if (!t) return null;
+  return t.length <= PRESENT_ERR_MAX ? t : t.slice(0, PRESENT_ERR_MAX) + "…";
+}
 
 export type FlowRestartIntentConfig = {
   restart_enabled: boolean;
@@ -286,6 +295,80 @@ export async function maybeRestartForPurchaseIntent(
   if (!rr.restarted) {
     console.warn(LOG, "restart_failed", { conversationId, reason: rr.reason });
     return { restarted: false, flow_code: null, flow_current_node: null, new_flow_session_id: null, reason: rr.reason };
+  }
+
+  /**
+   * Presentar el primer nodo inmediatamente después del restart.
+   *
+   * Antes este envío dependía de `ensureCurrentNodePresentedAfterInbound` invocado
+   * más adelante en `whatsapp-webhook-service.ts`. El loop principal del webhook
+   * tiene un try/catch externo que empuja excepciones a `errors[]` y sigue, lo
+   * que producía restarts "huérfanos" sin `node_sent` y sin trazas cuando algún
+   * paso intermedio (persistInbound, attach media, business automation,
+   * applySorteoReferralToActiveSession, etc.) lanzaba. Al presentar aquí, antes
+   * de retornar al webhook, garantizamos:
+   *
+   *   - `node_sent` queda registrado si el envío funciona.
+   *   - `present_failed_after_purchase_intent_restart` /
+   *     `present_exception_after_purchase_intent_restart` queda en
+   *     `chat_flow_events` si falla, con mensaje recortado (sin secretos).
+   *
+   * Idempotencia: la siguiente llamada a `ensureCurrentNodePresentedAfterInbound`
+   * (línea 1521 del webhook) verá el `node_sent` recién insertado y retornará
+   * `already_presented`, sin reenviar. No duplica mensajes ni sesiones.
+   */
+  try {
+    const present = await ensureCurrentNodePresentedAfterInbound(supabase, {
+      conversationId,
+      empresaId,
+    });
+    if (!present.ok) {
+      try {
+        await supabase.from("chat_flow_events").insert({
+          empresa_id: empresaId,
+          conversation_id: conversationId,
+          flow_code: rr.flow_code,
+          node_code: rr.flow_current_node,
+          flow_session_id: rr.new_flow_session_id ?? null,
+          event_type: "present_failed_after_purchase_intent_restart",
+          payload: {
+            status: present.status,
+            error: clipPresentError(present.error ?? null),
+            matched_keyword: matched,
+          },
+        });
+      } catch (insErr) {
+        console.warn(LOG, "present_failed_event_insert_failed", {
+          conversationId,
+          message: clipPresentError(insErr instanceof Error ? insErr.message : String(insErr)),
+        });
+      }
+    }
+  } catch (e) {
+    const errMsg = e instanceof Error ? e.message : String(e);
+    console.warn(LOG, "present_after_restart_exception", {
+      conversationId,
+      message: clipPresentError(errMsg),
+    });
+    try {
+      await supabase.from("chat_flow_events").insert({
+        empresa_id: empresaId,
+        conversation_id: conversationId,
+        flow_code: rr.flow_code,
+        node_code: rr.flow_current_node,
+        flow_session_id: rr.new_flow_session_id ?? null,
+        event_type: "present_exception_after_purchase_intent_restart",
+        payload: {
+          error: clipPresentError(errMsg),
+          matched_keyword: matched,
+        },
+      });
+    } catch (insErr) {
+      console.warn(LOG, "present_exception_event_insert_failed", {
+        conversationId,
+        message: clipPresentError(insErr instanceof Error ? insErr.message : String(insErr)),
+      });
+    }
   }
 
   console.info(LOG, "restart_ok", {
