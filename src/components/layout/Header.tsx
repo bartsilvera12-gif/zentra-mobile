@@ -82,17 +82,17 @@ export default function Header() {
   return (
     <header
       id="neura-header"
-      className="z-40 flex h-16 shrink-0 items-center justify-end gap-3 border-b border-[color:var(--zentra-sidebar-border)] bg-[color:var(--zentra-sidebar)] px-4 sm:px-6 shadow-[inset_0_-1px_0_0_rgba(0,0,0,0.25)]"
+      className="z-40 flex h-16 shrink-0 items-center justify-end gap-3 border-b border-slate-200/90 bg-white/95 px-4 sm:px-6 shadow-[inset_0_-1px_0_0_rgba(10,37,64,0.05)] backdrop-blur-sm"
     >
       <div className="flex items-center gap-2">
         {/* Notificaciones */}
         <button
           type="button"
-          className="relative rounded-xl border border-white/10 bg-white/[0.04] p-2 text-slate-200 shadow-sm transition-colors hover:border-[#4FAEB2]/50 hover:bg-white/[0.08] hover:text-white"
+          className="relative rounded-lg p-2 text-[#475569] transition-colors hover:bg-slate-50 hover:text-[#0EA5E9]"
           aria-label="Notificaciones"
         >
-          <Bell className="h-[18px] w-[18px]" />
-          <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-[#4FAEB2] px-1 text-[10px] font-bold text-white shadow-[0_0_0_2px_var(--zentra-sidebar)]">
+          <Bell className="h-5 w-5" />
+          <span className="absolute -right-0.5 -top-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-[#0EA5E9] text-[10px] font-bold text-white">
             0
           </span>
         </button>
@@ -102,33 +102,25 @@ export default function Header() {
           <button
             type="button"
             onClick={() => setUserMenuOpen(!userMenuOpen)}
-            className="flex items-center gap-2.5 rounded-xl border border-white/10 bg-white/[0.04] px-2.5 py-1.5 transition-colors hover:border-[#4FAEB2]/50 hover:bg-white/[0.08]"
+            className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 transition-colors hover:bg-slate-100"
           >
-            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[#4FAEB2] to-[#3F8E91] text-white shadow-[0_0_0_2px_rgba(79,174,178,0.25)] ring-1 ring-white/15">
-              <span className="text-sm font-bold tracking-tight">{avatarInitial}</span>
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[color:var(--zentra-sidebar)] text-white ring-1 ring-sky-400/35">
+              <span className="text-sm font-bold">{avatarInitial}</span>
             </div>
             <div className="hidden text-left sm:block">
-              <p className="max-w-[180px] truncate text-sm font-semibold tracking-tight text-white">{displayName}</p>
-              <p className="text-[11px] font-medium uppercase tracking-[0.12em] text-[#4FAEB2]">{displayRole}</p>
+              <p className="max-w-[180px] truncate text-sm font-medium text-[#0F172A]">{displayName}</p>
+              <p className="text-xs text-[#475569]">{displayRole}</p>
             </div>
-            <ChevronDown
-              className={`h-4 w-4 text-slate-300 transition-transform ${userMenuOpen ? "rotate-180" : ""}`}
-            />
+            <ChevronDown className={`h-4 w-4 text-slate-500 transition-transform ${userMenuOpen ? "rotate-180" : ""}`} />
           </button>
 
           <div
-            className={`absolute right-0 top-full mt-2 w-56 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl shadow-[#0B3A3D]/20 ring-1 ring-[#4FAEB2]/15 ${
+            className={`absolute right-0 top-full mt-1 w-48 rounded-lg border border-slate-200 bg-white py-1 shadow-lg ${
               userMenuOpen ? "block" : "hidden"
             }`}
           >
-            <div className="relative border-b border-slate-100 bg-slate-50/70 px-4 py-3">
-              <span
-                aria-hidden="true"
-                className="pointer-events-none absolute inset-x-0 top-0 h-0.5 bg-gradient-to-r from-[#4FAEB2] via-[#4FAEB2]/80 to-[#4FAEB2]/40"
-              />
-              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#4FAEB2]">Sesión</p>
-              <p className="mt-1 truncate text-sm font-semibold text-slate-900">{dropdownName}</p>
-              <p className="truncate text-xs text-slate-500">{displayRole}</p>
+            <div className="border-b border-slate-200 px-4 py-2">
+              <p className="truncate text-sm font-medium text-[#0F172A]">{dropdownName}</p>
             </div>
             <button
               type="button"
@@ -136,7 +128,7 @@ export default function Header() {
                 await signOut();
                 router.push("/login");
               }}
-              className="flex w-full items-center gap-2 px-4 py-2.5 text-sm font-medium text-slate-600 transition-colors hover:bg-[#4FAEB2]/10 hover:text-[#3F8E91]"
+              className="flex w-full items-center gap-2 px-4 py-2 text-sm text-[#475569] transition-colors hover:bg-slate-50 hover:text-[#0EA5E9]"
             >
               <LogOut className="h-4 w-4" />
               Cerrar sesión
