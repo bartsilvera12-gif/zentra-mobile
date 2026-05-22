@@ -1,13 +1,13 @@
 "use client";
 
-import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { getGastos } from "@/lib/gastos/actions";
 import GastoForm from "@/components/gastos/GastoForm";
 import type { Gasto } from "@/lib/gastos/actions";
 
 export default function EditarGastoPage() {
+  const router = useRouter();
   const params = useParams();
   const id = String(params?.id ?? "");
   const [gasto, setGasto] = useState<Gasto | null>(null);
@@ -20,59 +20,55 @@ export default function EditarGastoPage() {
       .finally(() => setCargando(false));
   }, [id]);
 
+  const backLink = (
+    <button
+      onClick={() => router.push("/gastos")}
+      className="text-sm font-medium text-[#4FAEB2] hover:text-[#3F8E91] hover:underline"
+    >
+      ← Volver
+    </button>
+  );
+
   if (cargando) {
     return (
-      <div className="space-y-6">
-        <div className="flex items-center gap-2 text-sm text-gray-400">
-          <Link href="/gastos" className="hover:text-gray-700 transition-colors">
-            Gastos
-          </Link>
-          <span>/</span>
-          <span className="text-gray-700 font-medium">Cargando…</span>
+      <div className="mx-auto max-w-3xl space-y-6 p-6">
+        <div className="flex items-center gap-3">{backLink}</div>
+        <div className="flex items-center justify-center gap-3 py-20 text-sm text-slate-500">
+          <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-[#4FAEB2]" />
+          Cargando gasto…
         </div>
-        <div className="py-16 text-center text-gray-400 text-sm animate-pulse">Cargando…</div>
       </div>
     );
   }
 
   if (!gasto) {
     return (
-      <div className="space-y-6">
-        <div className="flex items-center gap-2 text-sm text-gray-400">
-          <Link href="/gastos" className="hover:text-gray-700 transition-colors">
-            Gastos
-          </Link>
-          <span>/</span>
-          <span className="text-gray-700 font-medium">No encontrado</span>
-        </div>
-        <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-xl px-4 py-3">
+      <div className="mx-auto max-w-3xl space-y-6 p-6">
+        <div className="flex items-center gap-3">{backLink}</div>
+        <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
           Gasto no encontrado
         </div>
-        <Link href="/gastos" className="text-sm text-[#0EA5E9] hover:underline">
-          ← Volver a gastos
-        </Link>
       </div>
     );
   }
 
   return (
-    <div className="space-y-8">
-      <div className="flex items-center gap-2 text-sm text-gray-400">
-        <Link href="/gastos" className="hover:text-gray-700 transition-colors">
-          Gastos
-        </Link>
-        <span>/</span>
-        <span className="text-gray-700 font-medium">Editar</span>
-      </div>
-
+    <div className="mx-auto max-w-3xl space-y-6 p-6">
+      <div className="flex items-center gap-3">{backLink}</div>
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">Editar gasto</h1>
-        <p className="text-sm text-gray-500 mt-1">
+        <div className="flex items-center gap-2">
+          <span
+            aria-hidden="true"
+            className="inline-block h-2 w-2 shrink-0 rounded-full bg-[#4FAEB2] shadow-[0_0_0_3px_rgba(79,174,178,0.18)]"
+          />
+          <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[#4FAEB2]">Editar</p>
+        </div>
+        <h1 className="mt-1 text-2xl font-semibold tracking-tight text-slate-900">
           {gasto.categoria || gasto.descripcion || "Gasto"}
-        </p>
+        </h1>
+        <p className="mt-1 text-sm text-slate-500">Actualizá los datos del gasto.</p>
       </div>
-
-      <GastoForm gasto={gasto} />
+      <GastoForm gasto={gasto} variant="page" onSaved={() => router.push("/gastos")} />
     </div>
   );
 }

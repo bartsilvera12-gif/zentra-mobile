@@ -1,10 +1,9 @@
 "use client";
 
-import Link from "next/link";
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useMemo, useState } from "react";
 import { getGastos, deleteGasto } from "@/lib/gastos/actions";
 import type { Gasto } from "@/lib/gastos/actions";
+import GastoModal from "./components/GastoModal";
 
 function formatGs(valor: number) {
   return `${valor.toLocaleString("es-PY")} ₲`;
@@ -23,22 +22,27 @@ function formatFecha(fecha: string) {
   }
 }
 
-const tipoBadge: Record<string, string> = {
-  fijo: "bg-blue-50 text-blue-700",
-  variable: "bg-slate-100 text-slate-700",
-};
+type ModalState =
+  | { mode: "closed" }
+  | { mode: "nuevo" }
+  | { mode: "editar"; gasto: Gasto };
 
 export default function GastosPage() {
-  const router = useRouter();
   const [gastos, setGastos] = useState<Gasto[]>([]);
   const [cargando, setCargando] = useState(true);
   const [eliminando, setEliminando] = useState<string | null>(null);
+  const [modal, setModal] = useState<ModalState>({ mode: "closed" });
 
-  useEffect(() => {
+  const cargar = () => {
+    setCargando(true);
     getGastos()
       .then(setGastos)
       .catch(() => setGastos([]))
       .finally(() => setCargando(false));
+  };
+
+  useEffect(() => {
+    cargar();
   }, []);
 
   async function handleEliminar(g: Gasto) {
@@ -47,103 +51,206 @@ export default function GastosPage() {
     try {
       await deleteGasto(g.id);
       setGastos((prev) => prev.filter((x) => x.id !== g.id));
-    } catch {
-      setEliminando(null);
     } finally {
       setEliminando(null);
     }
   }
 
+  const total = useMemo(() => gastos.reduce((s, g) => s + (Number(g.monto) || 0), 0), [gastos]);
+  const cuentaFijos = useMemo(() => gastos.filter((g) => g.tipo === "fijo").length, [gastos]);
+
   return (
     <div className="space-y-6">
-      <div className="flex items-start justify-between">
+      <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-gray-800">Gastos operativos</h1>
-          <p className="text-gray-500 text-sm mt-1">Registro de gastos de la empresa</p>
+          <div className="flex items-center gap-2">
+            <span
+              aria-hidden="true"
+              className="inline-block h-2 w-2 shrink-0 rounded-full bg-[#4FAEB2] shadow-[0_0_0_3px_rgba(79,174,178,0.18)]"
+            />
+            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#4FAEB2]">
+              Operativo
+            </p>
+          </div>
+          <h1 className="mt-1 text-2xl font-semibold tracking-tight text-slate-900">Gastos operativos</h1>
+          <p className="mt-1 text-sm text-slate-500">Registro de gastos de la empresa</p>
         </div>
-        <Link
-          href="/gastos/nuevo"
-          className="flex items-center gap-1.5 bg-[#0EA5E9] hover:bg-[#0284C7] text-white px-4 py-2.5 rounded-lg text-sm font-medium transition-colors shadow-sm shrink-0"
+        <button
+          type="button"
+          onClick={() => setModal({ mode: "nuevo" })}
+          className="inline-flex shrink-0 items-center gap-2 rounded-xl bg-[#4FAEB2] px-4 py-2.5 text-sm font-semibold text-white shadow-sm shadow-[#4FAEB2]/20 transition-colors hover:bg-[#3F8E91]"
         >
-          <span>+</span>
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            className="h-4 w-4"
+            aria-hidden="true"
+          >
+            <path d="M12 5v14M5 12h14" />
+          </svg>
           Nuevo gasto
-        </Link>
+        </button>
       </div>
 
-      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
+      {/* Resumen KPIs */}
+      {!cargando && gastos.length > 0 && (
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <div className="rounded-2xl border border-[#4FAEB2]/45 bg-white px-5 py-4 shadow-sm">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-500">Registros</p>
+            <p className="mt-1 text-2xl font-semibold tabular-nums text-slate-900">{gastos.length}</p>
+            <p className="mt-1 text-[11px] text-slate-500">
+              <span className="font-medium text-slate-700 tabular-nums">{cuentaFijos}</span> fijos ·{" "}
+              <span className="font-medium text-slate-700 tabular-nums">{gastos.length - cuentaFijos}</span>{" "}
+              variables
+            </p>
+          </div>
+          <div className="rounded-2xl border border-[#4FAEB2]/55 bg-gradient-to-br from-white via-white to-[#4FAEB2]/8 px-5 py-4 shadow-[0_4px_18px_rgba(79,174,178,0.08)]">
+            <span
+              aria-hidden="true"
+              className="pointer-events-none absolute mt-[-16px] inset-x-0 h-[3px]"
+              style={{ display: "none" }}
+            />
+            <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#3F8E91]">Total acumulado</p>
+            <p className="mt-1 text-2xl font-semibold tabular-nums text-[#3F8E91]">{formatGs(total)}</p>
+            <p className="mt-1 text-[11px] text-slate-500">Suma de todos los gastos listados</p>
+          </div>
+          <div className="rounded-2xl border border-[#4FAEB2]/45 bg-white px-5 py-4 shadow-sm">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-500">Promedio</p>
+            <p className="mt-1 text-2xl font-semibold tabular-nums text-slate-900">
+              {formatGs(gastos.length > 0 ? Math.round(total / gastos.length) : 0)}
+            </p>
+            <p className="mt-1 text-[11px] text-slate-500">Por registro</p>
+          </div>
+        </div>
+      )}
+
+      <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
         {cargando ? (
-          <div className="py-16 text-center text-gray-400 text-sm animate-pulse">Cargando gastos…</div>
+          <div className="flex items-center justify-center gap-3 py-20 text-sm text-slate-500">
+            <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-[#4FAEB2]" />
+            Cargando gastos…
+          </div>
         ) : gastos.length === 0 ? (
-          <div className="py-16 text-center text-gray-400">
-            <p className="text-4xl mb-3">📋</p>
-            <p className="font-medium text-gray-600">No hay gastos registrados</p>
-            <Link
-              href="/gastos/nuevo"
-              className="mt-4 inline-block text-sm text-[#0EA5E9] hover:underline"
+          <div className="py-20 text-center">
+            <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full border border-[#4FAEB2]/25 bg-[#4FAEB2]/10 text-[#4FAEB2]">
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className="h-5 w-5"
+                aria-hidden="true"
+              >
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                <path d="M14 2v6h6" />
+                <path d="M8 13h8M8 17h6" />
+              </svg>
+            </div>
+            <p className="text-sm font-semibold text-slate-700">No hay gastos registrados</p>
+            <p className="mx-auto mt-1 max-w-md text-xs text-slate-500">
+              Empezá registrando el primer gasto operativo para llevar el control.
+            </p>
+            <button
+              type="button"
+              onClick={() => setModal({ mode: "nuevo" })}
+              className="mt-4 inline-flex items-center gap-1.5 rounded-xl bg-[#4FAEB2] px-3.5 py-2 text-sm font-semibold text-white shadow-sm shadow-[#4FAEB2]/20 transition-colors hover:bg-[#3F8E91]"
             >
               Registrar primer gasto
-            </Link>
+            </button>
           </div>
         ) : (
-          <table className="w-full">
-            <thead>
-              <tr className="border-b border-slate-200 bg-slate-50">
-                <th className="text-left text-sm font-semibold text-slate-600 px-5 py-3">Fecha</th>
-                <th className="text-left text-sm font-semibold text-slate-600 px-5 py-3">Categoría</th>
-                <th className="text-left text-sm font-semibold text-slate-600 px-5 py-3">Descripción</th>
-                <th className="text-left text-sm font-semibold text-slate-600 px-5 py-3">Monto</th>
-                <th className="text-left text-sm font-semibold text-slate-600 px-5 py-3">Tipo</th>
-                <th className="text-left text-sm font-semibold text-slate-600 px-5 py-3">Acciones</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-200">
-              {gastos.map((g) => (
-                <tr key={g.id} className="hover:bg-slate-50 transition-colors">
-                  <td className="px-5 py-3.5 text-sm text-gray-600">{formatFecha(g.fecha)}</td>
-                  <td className="px-5 py-3.5 text-sm font-medium text-gray-800">{g.categoria || "—"}</td>
-                  <td className="px-5 py-3.5 text-sm text-gray-600 max-w-[200px] truncate">
-                    {g.descripcion || "—"}
-                  </td>
-                  <td className="px-5 py-3.5 text-sm font-semibold text-gray-800 tabular-nums">
-                    {formatGs(g.monto)}
-                  </td>
-                  <td className="px-5 py-3.5">
-                    <span
-                      className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${tipoBadge[g.tipo] ?? "bg-slate-100"}`}
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead className="border-b border-slate-200 bg-slate-50/80 backdrop-blur-sm">
+                <tr>
+                  {["Fecha", "Categoría", "Descripción", "Monto", "Tipo", "Acciones"].map((h) => (
+                    <th
+                      key={h}
+                      className="px-5 py-3 text-left text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-500 whitespace-nowrap"
                     >
-                      {g.tipo}
-                    </span>
-                  </td>
-                  <td className="px-5 py-3.5">
-                    <div className="flex gap-2">
-                      <Link
-                        href={`/gastos/${g.id}/editar`}
-                        className="text-xs text-gray-500 hover:text-gray-800 underline"
-                      >
-                        Editar
-                      </Link>
-                      <button
-                        type="button"
-                        onClick={() => handleEliminar(g)}
-                        disabled={eliminando === g.id}
-                        className="text-xs text-red-500 hover:text-red-700 underline disabled:opacity-50"
-                      >
-                        {eliminando === g.id ? "…" : "Eliminar"}
-                      </button>
-                    </div>
-                  </td>
+                      {h}
+                    </th>
+                  ))}
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {gastos.map((g) => (
+                  <tr key={g.id} className="group transition-colors hover:bg-[#4FAEB2]/[0.04]">
+                    <td className="px-5 py-3.5 text-xs tabular-nums text-slate-600 whitespace-nowrap">
+                      {formatFecha(g.fecha)}
+                    </td>
+                    <td className="px-5 py-3.5 text-sm font-semibold text-slate-900 whitespace-nowrap">
+                      {g.categoria || "—"}
+                    </td>
+                    <td className="px-5 py-3.5 text-sm text-slate-600 max-w-[260px] truncate">
+                      {g.descripcion || "—"}
+                    </td>
+                    <td className="px-5 py-3.5 text-sm font-semibold tabular-nums text-slate-900 whitespace-nowrap">
+                      {formatGs(g.monto)}
+                    </td>
+                    <td className="px-5 py-3.5">
+                      {g.tipo === "fijo" ? (
+                        <span className="inline-flex items-center gap-1.5 rounded-full border border-[#4FAEB2]/30 bg-[#4FAEB2]/10 px-2 py-0.5 text-[11px] font-semibold text-[#3F8E91]">
+                          <span aria-hidden="true" className="h-1 w-1 rounded-full bg-[#4FAEB2]" />
+                          Fijo
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] font-semibold text-slate-600">
+                          <span aria-hidden="true" className="h-1 w-1 rounded-full bg-slate-400" />
+                          Variable
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-5 py-3.5">
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => setModal({ mode: "editar", gasto: g })}
+                          className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-700 shadow-sm transition-colors hover:border-[#4FAEB2]/60 hover:text-[#3F8E91]"
+                        >
+                          Editar
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleEliminar(g)}
+                          disabled={eliminando === g.id}
+                          className="rounded-lg border border-rose-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-rose-600 shadow-sm transition-colors hover:bg-rose-50 disabled:opacity-50"
+                        >
+                          {eliminando === g.id ? "…" : "Eliminar"}
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </div>
 
       {gastos.length > 0 && (
-        <p className="text-sm text-gray-500">
-          <span className="font-semibold text-gray-800">{gastos.length}</span> gastos
+        <p className="text-sm text-slate-500">
+          <span className="font-semibold tabular-nums text-slate-800">{gastos.length}</span> gastos
         </p>
       )}
+
+      <GastoModal
+        open={modal.mode !== "closed"}
+        gasto={modal.mode === "editar" ? modal.gasto : null}
+        onClose={() => setModal({ mode: "closed" })}
+        onSaved={() => {
+          setModal({ mode: "closed" });
+          cargar();
+        }}
+      />
     </div>
   );
 }
