@@ -19,6 +19,7 @@ import { RegistrarPagoModal } from "@/components/pagos/RegistrarPagoModal";
 import { SifenEstadoBadge } from "@/components/sifen/SifenEstadoBadge";
 import { useFacturaSifenEstados } from "@/hooks/useFacturaSifenEstados";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
+import EdgeScrollArea from "@/components/ui/EdgeScrollArea";
 import { getClientes, clienteNombre } from "@/lib/clientes/storage";
 import { etiquetaVisibleTipoServicio } from "@/lib/clientes/tipo-servicio-catalogo";
 import { useMapNombreTipoServicioCatalogo } from "@/lib/clientes/use-map-nombre-tipo-servicio";
@@ -31,8 +32,8 @@ import type { EstadoFactura, Factura } from "@/lib/gestion-clientes/types";
 // ── Estilos ────────────────────────────────────────────────────────────────────
 
 const fInputClass =
-  "w-full border border-slate-200 rounded-lg px-2.5 py-1.5 text-sm outline-none focus:ring-2 focus:ring-[#0EA5E9] focus:outline-none bg-white";
-const fLabelClass = "mb-0.5 block text-[11px] font-medium text-slate-500";
+  "w-full border border-slate-200 rounded-lg px-2.5 py-1.5 text-sm bg-white shadow-sm transition-colors placeholder:text-slate-400 hover:border-[#4FAEB2]/60 focus:border-[#4FAEB2] focus:outline-none focus:ring-2 focus:ring-[#4FAEB2]/20";
+const fLabelClass = "mb-0.5 block text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -70,39 +71,79 @@ function facturaPermiteCobro(f: Factura) {
 // ── Badges ────────────────────────────────────────────────────────────────────
 
 function BadgeEstado({ estado }: { estado: Cliente["estado"] }) {
+  const activo = estado === "activo";
   return (
-    <span className={`inline-flex items-center gap-1 text-xs font-semibold px-1.5 py-0.5 rounded-full ${
-      estado === "activo" ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"
-    }`}>
-      <span className={`w-1.5 h-1.5 rounded-full ${estado === "activo" ? "bg-green-500" : "bg-gray-400"}`} />
-      {estado === "activo" ? "Activo" : "Inactivo"}
+    <span
+      className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[11px] font-semibold ${
+        activo
+          ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+          : "border-slate-200 bg-slate-50 text-slate-500"
+      }`}
+    >
+      <span
+        aria-hidden="true"
+        className={`h-1.5 w-1.5 rounded-full ${activo ? "bg-emerald-500" : "bg-slate-400"}`}
+      />
+      {activo ? "Activo" : "Inactivo"}
     </span>
   );
 }
 
 function BadgeFactura({ estado }: { estado: string }) {
-  const cfg: Record<string, string> = {
-    Pagado:        "bg-green-100 text-green-700",
-    Pendiente:     "bg-amber-100 text-amber-700",
-    Vencido:       "bg-red-100 text-red-700",
-    Anulado:       "bg-gray-100 text-gray-500",
-    "Corregida NC": "bg-teal-100 text-teal-800",
+  const cfg: Record<string, { cls: string; dot: string }> = {
+    Pagado: {
+      cls: "border-emerald-200 bg-emerald-50 text-emerald-700",
+      dot: "bg-emerald-500",
+    },
+    Pendiente: {
+      cls: "border-amber-200 bg-amber-50 text-amber-700",
+      dot: "bg-amber-500",
+    },
+    Vencido: {
+      cls: "border-red-200 bg-red-50 text-red-700",
+      dot: "bg-red-500",
+    },
+    Anulado: {
+      cls: "border-slate-200 bg-slate-50 text-slate-500",
+      dot: "bg-slate-400",
+    },
+    "Corregida NC": {
+      cls: "border-[#4FAEB2]/30 bg-[#4FAEB2]/10 text-[#3F8E91]",
+      dot: "bg-[#4FAEB2]",
+    },
   };
+  const it = cfg[estado] ?? cfg.Anulado;
   return (
-    <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${cfg[estado] ?? "bg-gray-100 text-gray-500"}`}>
+    <span
+      className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[11px] font-semibold ${it.cls}`}
+    >
+      <span aria-hidden="true" className={`h-1.5 w-1.5 rounded-full ${it.dot}`} />
       {estado === "Corregida NC" ? "Corregida (NC SET)" : estado}
     </span>
   );
 }
 
 function BadgeTipo({ tipo }: { tipo: string }) {
-  const cfg: Record<string, string> = {
-    contado:     "bg-gray-50 text-gray-500 border-gray-200",
-    credito:     "bg-blue-50 text-blue-600 border-blue-100",
-    suscripcion: "bg-violet-50 text-violet-600 border-violet-100",
+  const cfg: Record<string, { cls: string; dot: string }> = {
+    contado: {
+      cls: "border-slate-200 bg-slate-50 text-slate-600",
+      dot: "bg-slate-400",
+    },
+    credito: {
+      cls: "border-[#4FAEB2]/30 bg-[#4FAEB2]/10 text-[#3F8E91]",
+      dot: "bg-[#4FAEB2]",
+    },
+    suscripcion: {
+      cls: "border-violet-200 bg-violet-50 text-violet-700",
+      dot: "bg-violet-500",
+    },
   };
+  const it = cfg[tipo] ?? cfg.contado;
   return (
-    <span className={`text-xs px-1.5 py-0.5 rounded border capitalize ${cfg[tipo] ?? "bg-gray-50 text-gray-500 border-gray-200"}`}>
+    <span
+      className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[11px] font-semibold capitalize ${it.cls}`}
+    >
+      <span aria-hidden="true" className={`h-1.5 w-1.5 rounded-full ${it.dot}`} />
       {tipo}
     </span>
   );
@@ -125,7 +166,7 @@ function FacturaRowAccionesSifen({
   const kudeView = `/api/facturas/${facturaId}/sifen/kude`;
   const kudeDl = `/api/facturas/${facturaId}/sifen/kude?download=1`;
   const btnBase =
-    "inline-flex items-center justify-center w-8 h-8 rounded-lg transition-colors text-slate-500 hover:text-slate-900 hover:bg-slate-100";
+    "inline-flex items-center justify-center w-8 h-8 rounded-lg border border-transparent transition-colors text-slate-500 hover:border-[#4FAEB2]/40 hover:text-[#3F8E91] hover:bg-[#4FAEB2]/10";
   const disabledCls = "text-slate-200 cursor-not-allowed opacity-45 pointer-events-none";
 
   return (
@@ -177,7 +218,7 @@ function FacturaRowAccionesSifen({
         <button
           type="button"
           onClick={onCobrar}
-          className="ml-0.5 text-[11px] font-semibold text-slate-600 hover:text-slate-900 whitespace-nowrap rounded-md px-1.5 py-1 hover:bg-slate-100"
+          className="ml-0.5 inline-flex items-center gap-1 whitespace-nowrap rounded-lg bg-[#4FAEB2] px-2.5 py-1 text-[11px] font-semibold text-white shadow-sm shadow-[#4FAEB2]/20 transition-colors hover:bg-[#3F8E91]"
           title="Registrar cobro (mismo formulario que en Pagos)"
         >
           Cobrar
@@ -205,9 +246,10 @@ function BotonOperativo({
   onClick?: () => void;
 }) {
   const base =
-    "flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-[11px] font-medium transition-colors";
-  const activeClass  = "border-gray-800 bg-gray-900 text-white hover:bg-gray-700";
-  const disabledClass = "border-gray-200 bg-gray-50 text-gray-400 cursor-not-allowed";
+    "flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[11px] font-semibold transition-colors";
+  const activeClass =
+    "border-[#4FAEB2] bg-[#4FAEB2] text-white shadow-sm shadow-[#4FAEB2]/20 hover:bg-[#3F8E91] hover:border-[#3F8E91]";
+  const disabledClass = "border-slate-200 bg-slate-50 text-slate-400 cursor-not-allowed";
   const iconEl = iconNode ?? <span>{icon}</span>;
 
   if (activo && href) {
@@ -238,7 +280,13 @@ function BotonOperativo({
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
-    <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">{children}</p>
+    <div className="flex items-center gap-2">
+      <span
+        aria-hidden="true"
+        className="inline-block h-1.5 w-1.5 rounded-full bg-[#4FAEB2] shadow-[0_0_0_3px_rgba(79,174,178,0.18)]"
+      />
+      <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#4FAEB2]">{children}</p>
+    </div>
   );
 }
 
@@ -327,93 +375,138 @@ function ModalFacturacion({
     }
   }
 
-  const badgeClass: Record<string, string> = {
-    emitida:   "bg-green-100 text-green-700",
-    proyectada: "bg-gray-100 text-gray-600",
-    vencida:  "bg-red-100 text-red-700",
-    pendiente: "bg-amber-100 text-amber-700",
+  const badgeClass: Record<string, { cls: string; dot: string; label: string }> = {
+    emitida: {
+      cls: "border-emerald-200 bg-emerald-50 text-emerald-700",
+      dot: "bg-emerald-500",
+      label: "Emitida",
+    },
+    proyectada: {
+      cls: "border-slate-200 bg-slate-50 text-slate-600",
+      dot: "bg-slate-400",
+      label: "Proyectada",
+    },
+    vencida: {
+      cls: "border-red-200 bg-red-50 text-red-700",
+      dot: "bg-red-500",
+      label: "Vencida",
+    },
+    pendiente: {
+      cls: "border-amber-200 bg-amber-50 text-amber-700",
+      dot: "bg-amber-500",
+      label: "Pendiente",
+    },
   };
 
   return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/55 p-4 backdrop-blur-sm" onClick={onClose}>
       <div
-        className="bg-white rounded-xl shadow-xl max-w-lg w-full max-h-[85vh] flex flex-col"
+        className="relative flex max-h-[88vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl shadow-[#4FAEB2]/10 ring-1 ring-[#4FAEB2]/15"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="shrink-0 px-6 py-4 border-b border-gray-200">
-          <h3 className="text-lg font-bold text-gray-900">Estado de Facturación</h3>
-          <p className="text-sm text-gray-500 mt-0.5">{nombreCliente}</p>
+        <span
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-x-0 top-0 z-10 h-1 bg-gradient-to-r from-[#4FAEB2] via-[#4FAEB2]/80 to-[#4FAEB2]/40"
+        />
+
+        <div className="shrink-0 border-b border-slate-100 bg-white px-6 py-4">
+          <div className="flex items-center gap-2">
+            <span
+              aria-hidden="true"
+              className="inline-block h-1.5 w-1.5 rounded-full bg-[#4FAEB2] shadow-[0_0_0_3px_rgba(79,174,178,0.18)]"
+            />
+            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#4FAEB2]">
+              Estado de facturación
+            </p>
+          </div>
+          <h3 className="mt-1 text-lg font-bold tracking-tight text-slate-900">{nombreCliente}</h3>
           {data?.suscripcion && (
-            <p className="text-sm font-medium text-gray-700 mt-2">
-              Suscripción mensual — {data.suscripcion.moneda === "USD" ? "USD" : "Gs."} {data.suscripcion.precio.toLocaleString("es-PY")}
+            <p className="mt-2 inline-flex items-center gap-2 rounded-full border border-[#4FAEB2]/30 bg-[#4FAEB2]/10 px-3 py-0.5 text-xs font-semibold text-[#3F8E91]">
+              Suscripción mensual ·{" "}
+              <span className="tabular-nums">
+                {data.suscripcion.moneda === "USD" ? "USD" : "Gs."}{" "}
+                {data.suscripcion.precio.toLocaleString("es-PY")}
+              </span>
             </p>
           )}
         </div>
 
-        <div className="flex-1 overflow-y-auto px-6 py-4">
+        <div className="flex-1 overflow-y-auto bg-slate-50/50 px-6 py-4">
           {loading ? (
-            <div className="py-12 text-center text-sm text-gray-500">Cargando...</div>
+            <div className="py-12 text-center text-sm text-slate-500">Cargando…</div>
           ) : error ? (
             <div className="py-12 text-center text-sm text-red-600">{error}</div>
           ) : !data?.suscripcion ? (
-            <div className="py-12 text-center text-sm text-gray-500">
+            <div className="py-12 text-center text-sm text-slate-500">
               Este cliente no tiene suscripción activa para proyectar facturación.
             </div>
           ) : (
             <div className="space-y-4">
               {errorEmitir && (
-                <div className="flex items-center gap-2 bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-sm text-red-700">
-                  <span>⚠</span>
+                <div className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                  <span aria-hidden="true">⚠</span>
                   <span>{errorEmitir}</span>
                 </div>
               )}
               <div className="space-y-2">
-                {data.facturacion.map((item) => (
-                  <div
-                    key={item.mes}
-                    className="flex items-center justify-between gap-4 py-3 px-4 rounded-lg border border-gray-100 hover:bg-gray-50/60"
-                  >
-                    <div>
-                      <p className="text-sm font-semibold text-gray-800">{formatMesLabel(item.mes)}</p>
-                      <span className={`inline-flex text-xs font-medium px-2 py-0.5 rounded-full mt-1 ${badgeClass[item.badge_estado] ?? badgeClass.proyectada}`}>
-                        {item.badge_estado === "emitida" ? "Emitida" : item.badge_estado === "proyectada" ? "Proyectada" : item.badge_estado === "vencida" ? "Vencida" : "Pendiente"}
-                      </span>
-                    </div>
-                    <div className="shrink-0 text-sm font-semibold text-gray-700 tabular-nums">
-                      {data.suscripcion?.moneda === "USD" ? "USD" : "Gs."} {(data.suscripcion?.precio ?? 0).toLocaleString("es-PY")}
-                    </div>
-                    <div className="shrink-0">
-                      {item.estado === "proyectada" && (
-                        <button
-                          type="button"
-                          disabled={emitiendo === item.mes}
-                          onClick={() => handleEmitir(item.mes)}
-                          className="text-xs font-medium text-[#0EA5E9] hover:text-[#0284C7] hover:underline disabled:opacity-50 disabled:cursor-not-allowed"
+                {data.facturacion.map((item) => {
+                  const cfg = badgeClass[item.badge_estado] ?? badgeClass.proyectada;
+                  return (
+                    <div
+                      key={item.mes}
+                      className="flex items-center justify-between gap-4 rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm transition-colors hover:border-[#4FAEB2]/40 hover:bg-[#4FAEB2]/[0.04]"
+                    >
+                      <div>
+                        <p className="text-sm font-semibold tracking-tight text-slate-800">
+                          {formatMesLabel(item.mes)}
+                        </p>
+                        <span
+                          className={`mt-1 inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[11px] font-semibold ${cfg.cls}`}
                         >
-                          {emitiendo === item.mes ? "Emitiendo..." : "Emitir factura"}
-                        </button>
-                      )}
-                      {item.factura_id && (
-                        <Link
-                          href={`/facturas/${item.factura_id}`}
-                          className="text-xs font-medium text-[#0EA5E9] hover:text-[#0284C7] hover:underline"
-                        >
-                          Ver factura
-                        </Link>
-                      )}
+                          <span
+                            aria-hidden="true"
+                            className={`h-1.5 w-1.5 rounded-full ${cfg.dot}`}
+                          />
+                          {cfg.label}
+                        </span>
+                      </div>
+                      <div className="shrink-0 text-sm font-semibold tabular-nums text-slate-700">
+                        {data.suscripcion?.moneda === "USD" ? "USD" : "Gs."}{" "}
+                        {(data.suscripcion?.precio ?? 0).toLocaleString("es-PY")}
+                      </div>
+                      <div className="shrink-0">
+                        {item.estado === "proyectada" && (
+                          <button
+                            type="button"
+                            disabled={emitiendo === item.mes}
+                            onClick={() => handleEmitir(item.mes)}
+                            className="rounded-lg bg-[#4FAEB2] px-3 py-1.5 text-xs font-semibold text-white shadow-sm shadow-[#4FAEB2]/20 transition-colors hover:bg-[#3F8E91] disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            {emitiendo === item.mes ? "Emitiendo…" : "Emitir factura"}
+                          </button>
+                        )}
+                        {item.factura_id && (
+                          <Link
+                            href={`/facturas/${item.factura_id}`}
+                            className="inline-flex items-center gap-1 rounded-lg border border-[#4FAEB2]/40 bg-white px-3 py-1.5 text-xs font-semibold text-[#3F8E91] transition-colors hover:bg-[#4FAEB2]/10"
+                          >
+                            Ver factura
+                          </Link>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           )}
         </div>
 
-        <div className="shrink-0 px-6 py-4 border-t border-gray-200">
+        <div className="shrink-0 border-t border-slate-100 bg-white px-6 py-3">
           <button
             type="button"
             onClick={onClose}
-            className="w-full text-sm font-medium text-gray-600 border border-gray-200 rounded-lg py-2.5 hover:bg-gray-50 transition-colors"
+            className="w-full rounded-xl border border-slate-200 bg-white py-2.5 text-sm font-medium text-slate-700 transition-colors hover:border-[#4FAEB2]/60 hover:text-[#4FAEB2]"
           >
             Cerrar
           </button>
@@ -501,17 +594,19 @@ function ClienteBusquedaGlobal({
             setQuery("");
             setOpen(true);
           }}
-          className="inline-flex max-w-full min-w-0 items-center gap-2 rounded-lg border border-slate-200/90 bg-white px-2.5 py-1.5 text-left text-xs font-medium text-slate-800 shadow-sm transition hover:border-slate-300 hover:bg-slate-50"
+          className="inline-flex max-w-full min-w-0 items-center gap-2 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-left text-xs font-medium text-slate-800 shadow-sm transition-colors hover:border-[#4FAEB2]/60 hover:bg-[#4FAEB2]/[0.04]"
           title="Buscar otro cliente"
         >
-          <IconoLupa className="h-3.5 w-3.5 shrink-0 text-slate-400" />
+          <IconoLupa className="h-3.5 w-3.5 shrink-0 text-[#4FAEB2]" />
           <span className="min-w-0 truncate">{clienteNombre(selected)}</span>
-          <span className="shrink-0 text-[10px] font-semibold uppercase tracking-wide text-slate-400">Cambiar</span>
+          <span className="shrink-0 rounded-full bg-[#4FAEB2]/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[#3F8E91]">
+            Cambiar
+          </span>
         </button>
         <button
           type="button"
           onClick={onClear}
-          className="shrink-0 rounded-md p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"
+          className="shrink-0 rounded-md p-1.5 text-slate-400 transition-colors hover:bg-red-50 hover:text-red-600"
           title="Quitar cliente"
         >
           <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -524,8 +619,8 @@ function ClienteBusquedaGlobal({
 
   const shellClass =
     variant === "landing"
-      ? "w-full rounded-xl border border-slate-200/90 bg-white shadow-sm ring-1 ring-slate-900/[0.04] transition focus-within:border-sky-400/80 focus-within:ring-2 focus-within:ring-sky-200/70"
-      : "w-full min-w-[200px] rounded-lg border border-slate-200 bg-white shadow-lg ring-1 ring-slate-900/5 transition focus-within:border-sky-400/80 focus-within:ring-2 focus-within:ring-sky-200/70";
+      ? "w-full rounded-xl border border-slate-200 bg-white shadow-sm ring-1 ring-[#4FAEB2]/15 transition focus-within:border-[#4FAEB2] focus-within:ring-2 focus-within:ring-[#4FAEB2]/20"
+      : "w-full min-w-[200px] rounded-lg border border-slate-200 bg-white shadow-lg ring-1 ring-[#4FAEB2]/15 transition focus-within:border-[#4FAEB2] focus-within:ring-2 focus-within:ring-[#4FAEB2]/20";
 
   return (
     <div
@@ -534,7 +629,7 @@ function ClienteBusquedaGlobal({
     >
       <div className={shellClass}>
         <div className="flex items-center gap-2 px-3 py-2 sm:py-2.5">
-          <IconoLupa className="h-4 w-4 shrink-0 text-slate-400" />
+          <IconoLupa className="h-4 w-4 shrink-0 text-[#4FAEB2]" />
           <input
             ref={inputRef}
             type="search"
@@ -551,7 +646,7 @@ function ClienteBusquedaGlobal({
             <button
               type="button"
               onClick={() => setQuery("")}
-              className="shrink-0 rounded px-1.5 py-0.5 text-[11px] font-medium text-slate-500 hover:bg-slate-100 hover:text-slate-800"
+              className="shrink-0 rounded px-1.5 py-0.5 text-[11px] font-medium text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800"
             >
               Limpiar
             </button>
@@ -563,7 +658,7 @@ function ClienteBusquedaGlobal({
                 setOpen(false);
                 setQuery("");
               }}
-              className="shrink-0 text-[11px] font-semibold text-slate-500 hover:text-slate-800"
+              className="shrink-0 text-[11px] font-semibold text-[#3F8E91] transition-colors hover:text-[#4FAEB2]"
             >
               Listo
             </button>
@@ -572,7 +667,7 @@ function ClienteBusquedaGlobal({
       </div>
 
       {open && (
-        <div className="absolute left-0 right-0 top-full z-50 mt-1 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl">
+        <div className="absolute left-0 right-0 top-full z-50 mt-1 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl ring-1 ring-[#4FAEB2]/15">
           <div className="max-h-64 overflow-y-auto overscroll-y-contain">
             {resultados.length === 0 ? (
               <div className="px-4 py-8 text-center text-xs text-slate-400">
@@ -584,8 +679,8 @@ function ClienteBusquedaGlobal({
                   key={c.id}
                   type="button"
                   onClick={() => handleSelect(c)}
-                  className={`w-full border-b border-slate-100 px-3 py-2 text-left transition last:border-0 hover:bg-slate-50 ${
-                    i === 0 && query.trim() ? "bg-sky-50/70" : ""
+                  className={`w-full border-b border-slate-100 px-3 py-2 text-left transition-colors last:border-0 hover:bg-[#4FAEB2]/[0.06] ${
+                    i === 0 && query.trim() ? "bg-[#4FAEB2]/10" : ""
                   }`}
                 >
                   <p className="truncate text-xs font-semibold text-slate-900">{clienteNombre(c)}</p>
@@ -800,11 +895,23 @@ function GestionClientesPageInner() {
       <header className="shrink-0 border-b border-slate-200/80 pb-2">
         <div className="flex flex-wrap items-end justify-between gap-2">
           <div>
-            <h1 className="text-lg font-semibold tracking-tight text-slate-900">Gestión del Cliente</h1>
+            <div className="flex items-center gap-2">
+              <span
+                aria-hidden="true"
+                className="inline-block h-1.5 w-1.5 rounded-full bg-[#4FAEB2] shadow-[0_0_0_3px_rgba(79,174,178,0.18)]"
+              />
+              <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#4FAEB2]">
+                Gestión
+              </p>
+            </div>
+            <h1 className="mt-0.5 text-lg font-semibold tracking-tight text-slate-900">
+              Gestión del Cliente
+            </h1>
             <p className="text-[11px] text-slate-500">Panel operativo · consultas y tipificaciones</p>
           </div>
           {clientes.length > 0 ? (
-            <span className="text-[10px] font-medium uppercase tracking-wide text-slate-400 tabular-nums">
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-[#4FAEB2]/30 bg-[#4FAEB2]/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[#3F8E91] tabular-nums">
+              <span aria-hidden="true" className="h-1 w-1 rounded-full bg-[#4FAEB2]" />
               {clientes.length} en cartera
             </span>
           ) : null}
@@ -812,13 +919,16 @@ function GestionClientesPageInner() {
       </header>
 
       <div
-        className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-slate-200/90 bg-white shadow-sm ring-1 ring-slate-900/[0.03]"
+        className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm ring-1 ring-[#4FAEB2]/15"
         style={{ minHeight: "min(560px, calc(100dvh - 10.5rem))" }}
       >
         {selected === null ? (
           <div className="flex flex-1 flex-col items-center justify-center gap-5 px-4 py-8">
-            <div className="space-y-1 text-center">
-              <p className="text-sm font-semibold text-slate-800">Buscá un cliente</p>
+            <div className="space-y-2 text-center">
+              <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full border border-[#4FAEB2]/30 bg-[#4FAEB2]/10 text-[#4FAEB2]">
+                <IconoLupa className="h-5 w-5" />
+              </div>
+              <p className="text-sm font-semibold tracking-tight text-slate-800">Buscá un cliente</p>
               <p className="mx-auto max-w-md text-xs leading-relaxed text-slate-500">
                 Un solo campo cubre nombre, razón social, RUC, teléfonos, correos, documento y código interno.
               </p>
@@ -846,16 +956,16 @@ function GestionClientesPageInner() {
                   type="button"
                   onClick={() => setPanelFiltrosFacturas((v) => !v)}
                   aria-expanded={panelFiltrosFacturas}
-                  className={`inline-flex shrink-0 items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[11px] font-semibold transition ${
+                  className={`inline-flex shrink-0 items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[11px] font-semibold transition-colors ${
                     panelFiltrosFacturas || filtrosFacturasActivos
-                      ? "border-sky-300 bg-sky-50 text-sky-900"
-                      : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"
+                      ? "border-[#4FAEB2]/45 bg-[#4FAEB2]/10 text-[#3F8E91]"
+                      : "border-slate-200 bg-white text-slate-600 hover:border-[#4FAEB2]/60 hover:text-[#3F8E91]"
                   }`}
                 >
                   <SlidersHorizontal className="h-3.5 w-3.5" aria-hidden />
                   Filtros facturas
                   {filtrosFacturasActivos ? (
-                    <span className="ml-0.5 inline-flex h-1.5 w-1.5 rounded-full bg-sky-500" title="Hay filtros aplicados" />
+                    <span className="ml-0.5 inline-flex h-1.5 w-1.5 rounded-full bg-[#4FAEB2]" title="Hay filtros aplicados" />
                   ) : null}
                 </button>
               </div>
@@ -887,7 +997,7 @@ function GestionClientesPageInner() {
                         name="incluir_saldo_cero"
                         checked={filters.incluir_saldo_cero}
                         onChange={handleChange}
-                        className="rounded border-gray-300 accent-gray-800"
+                        className="h-4 w-4 rounded border-slate-300 text-[#4FAEB2] accent-[#4FAEB2] focus:ring-[#4FAEB2]/30"
                       />
                       <span className="text-xs text-slate-600">Incluir saldo cero</span>
                     </label>
@@ -897,7 +1007,7 @@ function GestionClientesPageInner() {
                         name="incluir_factura_contado"
                         checked={filters.incluir_factura_contado}
                         onChange={handleChange}
-                        className="rounded border-gray-300 accent-gray-800"
+                        className="h-4 w-4 rounded border-slate-300 text-[#4FAEB2] accent-[#4FAEB2] focus:ring-[#4FAEB2]/30"
                       />
                       <span className="text-xs text-slate-600">Incluir factura contado</span>
                     </label>
@@ -912,7 +1022,7 @@ function GestionClientesPageInner() {
                     <button
                       type="button"
                       onClick={limpiarFiltrosFacturas}
-                      className="self-end rounded-lg border border-slate-200 px-3 py-2 text-xs font-medium text-slate-600 transition hover:bg-slate-50"
+                      className="self-end rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 transition-colors hover:border-[#4FAEB2]/60 hover:text-[#3F8E91]"
                     >
                       Restablecer filtros
                     </button>
@@ -951,8 +1061,8 @@ function GestionClientesPageInner() {
                     { label: "Fecha alta", value: formatFechaIso(selected.created_at) },
                   ].map((item) => (
                     <div key={item.label} className="min-w-0">
-                      <p className="text-[10px] font-medium uppercase tracking-wide text-slate-400">{item.label}</p>
-                      <p className="truncate text-xs font-medium text-slate-800" title={item.value}>
+                      <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">{item.label}</p>
+                      <p className="mt-0.5 truncate text-xs font-medium text-slate-800" title={item.value}>
                         {item.value}
                       </p>
                     </div>
@@ -989,33 +1099,33 @@ function GestionClientesPageInner() {
                 <button
                   type="button"
                   onClick={() => setFacturasDetalleAbierto((v) => !v)}
-                  className="flex w-full items-center justify-between gap-2 border-b border-slate-200/60 bg-slate-50/90 px-3 py-2.5 text-left transition hover:bg-slate-100/90 sm:px-4"
+                  className="flex w-full items-center justify-between gap-2 border-b border-slate-200/60 bg-slate-50/90 px-3 py-2.5 text-left transition-colors hover:bg-[#4FAEB2]/[0.04] sm:px-4"
                 >
                   <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1.5">
-                    <span className="inline-flex shrink-0 text-slate-500" aria-hidden>
+                    <span className="inline-flex shrink-0 text-[#4FAEB2]" aria-hidden>
                       {facturasDetalleAbierto ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
                     </span>
-                    <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-600">Facturas</span>
+                    <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#4FAEB2]">Facturas</span>
                     <span className="hidden text-[10px] font-normal text-slate-400 sm:inline">del cliente</span>
                     {facturasFiltradas.length !== facturas.length ? (
-                      <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-800 ring-1 ring-amber-200/80">
+                      <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-800">
                         {facturasFiltradas.length}/{facturas.length} con filtros
                       </span>
                     ) : null}
                     <span className="hidden h-3 w-px bg-slate-200 sm:inline" />
-                    <span className="rounded-md bg-white/90 px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-slate-700 ring-1 ring-slate-200/80">
+                    <span className="rounded-md border border-slate-200 bg-white px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-slate-700">
                       {facturasOrdenadas.length} docs
                     </span>
-                    <span className="rounded-md bg-white/90 px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-slate-700 ring-1 ring-slate-200/80">
+                    <span className="rounded-md border border-[#4FAEB2]/30 bg-[#4FAEB2]/10 px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-[#3F8E91]">
                       Saldo Gs. {formatGs(totalSaldo)}
                     </span>
                     {cntVencidas > 0 ? (
-                      <span className="rounded-md bg-red-50 px-1.5 py-0.5 text-[10px] font-semibold text-red-700 ring-1 ring-red-100">
+                      <span className="rounded-md border border-red-200 bg-red-50 px-1.5 py-0.5 text-[10px] font-semibold text-red-700">
                         {cntVencidas} venc.
                       </span>
                     ) : null}
                   </div>
-                  <span className="shrink-0 text-[10px] font-semibold text-sky-700">
+                  <span className="shrink-0 text-[10px] font-semibold text-[#3F8E91]">
                     {facturasDetalleAbierto ? "Ocultar detalle" : "Ver detalle"}
                   </span>
                 </button>
@@ -1023,17 +1133,17 @@ function GestionClientesPageInner() {
                 {facturasDetalleAbierto ? (
                   <div>
                     {facturasOrdenadas.length > 0 ? (
-                      <div className="grid grid-cols-2 gap-1.5 border-b border-slate-100 bg-slate-50/50 p-2 sm:grid-cols-3 lg:grid-cols-6">
-                        <div className="rounded-lg border border-slate-100 bg-white px-2 py-1.5">
-                          <p className="text-[10px] text-slate-400">Facturas</p>
+                      <div className="grid grid-cols-2 gap-1.5 border-b border-slate-100 bg-slate-50/50 p-2 sm:grid-cols-3 lg:grid-cols-7">
+                        <div className="rounded-lg border border-slate-200 bg-white px-2 py-1.5">
+                          <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">Facturas</p>
                           <p className="text-sm font-bold tabular-nums text-slate-800">{facturasOrdenadas.length}</p>
                         </div>
-                        <div className="rounded-lg border border-slate-100 bg-white px-2 py-1.5">
-                          <p className="text-[10px] text-slate-400">Monto total</p>
+                        <div className="rounded-lg border border-slate-200 bg-white px-2 py-1.5">
+                          <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">Monto total</p>
                           <p className="text-[11px] font-bold tabular-nums leading-snug text-slate-800">Gs. {formatGs(totalMonto)}</p>
                         </div>
-                        <div className="rounded-lg border border-slate-100 bg-white px-2 py-1.5">
-                          <p className="text-[10px] text-slate-400">Saldo pend.</p>
+                        <div className="rounded-lg border border-[#4FAEB2]/30 bg-[#4FAEB2]/8 px-2 py-1.5">
+                          <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#3F8E91]">Saldo pend.</p>
                           <p
                             className={`text-[11px] font-bold tabular-nums leading-snug ${
                               totalSaldo > 0 ? "text-red-600" : "text-emerald-600"
@@ -1042,21 +1152,21 @@ function GestionClientesPageInner() {
                             Gs. {formatGs(totalSaldo)}
                           </p>
                         </div>
-                        <div className="rounded-lg border border-red-100 bg-white px-2 py-1.5">
-                          <p className="text-[10px] text-red-500">Vencidas</p>
+                        <div className="rounded-lg border border-red-200 bg-white px-2 py-1.5">
+                          <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-red-500">Vencidas</p>
                           <p className="text-sm font-bold text-red-600">{cntVencidas}</p>
                         </div>
-                        <div className="rounded-lg border border-amber-100 bg-white px-2 py-1.5">
-                          <p className="text-[10px] text-amber-600">Pendientes</p>
+                        <div className="rounded-lg border border-amber-200 bg-white px-2 py-1.5">
+                          <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-amber-600">Pendientes</p>
                           <p className="text-sm font-bold text-amber-700">{cntPendientes}</p>
                         </div>
-                        <div className="rounded-lg border border-emerald-100 bg-white px-2 py-1.5">
-                          <p className="text-[10px] text-emerald-600">Pagadas</p>
+                        <div className="rounded-lg border border-emerald-200 bg-white px-2 py-1.5">
+                          <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-emerald-600">Pagadas</p>
                           <p className="text-sm font-bold text-emerald-700">{cntPagadas}</p>
                         </div>
-                        <div className="rounded-lg border border-teal-100 bg-white px-2 py-1.5">
-                          <p className="text-[10px] text-teal-700">NC (SET)</p>
-                          <p className="text-sm font-bold text-teal-800">{cntCorregidaNc}</p>
+                        <div className="rounded-lg border border-[#4FAEB2]/30 bg-white px-2 py-1.5">
+                          <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#3F8E91]">NC (SET)</p>
+                          <p className="text-sm font-bold text-[#3F8E91]">{cntCorregidaNc}</p>
                         </div>
                       </div>
                     ) : null}
@@ -1071,7 +1181,7 @@ function GestionClientesPageInner() {
                         ) : null}
                       </div>
                     ) : (
-                      <div className="overflow-x-auto">
+                      <EdgeScrollArea>
                         <table className="w-full min-w-[1040px] text-sm">
                           <thead className="sticky top-0 z-[1] border-b border-slate-200 bg-slate-50 shadow-sm">
                             <tr>
@@ -1090,19 +1200,21 @@ function GestionClientesPageInner() {
                               ].map((h) => (
                                 <th
                                   key={h}
-                                  className="whitespace-nowrap px-2 py-2 text-left text-[10px] font-semibold uppercase tracking-wide text-slate-600 sm:px-3 sm:text-xs"
+                                  className="whitespace-nowrap px-2 py-2 text-left text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-500 sm:px-3"
                                 >
                                   {h}
                                 </th>
                               ))}
                             </tr>
                           </thead>
-                          <tbody className="divide-y divide-slate-50">
+                          <tbody className="divide-y divide-slate-100">
                             {facturasOrdenadas.map((f) => (
                               <tr
                                 key={f.id}
                                 className={`transition-colors ${
-                                  f._estadoEfectivo === "Vencido" ? "bg-red-50/50 hover:bg-red-50/80" : "hover:bg-slate-50/80"
+                                  f._estadoEfectivo === "Vencido"
+                                    ? "bg-red-50/50 hover:bg-red-50/80"
+                                    : "hover:bg-[#4FAEB2]/[0.04]"
                                 }`}
                               >
                                 <td className="px-2 py-2 sm:px-3">
@@ -1111,7 +1223,7 @@ function GestionClientesPageInner() {
                                 <td className="px-2 py-2 sm:px-3">
                                   <Link
                                     href={`/facturas/${f.id}`}
-                                    className="font-mono text-xs font-semibold text-sky-600 hover:text-sky-800 hover:underline"
+                                    className="font-mono text-xs font-semibold text-[#3F8E91] transition-colors hover:text-[#4FAEB2] hover:underline"
                                   >
                                     {f.numero_factura}
                                   </Link>
@@ -1167,7 +1279,7 @@ function GestionClientesPageInner() {
                             ))}
                           </tbody>
                         </table>
-                      </div>
+                      </EdgeScrollArea>
                     )}
 
                     {facturasOrdenadas.length > 0 ? (
