@@ -83,7 +83,19 @@ type RecipientRow = {
   first_reply_at?: string | null;
 };
 
-export default function CampanasDetailClient({ campaignId }: { campaignId: string }) {
+export type CampanasDetailClientProps = {
+  campaignId: string;
+  variant?: "page" | "modal";
+  onClose?: () => void;
+};
+
+export default function CampanasDetailClient({
+  campaignId,
+  variant = "page",
+  onClose: _onClose,
+}: CampanasDetailClientProps) {
+  void _onClose;
+  const isModal = variant === "modal";
   const [campaign, setCampaign] = useState<CampaignDetail | null>(null);
   const [events, setEvents] = useState<EvRow[]>([]);
   const [recipients, setRecipients] = useState<unknown[]>([]);
@@ -450,7 +462,9 @@ export default function CampanasDetailClient({ campaignId }: { campaignId: strin
   }
 
   if (loading || !campaign) {
-    return <div className="p-6 text-sm text-slate-500">Cargando…</div>;
+    return (
+      <div className={`text-sm text-slate-500 ${isModal ? "p-4" : "p-6"}`}>Cargando…</div>
+    );
   }
 
   const canImport = campaign.status === "draft" || campaign.status === "ready";
@@ -459,20 +473,71 @@ export default function CampanasDetailClient({ campaignId }: { campaignId: strin
   const canEditButtonActions = String(campaign.status ?? "") !== "cancelled";
   const lockButtonActionsSection = savingButtonActions || !canEditButtonActions;
 
-  return (
-    <div className="mx-auto max-w-6xl space-y-6 p-6">
-      <div>
-        <Link href="/dashboard/campanas" className="text-sm text-indigo-600 hover:underline">
-          ← Campañas
-        </Link>
-        <h1 className="mt-2 text-xl font-semibold text-slate-900">{String(campaign.name)}</h1>
-        <p className="text-sm text-slate-500">
-          Estado: <strong>{String(campaign.status)}</strong> · Plantilla {String(campaign.template_name)} (
-          {String(campaign.template_language)})
-        </p>
-      </div>
+  const statusBadgeClass = (() => {
+    const s = String(campaign.status ?? "").toLowerCase();
+    if (s === "completed") return "border-emerald-200 bg-emerald-50 text-emerald-700";
+    if (s === "sending") return "border-[#4FAEB2]/30 bg-[#4FAEB2]/10 text-[#3F8E91]";
+    if (s === "ready") return "border-amber-200 bg-amber-50 text-amber-800";
+    if (s === "cancelled") return "border-red-200 bg-red-50 text-red-700";
+    return "border-slate-200 bg-slate-50 text-slate-600";
+  })();
 
-      {err ? <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">{err}</div> : null}
+  return (
+    <div className={`space-y-5 ${isModal ? "" : "p-6"}`}>
+      {!isModal && (
+        <div>
+          <Link
+            href="/dashboard/campanas"
+            className="inline-flex items-center gap-1 text-sm font-semibold text-[#3F8E91] transition-colors hover:text-[#4FAEB2]"
+          >
+            ← Campañas
+          </Link>
+          <div className="mt-3 flex items-center gap-2">
+            <span
+              aria-hidden="true"
+              className="inline-block h-1.5 w-1.5 rounded-full bg-[#4FAEB2] shadow-[0_0_0_3px_rgba(79,174,178,0.18)]"
+            />
+            <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#4FAEB2]">
+              Campaña
+            </p>
+          </div>
+          <div className="mt-0.5 flex flex-wrap items-center gap-2">
+            <h1 className="text-lg font-semibold tracking-tight text-slate-900 sm:text-xl">
+              {String(campaign.name)}
+            </h1>
+            <span
+              className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[11px] font-semibold capitalize ${statusBadgeClass}`}
+            >
+              <span
+                aria-hidden="true"
+                className={`h-1.5 w-1.5 rounded-full ${
+                  String(campaign.status) === "completed"
+                    ? "bg-emerald-500"
+                    : String(campaign.status) === "sending"
+                    ? "bg-[#4FAEB2]"
+                    : String(campaign.status) === "ready"
+                    ? "bg-amber-500"
+                    : String(campaign.status) === "cancelled"
+                    ? "bg-red-500"
+                    : "bg-slate-400"
+                }`}
+              />
+              {String(campaign.status)}
+            </span>
+          </div>
+          <p className="mt-1 text-xs text-slate-500">
+            Plantilla{" "}
+            <span className="font-semibold text-slate-700">{String(campaign.template_name)}</span>{" "}
+            <span className="text-slate-400">({String(campaign.template_language)})</span>
+          </p>
+        </div>
+      )}
+
+      {err ? (
+        <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
+          {err}
+        </div>
+      ) : null}
 
       {headerImageError ? (
         <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
@@ -480,22 +545,55 @@ export default function CampanasDetailClient({ campaignId }: { campaignId: strin
         </div>
       ) : null}
 
-      <div className="grid gap-4 sm:grid-cols-4">
+      <div className="grid gap-3 sm:grid-cols-4">
         {[
-          ["Total", campaign.total_count],
-          ["Enviados", campaign.sent_count],
-          ["Fallidos", campaign.failed_count],
-          ["Respondieron", campaign.replied_count],
-        ].map(([label, val]) => (
-          <div key={String(label)} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-            <div className="text-xs font-medium uppercase text-slate-500">{String(label)}</div>
-            <div className="mt-1 text-2xl font-semibold tabular-nums text-slate-900">{Number(val ?? 0)}</div>
-          </div>
-        ))}
+          { label: "Total", val: campaign.total_count, accent: "slate" },
+          { label: "Enviados", val: campaign.sent_count, accent: "emerald" },
+          { label: "Fallidos", val: campaign.failed_count, accent: "red" },
+          { label: "Respondieron", val: campaign.replied_count, accent: "turquesa" },
+        ].map(({ label, val, accent }) => {
+          const cfg = {
+            slate: { border: "border-slate-200", text: "text-slate-900", eyebrow: "text-slate-500" },
+            emerald: {
+              border: "border-emerald-200",
+              text: "text-emerald-700",
+              eyebrow: "text-emerald-600",
+            },
+            red: { border: "border-red-200", text: "text-red-700", eyebrow: "text-red-600" },
+            turquesa: {
+              border: "border-[#4FAEB2]/30",
+              text: "text-[#3F8E91]",
+              eyebrow: "text-[#4FAEB2]",
+            },
+          }[accent] ?? { border: "border-slate-200", text: "text-slate-900", eyebrow: "text-slate-500" };
+          return (
+            <div
+              key={label}
+              className={`rounded-2xl border bg-white p-4 shadow-sm ${cfg.border}`}
+            >
+              <p
+                className={`text-[10px] font-semibold uppercase tracking-[0.14em] ${cfg.eyebrow}`}
+              >
+                {label}
+              </p>
+              <p className={`mt-1 text-2xl font-bold tabular-nums ${cfg.text}`}>
+                {Number(val ?? 0)}
+              </p>
+            </div>
+          );
+        })}
       </div>
 
-      <section className="space-y-3 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-        <h2 className="text-sm font-semibold text-slate-900">Importación (.xlsx / .csv)</h2>
+      <section className="space-y-3 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm ring-1 ring-[#4FAEB2]/15">
+        <div className="flex items-center gap-2">
+          <span
+            aria-hidden="true"
+            className="inline-block h-1.5 w-1.5 rounded-full bg-[#4FAEB2] shadow-[0_0_0_3px_rgba(79,174,178,0.18)]"
+          />
+          <h2 className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#4FAEB2]">
+            Importación (.xlsx / .csv)
+          </h2>
+        </div>
         <input
           type="file"
           accept=".xlsx,.xls,.csv,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
@@ -517,10 +615,18 @@ export default function CampanasDetailClient({ campaignId }: { campaignId: strin
       </section>
 
       {placeholderSlots.length > 0 ? (
-        <section className="space-y-4 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+        <section className="space-y-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm ring-1 ring-[#4FAEB2]/15">
           <div>
-            <h2 className="text-sm font-semibold text-slate-900">Mapeo de variables</h2>
-            <p className="mt-1 text-xs text-slate-600">
+            <div className="flex items-center gap-2">
+              <span
+                aria-hidden="true"
+                className="inline-block h-1.5 w-1.5 rounded-full bg-[#4FAEB2] shadow-[0_0_0_3px_rgba(79,174,178,0.18)]"
+              />
+              <h2 className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#4FAEB2]">
+                Mapeo de variables
+              </h2>
+            </div>
+            <p className="mt-1 text-xs text-slate-500">
               Cada variable del <strong>body</strong> de la plantilla debe corresponder a una columna del Excel. Si el
               nombre de la columna coincide exactamente con la variable, se selecciona sola.
             </p>
@@ -532,9 +638,9 @@ export default function CampanasDetailClient({ campaignId }: { campaignId: strin
             </div>
           ) : null}
 
-          <div className="overflow-x-auto rounded-lg border border-slate-100">
+          <div className="overflow-hidden rounded-xl border border-slate-200">
             <table className="min-w-full divide-y divide-slate-100 text-sm">
-              <thead className="bg-slate-50 text-left text-xs font-medium uppercase text-slate-600">
+              <thead className="bg-slate-50/70 text-left text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-500">
                 <tr>
                   <th className="px-3 py-2">Variable en plantilla</th>
                   <th className="px-3 py-2">Columna del Excel</th>
@@ -542,11 +648,11 @@ export default function CampanasDetailClient({ campaignId }: { campaignId: strin
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {placeholderSlots.map((slot) => (
-                  <tr key={slot}>
-                    <td className="whitespace-nowrap px-3 py-2 font-mono text-slate-800">{`{{${slot}}}`}</td>
+                  <tr key={slot} className="transition-colors hover:bg-[#4FAEB2]/[0.04]">
+                    <td className="whitespace-nowrap px-3 py-2 font-mono text-slate-700">{`{{${slot}}}`}</td>
                     <td className="px-3 py-2">
                       <select
-                        className="w-full max-w-md rounded border border-slate-300 px-2 py-1.5 text-sm disabled:bg-slate-100"
+                        className="w-full max-w-md rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-sm shadow-sm transition-colors hover:border-[#4FAEB2]/60 focus:border-[#4FAEB2] focus:outline-none focus:ring-2 focus:ring-[#4FAEB2]/20 disabled:bg-slate-50 disabled:text-slate-400"
                         disabled={!canImport || busy}
                         value={mapping[slot] ?? ""}
                         onChange={(e) =>
@@ -570,12 +676,12 @@ export default function CampanasDetailClient({ campaignId }: { campaignId: strin
             </table>
           </div>
 
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap items-center justify-end gap-2">
             <button
               type="button"
               disabled={busy || !canImport}
               onClick={() => void saveMapping()}
-              className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-800 hover:bg-slate-50 disabled:opacity-50"
+              className="rounded-lg border border-slate-200 bg-white px-3.5 py-1.5 text-xs font-semibold text-slate-700 shadow-sm transition-colors hover:border-[#4FAEB2]/60 hover:text-[#3F8E91] disabled:opacity-50"
             >
               Guardar mapeo
             </button>
@@ -583,7 +689,7 @@ export default function CampanasDetailClient({ campaignId }: { campaignId: strin
               type="button"
               disabled={busy || !canImport}
               onClick={() => void validateMapping()}
-              className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50"
+              className="rounded-lg bg-[#4FAEB2] px-4 py-1.5 text-xs font-semibold text-white shadow-sm shadow-[#4FAEB2]/25 transition-colors hover:bg-[#3F8E91] disabled:opacity-50"
             >
               Validar destinatarios
             </button>
@@ -597,9 +703,11 @@ export default function CampanasDetailClient({ campaignId }: { campaignId: strin
           ) : null}
 
           {previewText ? (
-            <div className="rounded-lg border border-slate-100 bg-slate-50/80 p-3">
-              <div className="text-xs font-medium text-slate-600">Vista previa (primera fila del Excel)</div>
-              <pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap break-words text-xs text-slate-800">
+            <div className="rounded-xl border border-[#4FAEB2]/30 bg-[#4FAEB2]/5 p-3">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#4FAEB2]">
+                Vista previa (primera fila del Excel)
+              </p>
+              <pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-white px-3 py-2 text-xs text-slate-700 ring-1 ring-slate-100">
                 {previewText}
               </pre>
             </div>
@@ -612,8 +720,16 @@ export default function CampanasDetailClient({ campaignId }: { campaignId: strin
       ) : null}
 
       {quickReplyTemplateButtons.length > 0 ? (
-        <section className="space-y-4 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-          <h2 className="text-sm font-semibold text-slate-900">Acciones de botones</h2>
+        <section className="space-y-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm ring-1 ring-[#4FAEB2]/15">
+          <div className="flex items-center gap-2">
+            <span
+              aria-hidden="true"
+              className="inline-block h-1.5 w-1.5 rounded-full bg-[#4FAEB2] shadow-[0_0_0_3px_rgba(79,174,178,0.18)]"
+            />
+            <h2 className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#4FAEB2]">
+              Acciones de botones
+            </h2>
+          </div>
           <p className="text-xs text-slate-600">
             Configurá qué hace cada respuesta rápida de la plantilla cuando el cliente la toca. El valor{" "}
             <strong>ID / payload</strong> debe coincidir con el que envía WhatsApp en{" "}
@@ -647,7 +763,7 @@ export default function CampanasDetailClient({ campaignId }: { campaignId: strin
             {buttonActionRows.map((row, idx) => (
               <div
                 key={`${row.button_label}-${idx}`}
-                className="rounded-lg border border-slate-100 bg-slate-50/80 p-3 text-sm"
+                className="rounded-xl border border-slate-200 bg-slate-50/70 p-3 text-sm"
               >
                 <div className="font-medium text-slate-800">{row.button_label}</div>
                 <label className="mt-2 block text-xs text-slate-600">
@@ -761,39 +877,45 @@ export default function CampanasDetailClient({ campaignId }: { campaignId: strin
             type="button"
             disabled={savingButtonActions || busy || !canEditButtonActions}
             onClick={() => void saveButtonActions()}
-            className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-800 hover:bg-slate-50 disabled:opacity-50"
+            className="rounded-lg border border-[#4FAEB2]/45 bg-white px-4 py-2 text-sm font-semibold text-[#3F8E91] shadow-sm transition-colors hover:bg-[#4FAEB2]/10 disabled:opacity-50"
           >
             {savingButtonActions ? "Guardando…" : "Guardar acciones de botones"}
           </button>
         </section>
       ) : null}
 
-      <div className="flex flex-wrap gap-2">
-        <button
-          type="button"
-          disabled={busy || !canLaunch || campaign.total_count === 0}
-          onClick={() => void launch()}
-          className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"
-        >
-          Enviar ahora
-        </button>
+      <div className="flex flex-wrap items-center justify-end gap-2">
         <button
           type="button"
           disabled={busy || campaign.status !== "sending"}
           onClick={() => void cancelSend()}
-          className="rounded-lg border border-red-300 px-4 py-2 text-sm font-medium text-red-800 hover:bg-red-50 disabled:opacity-50"
+          className="inline-flex items-center gap-1.5 rounded-lg border border-red-300 bg-white px-4 py-2 text-sm font-semibold text-red-700 transition-colors hover:bg-red-50 disabled:opacity-50"
         >
           Cancelar envío
         </button>
+        <button
+          type="button"
+          disabled={busy || !canLaunch || campaign.total_count === 0}
+          onClick={() => void launch()}
+          className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-emerald-700 disabled:opacity-50"
+        >
+          Enviar ahora
+        </button>
       </div>
 
-      <section className="rounded-xl border border-slate-200 bg-white shadow-sm">
-        <h2 className="border-b border-slate-100 px-4 py-3 text-sm font-semibold text-slate-900">
-          Destinatarios (primeras filas)
-        </h2>
+      <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm ring-1 ring-[#4FAEB2]/15">
+        <div className="flex items-center gap-2 border-b border-slate-100 px-4 py-3">
+          <span
+            aria-hidden="true"
+            className="inline-block h-1.5 w-1.5 rounded-full bg-[#4FAEB2] shadow-[0_0_0_3px_rgba(79,174,178,0.18)]"
+          />
+          <h2 className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#4FAEB2]">
+            Destinatarios (primeras filas)
+          </h2>
+        </div>
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-slate-100 text-xs">
-            <thead className="bg-slate-50 text-left text-slate-600">
+            <thead className="bg-slate-50/70 text-left text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-500">
               <tr>
                 <th className="px-3 py-2">#</th>
                 <th className="px-3 py-2">Teléfono</th>
@@ -804,14 +926,19 @@ export default function CampanasDetailClient({ campaignId }: { campaignId: strin
             </thead>
             <tbody className="divide-y divide-slate-100">
               {(recipients as Record<string, unknown>[]).map((r) => (
-                <tr key={String(r.id)}>
+                <tr
+                  key={String(r.id)}
+                  className="transition-colors hover:bg-[#4FAEB2]/[0.04]"
+                >
                   <td className="px-3 py-2 tabular-nums">{Number(r.row_number)}</td>
                   <td className="px-3 py-2 font-mono text-[11px]">{String(r.phone_e164)}</td>
-                  <td className="px-3 py-2">{String(r.status)}</td>
-                  <td className="max-w-[140px] truncate px-3 py-2 font-mono text-[10px] text-slate-500">
+                  <td className="px-3 py-2 capitalize text-slate-600">{String(r.status)}</td>
+                  <td className="max-w-[140px] truncate px-3 py-2 font-mono text-[10px] text-slate-400">
                     {r.provider_message_id ? String(r.provider_message_id) : "—"}
                   </td>
-                  <td className="px-3 py-2">{r.first_reply_at ? String(r.first_reply_at).slice(0, 19) : "—"}</td>
+                  <td className="px-3 py-2 text-slate-600">
+                    {r.first_reply_at ? String(r.first_reply_at).slice(0, 19) : "—"}
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -819,21 +946,29 @@ export default function CampanasDetailClient({ campaignId }: { campaignId: strin
         </div>
       </section>
 
-      <section className="rounded-xl border border-slate-200 bg-white shadow-sm">
+      <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm ring-1 ring-[#4FAEB2]/15">
         <button
           type="button"
-          className="flex w-full items-center justify-between px-4 py-3 text-left text-sm font-semibold text-slate-900"
+          className="flex w-full items-center justify-between px-4 py-3 text-left transition-colors hover:bg-[#4FAEB2]/[0.04]"
           onClick={() => setShowEvents((v) => !v)}
         >
-          Eventos ({events.length})
-          <span className="text-slate-400">{showEvents ? "▼" : "▶"}</span>
+          <div className="flex items-center gap-2">
+            <span
+              aria-hidden="true"
+              className="inline-block h-1.5 w-1.5 rounded-full bg-[#4FAEB2] shadow-[0_0_0_3px_rgba(79,174,178,0.18)]"
+            />
+            <h2 className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#4FAEB2]">
+              Eventos ({events.length})
+            </h2>
+          </div>
+          <span className="text-[#4FAEB2]">{showEvents ? "▼" : "▶"}</span>
         </button>
         {showEvents ? (
           <ul className="divide-y divide-slate-100 border-t border-slate-100 px-4 py-2 text-xs text-slate-700">
             {events.map((ev) => (
               <li key={ev.id} className="py-2">
-                <span className="font-medium text-slate-900">{ev.event_type}</span> ·{" "}
-                {ev.created_at.slice(0, 19)}
+                <span className="font-semibold text-slate-900">{ev.event_type}</span>{" "}
+                <span className="text-slate-400">· {ev.created_at.slice(0, 19)}</span>
               </li>
             ))}
           </ul>
