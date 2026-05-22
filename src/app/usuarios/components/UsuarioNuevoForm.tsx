@@ -159,20 +159,20 @@ export default function UsuarioNuevoForm({
           setShowPwd2={setShowPwd2}
         />
 
-        <div className="flex items-center gap-3">
-          <button
-            type="submit"
-            disabled={guardando}
-            className="rounded-lg bg-[#4FAEB2] px-6 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-[#3F8E91] disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {guardando ? "Creando usuario…" : "Guardar usuario"}
-          </button>
+        <div className="flex items-center justify-end gap-3">
           <button
             type="button"
             onClick={closeOrBack}
             className="px-4 py-2.5 text-sm text-slate-500 transition-colors hover:text-[#4FAEB2]"
           >
             Cancelar
+          </button>
+          <button
+            type="submit"
+            disabled={guardando}
+            className="rounded-lg bg-[#4FAEB2] px-6 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-[#3F8E91] disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {guardando ? "Creando usuario…" : "Guardar usuario"}
           </button>
         </div>
       </form>

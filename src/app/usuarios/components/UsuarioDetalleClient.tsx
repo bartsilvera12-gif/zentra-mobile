@@ -938,14 +938,7 @@ export default function UsuarioDetalleClient({
             }
           />
 
-          <div className="flex items-center gap-3">
-            <button
-              type="submit"
-              disabled={guardando}
-              className="rounded-lg bg-[#4FAEB2] px-6 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-[#3F8E91] disabled:opacity-50"
-            >
-              {guardando ? "Guardando…" : "Guardar cambios"}
-            </button>
+          <div className="flex items-center justify-end gap-3">
             <button
               type="button"
               onClick={() => {
@@ -968,6 +961,13 @@ export default function UsuarioDetalleClient({
               className="px-4 py-2.5 text-sm text-slate-500 transition-colors hover:text-[#4FAEB2]"
             >
               Cancelar
+            </button>
+            <button
+              type="submit"
+              disabled={guardando}
+              className="rounded-lg bg-[#4FAEB2] px-6 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-[#3F8E91] disabled:opacity-50"
+            >
+              {guardando ? "Guardando…" : "Guardar cambios"}
             </button>
           </div>
         </form>
