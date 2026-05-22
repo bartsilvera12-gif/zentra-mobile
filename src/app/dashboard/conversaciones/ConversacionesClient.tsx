@@ -2303,7 +2303,11 @@ export function ConversacionesClient({
       <div className="flex flex-1 min-h-0 border border-slate-200 rounded-lg overflow-hidden bg-white shadow-sm">
         {/* Lista */}
         {!listColumnHidden ? (
-        <div className="w-full max-w-[min(360px,40vw)] shrink-0 border-r border-slate-200 flex flex-col min-h-0 bg-slate-50/80">
+        <div
+          className={`w-full shrink-0 border-r border-slate-200 flex-col min-h-0 bg-slate-50/80 lg:w-[300px] lg:max-w-[320px] xl:w-[340px] xl:max-w-[360px] lg:flex ${
+            selectedId ? "hidden" : "flex"
+          }`}
+        >
           <div className="px-2 py-1.5 border-b border-slate-200 flex items-center justify-between gap-2 shrink-0">
             <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide">Chats</span>
             <button
@@ -2327,45 +2331,68 @@ export function ConversacionesClient({
                 <p>Ningún chat coincide con la búsqueda</p>
               </div>
             ) : (
-              visibleConversations.map((c) => (
+              visibleConversations.map((c) => {
+                const cardName = c.contact.name?.trim() ? c.contact.name.trim() : "Sin nombre";
+                const cardInitial = (() => {
+                  const cleaned = cardName.replace(/^[^A-Za-z0-9]+/, "");
+                  const m = cleaned.match(/[A-Za-z0-9]/);
+                  return (m?.[0] ?? "?").toUpperCase();
+                })();
+                const hasNameInCard = Boolean(c.contact.name?.trim());
+                const isSelected = selectedId === c.id;
+                return (
                 <button
                   key={c.id}
                   type="button"
                   onClick={() => handleSelect(c.id)}
-                  className={`w-full text-left px-2.5 py-2 border-b border-slate-100 hover:bg-white transition-colors ${
-                    selectedId === c.id ? "bg-white border-l-[3px] border-l-[#4FAEB2]" : ""
+                  className={`w-full text-left px-3 py-3 border-b border-slate-100 transition-colors ${
+                    isSelected ? "bg-white border-l-[3px] border-l-[#4FAEB2]" : "hover:bg-white"
                   }`}
                 >
-                  <div className="flex items-start justify-between gap-2">
+                  <div className="flex items-start gap-2.5">
+                    <span
+                      aria-hidden="true"
+                      className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[13px] font-semibold ${
+                        hasNameInCard
+                          ? "bg-[#4FAEB2]/12 text-[#3F8E91] border border-[#4FAEB2]/30"
+                          : "bg-slate-100 text-slate-500 border border-slate-200"
+                      }`}
+                    >
+                      {cardInitial}
+                    </span>
                     <div className="min-w-0 flex-1">
-                      <div className="font-medium text-slate-800 truncate">
-                        {c.contact.name?.trim() ? c.contact.name.trim() : "Sin nombre"}
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <div className="text-sm font-semibold text-slate-900 truncate">
+                            {cardName}
+                          </div>
+                          <div className="text-[11px] text-slate-500 font-mono truncate tabular-nums">
+                            {c.contact.phone_number || "—"}
+                          </div>
+                        </div>
+                        <div className="flex shrink-0 items-center gap-1">
+                          {vista === "bot" ? (
+                            <span className="text-[10px] font-semibold uppercase tracking-wide text-violet-700 bg-violet-50 border border-violet-200 px-1.5 py-0.5 rounded">
+                              Bot
+                            </span>
+                          ) : c.human_taken_over || c.flow_status === "human" ? (
+                            <span className="text-[10px] font-semibold uppercase tracking-wide text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded">
+                              Humano
+                            </span>
+                          ) : null}
+                          {c.unread_count > 0 && (
+                            <span className="inline-flex min-w-[1.25rem] items-center justify-center rounded-full bg-[#4FAEB2] px-1.5 py-0.5 text-[11px] font-bold text-white">
+                              {c.unread_count}
+                            </span>
+                          )}
+                        </div>
                       </div>
-                      <div className="text-xs text-slate-500 font-mono truncate">
-                        {c.contact.phone_number || "—"}
-                      </div>
-                      <div className="mt-1">
+                      <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
                         <ChannelBadge type={c.channel.type} nombre={c.channel.nombre} />
                       </div>
-                      <p className="text-xs text-slate-500 truncate mt-1">{c.last_message_preview || "—"}</p>
-                    </div>
-                    <div className="flex shrink-0 flex-col items-end gap-1">
-                      <div className="flex items-center gap-1">
-                        {vista === "bot" ? (
-                          <span className="text-[10px] font-semibold uppercase tracking-wide text-violet-700 bg-violet-50 border border-violet-200 px-1.5 py-0.5 rounded">
-                            Bot
-                          </span>
-                        ) : c.human_taken_over || c.flow_status === "human" ? (
-                          <span className="text-[10px] font-semibold uppercase tracking-wide text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded">
-                            Humano
-                          </span>
-                        ) : null}
-                        {c.unread_count > 0 && (
-                          <span className="bg-[#4FAEB2] text-white text-xs font-bold px-2 py-0.5 rounded-full">
-                            {c.unread_count}
-                          </span>
-                        )}
-                      </div>
+                      <p className="mt-1.5 text-[12px] text-slate-500 truncate leading-snug">
+                        {c.last_message_preview || "—"}
+                      </p>
                     </div>
                   </div>
                   <div className="flex flex-wrap gap-1 mt-1.5">
@@ -2405,14 +2432,19 @@ export function ConversacionesClient({
                     )}
                   </div>
                 </button>
-              ))
+                );
+              })
             )}
           </div>
         </div>
         ) : null}
 
         {/* Panel mensajes */}
-        <div className="flex-1 flex flex-col min-w-0 min-h-0 overflow-hidden">
+        <div
+          className={`flex-1 flex-col min-w-0 min-h-0 overflow-hidden lg:flex ${
+            selectedId || listColumnHidden ? "flex" : "hidden"
+          }`}
+        >
           {!selectedId ? (
             <div className="flex-1 flex flex-col items-center justify-center gap-2 text-slate-400 text-sm min-h-0 px-2">
               <span>Seleccioná una conversación</span>
@@ -2444,7 +2476,34 @@ export function ConversacionesClient({
                       <div className="flex flex-col gap-2.5 min-w-0 w-full">
                         {/* Row 1: identidad + acciones primarias */}
                         <div className="flex flex-wrap items-center justify-between gap-3 min-w-0">
-                          <div className="flex min-w-0 items-center gap-3">
+                          <div className="flex min-w-0 items-center gap-2.5">
+                            {/* Back-to-list visible solo en mobile cuando la lista no esta oculta manualmente */}
+                            {!listColumnHidden ? (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setSelectedId(null);
+                                  setMessages([]);
+                                }}
+                                aria-label="Volver a la lista de chats"
+                                title="Volver a la lista"
+                                className="lg:hidden inline-flex shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-white p-1.5 text-slate-600 shadow-sm transition-colors hover:border-[#4FAEB2]/60 hover:text-[#4FAEB2]"
+                              >
+                                <svg
+                                  xmlns="http://www.w3.org/2000/svg"
+                                  viewBox="0 0 24 24"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  strokeWidth="2.2"
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  className="h-4 w-4"
+                                  aria-hidden="true"
+                                >
+                                  <polyline points="15 18 9 12 15 6" />
+                                </svg>
+                              </button>
+                            ) : null}
                             <span
                               aria-hidden="true"
                               className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-sm font-semibold ring-2 ring-white shadow-sm ${
@@ -2827,7 +2886,7 @@ export function ConversacionesClient({
                         }`}
                       >
                         <div
-                          className={`max-w-[88%] rounded-2xl px-2.5 py-1.5 text-sm ${
+                          className={`max-w-[92%] sm:max-w-[88%] md:max-w-[78%] lg:max-w-[72%] rounded-2xl px-3 py-2 text-[13px] sm:text-sm leading-relaxed ${
                             m.from_me
                               ? "bg-[#4FAEB2] text-white rounded-br-md shadow-md shadow-[#4FAEB2]/25 ring-1 ring-white/15"
                               : "bg-white text-slate-800 rounded-bl-md border border-slate-200 shadow-sm border-l-[3px] border-l-[#4FAEB2]/55"
