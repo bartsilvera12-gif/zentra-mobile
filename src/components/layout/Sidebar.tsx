@@ -3,7 +3,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   LayoutDashboard,
@@ -383,12 +383,23 @@ export default function Sidebar() {
     setFavoritos(getFavoritos());
   }, []);
 
+  /**
+   * Cargamos el menú una sola vez al montar. Para los eventos posteriores de
+   * Supabase auth aplicamos dos filtros:
+   *  - Ignoramos `TOKEN_REFRESHED` e `INITIAL_SESSION` (cuando el JWT se
+   *    refresca al volver a la pestaña no hay nada nuevo que recargar).
+   *  - Para `SIGNED_IN`, `SIGNED_OUT` y `USER_UPDATED` recargamos el menú
+   *    en modo silencioso (sin volver a mostrar el loader) si ya cargamos
+   *    al menos una vez. Así el sidebar se mantiene visible mientras se
+   *    actualiza en background.
+   */
+  const hasLoadedOnceRef = useRef(false);
   useEffect(() => {
     let cancelled = false;
 
-    async function cargarMenuDesdeSesion(session: Session | null) {
+    async function cargarMenuDesdeSesion(session: Session | null, silent: boolean) {
       try {
-        setCargando(true);
+        if (!silent) setCargando(true);
         if (cancelled) return;
         if (!session?.user) {
           setModulos([]);
@@ -452,18 +463,25 @@ export default function Sidebar() {
         }
       } finally {
         if (!cancelled) {
-          setCargando(false);
+          hasLoadedOnceRef.current = true;
+          if (!silent) setCargando(false);
         }
       }
     }
 
     void supabase.auth.getSession().then(({ data: { session } }) => {
-      if (!cancelled) void cargarMenuDesdeSesion(session);
+      if (!cancelled) void cargarMenuDesdeSesion(session, false);
     });
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (cancelled) return;
-      void cargarMenuDesdeSesion(session);
+      // Eventos silenciosos de Supabase: no hay cambios en el usuario ni sus módulos.
+      // Si recargamos acá, el loader full-screen reaparece cada vez que el usuario
+      // vuelve a la pestaña (Supabase refresca el JWT en background).
+      if (event === "TOKEN_REFRESHED" || event === "INITIAL_SESSION") return;
+      // Cambios reales (login/logout/perfil): refrescamos. Si ya hicimos la carga
+      // inicial, lo hacemos en modo silencioso para que el menú se mantenga visible.
+      void cargarMenuDesdeSesion(session, hasLoadedOnceRef.current);
     });
 
     return () => {
