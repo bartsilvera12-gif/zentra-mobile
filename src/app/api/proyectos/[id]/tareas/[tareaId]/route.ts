@@ -28,8 +28,13 @@ export async function PATCH(
     const patch: Record<string, unknown> = {};
 
     if (typeof body.titulo === "string") patch.titulo = body.titulo.trim();
-    if (typeof body.descripcion === "string") patch.descripcion = body.descripcion;
+    if (typeof body.descripcion === "string") {
+      const desc = body.descripcion.trim();
+      patch.descripcion = desc === "" ? null : desc;
+    }
+    let estadoTransicion = false;
     if (typeof body.estado === "string" && ESTADOS_TAREA.has(body.estado)) {
+      estadoTransicion = true;
       patch.estado = body.estado;
       if (body.estado === "completada") {
         patch.completed_at = new Date().toISOString();
@@ -54,6 +59,30 @@ export async function PATCH(
     }
 
     const sb = await getChatServiceClientForEmpresa(auth.empresaId);
+
+    if (estadoTransicion) {
+      const { data: actual, error: eActual } = await sb
+        .from("proyecto_tareas")
+        .select("estado")
+        .eq("empresa_id", auth.empresaId)
+        .eq("proyecto_id", pid)
+        .eq("id", tid)
+        .maybeSingle();
+      if (eActual) return NextResponse.json(errorResponse(eActual.message), { status: 400 });
+      if (!actual) return NextResponse.json(errorResponse("No encontrado"), { status: 404 });
+      if ((actual as { estado?: string }).estado !== patch.estado) {
+        patch.status_changed_by = auth.usuarioCatalogId;
+        patch.status_changed_at = new Date().toISOString();
+      } else {
+        delete patch.estado;
+        if ("completed_at" in patch) delete patch.completed_at;
+      }
+    }
+
+    if (Object.keys(patch).length === 0) {
+      return NextResponse.json(errorResponse("Nada para actualizar"), { status: 400 });
+    }
+
     const { data, error } = await sb
       .from("proyecto_tareas")
       .update(patch)

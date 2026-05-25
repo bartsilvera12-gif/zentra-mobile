@@ -66,7 +66,17 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     const historialEnriched = await enrichProyectoHistorialRows(sb, empresaId, hist.data ?? []);
 
     const comRows = (comentarios.data ?? []) as { usuario_id: string }[];
-    const uids = [...new Set(comRows.map((c) => c.usuario_id))];
+    const tareaRows = (tareas.data ?? []) as Array<{
+      created_by?: string | null;
+      status_changed_by?: string | null;
+    }>;
+    const uids = [
+      ...new Set([
+        ...comRows.map((c) => c.usuario_id),
+        ...tareaRows.map((t) => t.created_by ?? ""),
+        ...tareaRows.map((t) => t.status_changed_by ?? ""),
+      ].filter((u): u is string => Boolean(u))),
+    ];
     const catalog = createServiceRoleClient();
     const { data: names } =
       uids.length > 0
@@ -77,6 +87,14 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     const comentariosRich = comRows.map((c) => ({
       ...c,
       usuario_nombre: nameMap.get(c.usuario_id) ?? null,
+    }));
+
+    const tareasRich = tareaRows.map((t) => ({
+      ...t,
+      created_by_nombre: t.created_by ? nameMap.get(t.created_by) ?? null : null,
+      status_changed_by_nombre: t.status_changed_by
+        ? nameMap.get(t.status_changed_by) ?? null
+        : null,
     }));
 
     const base = enrichedArr[0] ?? (proyecto as Record<string, unknown>);
@@ -94,7 +112,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
         proyecto: base,
         historial: historialEnriched,
         sla,
-        tareas: tareas.data ?? [],
+        tareas: tareasRich,
         comentarios: comentariosRich,
         archivos: archivos.data ?? [],
         avance_pct: avance,

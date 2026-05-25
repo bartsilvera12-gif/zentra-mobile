@@ -52,11 +52,13 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
     const sb = await getChatServiceClientForEmpresa(auth.empresaId);
 
+    const nowIso = new Date().toISOString();
+    const descripcionRaw = typeof body?.descripcion === "string" ? body.descripcion.trim() : "";
     const insert: Record<string, unknown> = {
       empresa_id: auth.empresaId,
       proyecto_id: pid,
       titulo,
-      descripcion: typeof body?.descripcion === "string" ? body.descripcion : null,
+      descripcion: descripcionRaw === "" ? null : descripcionRaw,
       estado,
       responsable_id:
         typeof body?.responsable_id === "string" && body.responsable_id ? body.responsable_id : null,
@@ -64,6 +66,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         typeof body?.fecha_limite === "string" && body.fecha_limite ? body.fecha_limite : null,
       sort_order: typeof body?.sort_order === "number" ? Math.floor(body.sort_order) : 0,
       created_by: auth.usuarioCatalogId,
+      status_changed_by: auth.usuarioCatalogId,
+      status_changed_at: nowIso,
     };
 
     const { data, error } = await sb.from("proyecto_tareas").insert(insert).select("*");

@@ -74,6 +74,121 @@ function prioridadLabel(value: unknown): string {
   return value == null ? "—" : String(value);
 }
 
+const TAREA_ESTADO_OPTIONS = [
+  { value: "pendiente", label: "Pendiente" },
+  { value: "en_proceso", label: "En proceso" },
+  { value: "completada", label: "Completada" },
+  { value: "bloqueada", label: "Bloqueada" },
+] as const;
+
+const TAREA_ESTADO_TONE: Record<
+  string,
+  { dot: string; chip: string; ring: string }
+> = {
+  pendiente: {
+    dot: "bg-slate-400",
+    chip: "border-slate-200 bg-slate-50 text-slate-600",
+    ring: "ring-slate-200/60",
+  },
+  en_proceso: {
+    dot: "bg-amber-500",
+    chip: "border-amber-200 bg-amber-50 text-amber-700",
+    ring: "ring-amber-200/60",
+  },
+  completada: {
+    dot: "bg-emerald-500",
+    chip: "border-emerald-200 bg-emerald-50 text-emerald-700",
+    ring: "ring-emerald-200/60",
+  },
+  bloqueada: {
+    dot: "bg-rose-500",
+    chip: "border-rose-200 bg-rose-50 text-rose-700",
+    ring: "ring-rose-200/60",
+  },
+};
+
+function tareaEstadoLabel(value: unknown): string {
+  const match = TAREA_ESTADO_OPTIONS.find((opt) => opt.value === value);
+  return match ? match.label : "—";
+}
+
+function formatFechaRelativa(iso?: string | null): string {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  const t = d.getTime();
+  if (!Number.isFinite(t)) return "—";
+  const diffMs = Date.now() - t;
+  const sec = Math.round(diffMs / 1000);
+  if (sec < 45) return "hace instantes";
+  const min = Math.round(sec / 60);
+  if (min < 60) return `hace ${min} min`;
+  const h = Math.round(min / 60);
+  if (h < 24) return `hace ${h} h`;
+  const days = Math.round(h / 24);
+  if (days < 7) return `hace ${days} d`;
+  if (days < 30) return `hace ${Math.round(days / 7)} sem`;
+  if (days < 365) return `hace ${Math.round(days / 30)} m`;
+  return `hace ${Math.round(days / 365)} a`;
+}
+
+const IconTareaUser = () => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    width="11"
+    height="11"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    aria-hidden="true"
+  >
+    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+    <circle cx="12" cy="7" r="4" />
+  </svg>
+);
+
+const IconTareaRefresh = () => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    width="11"
+    height="11"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    aria-hidden="true"
+  >
+    <polyline points="23 4 23 10 17 10" />
+    <polyline points="1 20 1 14 7 14" />
+    <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10" />
+    <path d="M20.49 15a9 9 0 0 1-14.85 3.36L1 14" />
+  </svg>
+);
+
+const IconTareaCalendar = () => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    width="11"
+    height="11"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    aria-hidden="true"
+  >
+    <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+    <line x1="16" y1="2" x2="16" y2="6" />
+    <line x1="8" y1="2" x2="8" y2="6" />
+    <line x1="3" y1="10" x2="21" y2="10" />
+  </svg>
+);
+
 export type ProyectoDetalleInnerProps = {
   projectId: string;
   variant: "page" | "modal";
@@ -113,6 +228,10 @@ export default function ProyectoDetalleInner({
 
   const [comTexto, setComTexto] = useState("");
   const [tareaTitulo, setTareaTitulo] = useState("");
+  const [tareaDescripcion, setTareaDescripcion] = useState("");
+  const [tareaResponsableId, setTareaResponsableId] = useState("");
+  const [tareaFechaLimite, setTareaFechaLimite] = useState("");
+  const [tareaSaving, setTareaSaving] = useState(false);
 
   const [briefForm, setBriefForm] = useState<Record<string, string>>({});
   const [saasForm, setSaasForm] = useState<ProyectoSaasBriefForm>({
@@ -245,20 +364,41 @@ export default function ProyectoDetalleInner({
 
   async function agregarTarea(e: React.FormEvent) {
     e.preventDefault();
-    if (!tareaTitulo.trim()) return;
-    const res = await fetchWithSupabaseSession(`/api/proyectos/${projectId}/tareas`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ titulo: tareaTitulo.trim() }),
-    });
-    const j = (await res.json()) as { success?: boolean; error?: string };
-    if (!res.ok || !j.success) {
-      setErr(j.error ?? "Error");
-      return;
+    const titulo = tareaTitulo.trim();
+    if (!titulo || tareaSaving) return;
+    setTareaSaving(true);
+    const payload: Record<string, unknown> = { titulo };
+    const descripcion = tareaDescripcion.trim();
+    if (descripcion) payload.descripcion = descripcion;
+    if (tareaResponsableId) payload.responsable_id = tareaResponsableId;
+    if (tareaFechaLimite) payload.fecha_limite = tareaFechaLimite;
+    try {
+      const res = await fetchWithSupabaseSession(`/api/proyectos/${projectId}/tareas`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const j = (await res.json()) as { success?: boolean; error?: string };
+      if (!res.ok || !j.success) {
+        setErr(j.error ?? "Error");
+        return;
+      }
+      setTareaTitulo("");
+      setTareaDescripcion("");
+      setTareaResponsableId("");
+      setTareaFechaLimite("");
+      await load();
+      onProjectUpdated?.();
+    } finally {
+      setTareaSaving(false);
     }
+  }
+
+  function limpiarFormularioTarea() {
     setTareaTitulo("");
-    await load();
-    onProjectUpdated?.();
+    setTareaDescripcion("");
+    setTareaResponsableId("");
+    setTareaFechaLimite("");
   }
 
   async function patchTarea(tareaId: string, patch: Record<string, unknown>) {
@@ -707,52 +847,217 @@ export default function ProyectoDetalleInner({
         ) : null}
 
         {tab === "tareas" ? (
-          <div className={`space-y-4 ${panelCls}`}>
-            <div className="flex items-center gap-2">
-              <span className="h-5 w-1 rounded-full bg-[#4FAEB2]" />
-              <h2 className="text-sm font-semibold text-slate-900">Tareas</h2>
-            </div>
-            <form onSubmit={agregarTarea} className="flex flex-wrap gap-2">
-              <input
-                className={`min-w-[200px] flex-1 ${inputCls}`}
-                placeholder="Nueva tarea"
-                value={tareaTitulo}
-                onChange={(e) => setTareaTitulo(e.target.value)}
-              />
-              <button
-                type="submit"
-                className="rounded-xl bg-[#4FAEB2] px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-[#3F8E91]"
-              >
-                Agregar
-              </button>
-            </form>
-            <ul className="divide-y divide-slate-100">
-              {(data.tareas ?? []).map((t) => {
-                const tid = String(t.id ?? "");
-                const estado = String(t.estado ?? "");
-                return (
-                  <li key={tid} className="flex flex-wrap items-center gap-2 py-3 text-sm">
-                    <span className="flex-1 font-medium text-slate-800">{String(t.titulo ?? "")}</span>
-                    <FancySelect
-                      size="sm"
-                      className="min-w-[150px]"
-                      ariaLabel="Estado de la tarea"
-                      value={estado}
-                      onChange={(v) => void patchTarea(tid, { estado: v })}
-                      options={[
-                        { value: "pendiente", label: "Pendiente" },
-                        { value: "en_proceso", label: "En proceso" },
-                        { value: "completada", label: "Completada" },
-                        { value: "bloqueada", label: "Bloqueada" },
-                      ]}
+          <div className="space-y-4">
+            <div className={`space-y-4 ${panelCls}`}>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <span className="h-5 w-1 rounded-full bg-[#4FAEB2]" />
+                  <div>
+                    <h2 className="text-sm font-semibold text-slate-900">Nueva tarea</h2>
+                    <p className="text-xs text-slate-500">
+                      Sumá una tarea con todo el contexto: descripción, responsable y fecha límite.
+                    </p>
+                  </div>
+                </div>
+                <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-medium text-slate-500">
+                  {(data.tareas ?? []).length} tarea{(data.tareas ?? []).length === 1 ? "" : "s"}
+                </span>
+              </div>
+              <form onSubmit={agregarTarea} className="space-y-3">
+                <label className="block">
+                  <span className={labelCls}>Título de la tarea *</span>
+                  <input
+                    className={inputCls}
+                    placeholder="Ej.: Diseñar wireframes para la landing"
+                    value={tareaTitulo}
+                    onChange={(e) => setTareaTitulo(e.target.value)}
+                    maxLength={200}
+                    required
+                  />
+                </label>
+                <label className="block">
+                  <span className={labelCls}>Descripción / Contexto (opcional)</span>
+                  <textarea
+                    className={`${inputCls} min-h-[80px] resize-y`}
+                    placeholder="Aclaraciones, criterios de aceptación, links útiles…"
+                    rows={3}
+                    value={tareaDescripcion}
+                    onChange={(e) => setTareaDescripcion(e.target.value)}
+                  />
+                </label>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="block">
+                    <span className={labelCls}>Responsable (opcional)</span>
+                    <div className="mt-1.5">
+                      <FancySelect
+                        ariaLabel="Responsable de la tarea"
+                        placeholder="Sin asignar"
+                        value={tareaResponsableId}
+                        onChange={setTareaResponsableId}
+                        options={[
+                          { value: "", label: "Sin asignar" },
+                          ...usuarios.map((u) => ({
+                            value: u.id,
+                            label: u.nombre || u.email || u.id.slice(0, 8),
+                          })),
+                        ]}
+                      />
+                    </div>
+                  </div>
+                  <label className="block">
+                    <span className={labelCls}>Fecha límite (opcional)</span>
+                    <input
+                      type="date"
+                      className={inputCls}
+                      value={tareaFechaLimite}
+                      onChange={(e) => setTareaFechaLimite(e.target.value)}
                     />
+                  </label>
+                </div>
+                <div className="flex items-center justify-end gap-2 border-t border-slate-100 pt-3">
+                  <button
+                    type="button"
+                    onClick={limpiarFormularioTarea}
+                    disabled={
+                      tareaSaving ||
+                      (!tareaTitulo &&
+                        !tareaDescripcion &&
+                        !tareaResponsableId &&
+                        !tareaFechaLimite)
+                    }
+                    className="rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-semibold text-slate-600 transition-colors hover:border-slate-300 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    Limpiar
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={tareaSaving || !tareaTitulo.trim()}
+                    className="rounded-xl bg-[#4FAEB2] px-4 py-2 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-[#3F8E91] disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400 disabled:shadow-none"
+                  >
+                    {tareaSaving ? "Agregando…" : "Agregar tarea"}
+                  </button>
+                </div>
+              </form>
+            </div>
+
+            <div className={`space-y-3 ${panelCls}`}>
+              <div className="flex items-center gap-2">
+                <span className="h-5 w-1 rounded-full bg-[#4FAEB2]" />
+                <h2 className="text-sm font-semibold text-slate-900">Listado de tareas</h2>
+              </div>
+              <ul className="space-y-2.5">
+                {(data.tareas ?? []).map((raw) => {
+                  const t = raw as Record<string, unknown>;
+                  const tid = String(t.id ?? "");
+                  const estado = String(t.estado ?? "pendiente");
+                  const tone = TAREA_ESTADO_TONE[estado] ?? TAREA_ESTADO_TONE.pendiente;
+                  const descripcion =
+                    typeof t.descripcion === "string" ? t.descripcion.trim() : "";
+                  const fechaLimite =
+                    typeof t.fecha_limite === "string" && t.fecha_limite.trim()
+                      ? t.fecha_limite
+                      : "";
+                  const creadoPor =
+                    (t.created_by_nombre as string | null | undefined) ?? "Usuario";
+                  const creadoAt = t.created_at ? String(t.created_at) : "";
+                  const cambioPor =
+                    (t.status_changed_by_nombre as string | null | undefined) ?? null;
+                  const cambioAt = t.status_changed_at
+                    ? String(t.status_changed_at)
+                    : "";
+                  const huboCambioEstado =
+                    Boolean(cambioAt) &&
+                    Boolean(creadoAt) &&
+                    new Date(cambioAt).getTime() - new Date(creadoAt).getTime() > 2000;
+                  return (
+                    <li
+                      key={tid}
+                      className={`rounded-2xl border border-slate-200 bg-white p-3.5 shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition-shadow hover:shadow-md`}
+                    >
+                      <div className="flex flex-wrap items-start gap-2">
+                        <span
+                          className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ring-2 ${tone.dot} ${tone.ring}`}
+                          aria-hidden="true"
+                        />
+                        <div className="min-w-0 flex-1">
+                          <p
+                            className={`text-sm font-semibold ${
+                              estado === "completada"
+                                ? "text-slate-500 line-through"
+                                : "text-slate-900"
+                            }`}
+                          >
+                            {String(t.titulo ?? "")}
+                          </p>
+                          {descripcion ? (
+                            <p className="mt-1 whitespace-pre-line text-xs leading-relaxed text-slate-600">
+                              {descripcion}
+                            </p>
+                          ) : null}
+                          {fechaLimite ? (
+                            <p className="mt-1.5 inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] font-medium text-slate-600">
+                              <IconTareaCalendar />
+                              Vence {formatFechaPyFull(fechaLimite).slice(0, 10)}
+                            </p>
+                          ) : null}
+                        </div>
+                        <FancySelect
+                          size="sm"
+                          className="min-w-[150px]"
+                          ariaLabel="Estado de la tarea"
+                          value={estado}
+                          onChange={(v) => void patchTarea(tid, { estado: v })}
+                          options={TAREA_ESTADO_OPTIONS.map((opt) => ({ ...opt }))}
+                        />
+                      </div>
+                      <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1.5 border-t border-slate-100 pt-2.5 text-[11px] text-slate-500">
+                        <span
+                          className="inline-flex items-center gap-1.5"
+                          title={creadoAt ? formatFechaPyFull(creadoAt) : undefined}
+                        >
+                          <span className="text-slate-400">
+                            <IconTareaUser />
+                          </span>
+                          <span>
+                            Creada por{" "}
+                            <span className="font-medium text-slate-700">{creadoPor}</span>
+                            {creadoAt ? ` · ${formatFechaRelativa(creadoAt)}` : ""}
+                          </span>
+                        </span>
+                        {huboCambioEstado ? (
+                          <span
+                            className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 ${tone.chip}`}
+                            title={cambioAt ? formatFechaPyFull(cambioAt) : undefined}
+                          >
+                            <IconTareaRefresh />
+                            <span>
+                              {tareaEstadoLabel(estado)}
+                              {cambioPor ? (
+                                <>
+                                  {" "}por{" "}
+                                  <span className="font-medium">{cambioPor}</span>
+                                </>
+                              ) : null}
+                              {cambioAt ? ` · ${formatFechaRelativa(cambioAt)}` : ""}
+                            </span>
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5">
+                            <IconTareaRefresh />
+                            <span>Estado: {tareaEstadoLabel(estado)} (inicial)</span>
+                          </span>
+                        )}
+                      </div>
+                    </li>
+                  );
+                })}
+                {(data.tareas ?? []).length === 0 ? (
+                  <li className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-8 text-center text-sm text-slate-500">
+                    Sin tareas registradas. Agregá la primera arriba.
                   </li>
-                );
-              })}
-              {(data.tareas ?? []).length === 0 ? (
-                <li className="py-6 text-center text-xs text-slate-400">Sin tareas registradas.</li>
-              ) : null}
-            </ul>
+                ) : null}
+              </ul>
+            </div>
           </div>
         ) : null}
 
