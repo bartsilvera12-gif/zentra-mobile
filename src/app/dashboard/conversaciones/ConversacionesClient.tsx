@@ -85,6 +85,17 @@ function isHumanContactName(name: string | null | undefined, phone?: string | nu
   return true;
 }
 
+function contactPhoneFallback(
+  phone: string | null | undefined,
+  name: string | null | undefined
+): string {
+  const p = (phone ?? "").trim();
+  if (p) return p;
+  const n = (name ?? "").trim();
+  if (n && !/\p{L}/u.test(n)) return n;
+  return "—";
+}
+
 function formatTime(iso: string) {
   try {
     return new Date(iso).toLocaleString("es-PY", {
@@ -2379,7 +2390,7 @@ export function ConversacionesClient({
                             {cardName}
                           </div>
                           <div className="text-[11px] text-slate-500 font-mono truncate tabular-nums">
-                            {c.contact.phone_number || "—"}
+                            {contactPhoneFallback(c.contact.phone_number, c.contact.name)}
                           </div>
                         </div>
                         <div className="flex shrink-0 items-center gap-1">
@@ -2529,7 +2540,7 @@ export function ConversacionesClient({
                                 {contactDisplayName}
                               </p>
                               <p className="mt-0.5 truncate font-mono text-[11px] tabular-nums text-slate-500">
-                                {selected.contact.phone_number || "—"}
+                                {contactPhoneFallback(selected.contact.phone_number, selected.contact.name)}
                               </p>
                             </div>
                           </div>
