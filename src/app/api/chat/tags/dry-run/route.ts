@@ -47,6 +47,12 @@ function parsePurchaseFilter(value: string | null): TagDryRunPurchaseFilter {
     "payment_pending",
     "abandoned",
     "data_incomplete",
+    // FASE 3C-1: matching 1:1 con TagPurchaseCategory real.
+    "purchased_once",
+    "purchased_multiple_tickets",
+    "repurchased",
+    "payment_received_incomplete",
+    "unknown",
   ];
   if (!value) return "any";
   const v = value.trim() as TagDryRunPurchaseFilter;
@@ -73,6 +79,19 @@ async function handle(request: NextRequest) {
     const ruleId = ruleIdRaw && isUuid(ruleIdRaw) ? ruleIdRaw : null;
     const purchaseCondition = parsePurchaseFilter(url.searchParams.get("purchase_condition"));
     const includeReasons = parseBool(url.searchParams.get("include_reasons"), false);
+    const staleActiveSessionMode = parseBool(url.searchParams.get("stale_active_session_mode"), false);
+    const criticalGraceHoursRaw = parseIntParam(
+      url.searchParams.get("critical_node_grace_hours"),
+      48,
+      24 * 30
+    );
+    const criticalNodesRaw = url.searchParams.get("critical_node_codes");
+    const criticalNodeCodes = criticalNodesRaw
+      ? criticalNodesRaw
+          .split(",")
+          .map((s) => s.trim())
+          .filter((s) => s.length > 0 && s.length <= 64)
+      : undefined;
 
     const pool = getChatPostgresPool();
     if (!pool) {
@@ -117,6 +136,9 @@ async function handle(request: NextRequest) {
       excludeHumanTakenOver: effectiveExcludeHuman,
       excludeActiveBotSession: effectiveExcludeBot,
       excludeManualClosure: effectiveExcludeManualClosure,
+      staleActiveSessionMode,
+      criticalNodeCodes,
+      criticalNodeGraceHours: criticalGraceHoursRaw,
     });
 
     return NextResponse.json({ ok: true, ...result });

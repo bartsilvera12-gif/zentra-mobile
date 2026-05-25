@@ -7,6 +7,7 @@ import { ChannelBadge, channelTypeLabel } from "@/components/chat/ChannelBadge";
 import { GenericOmnichannelChannelForm } from "@/components/chat/GenericOmnichannelChannelForm";
 import { ChannelQuickRepliesStandaloneBlock } from "@/components/chat/ChannelQuickRepliesStandaloneBlock";
 import { WhatsAppChannelForm } from "@/components/chat/WhatsAppChannelForm";
+import WhatsAppTagRulesPanel from "@/components/chat/tags/WhatsAppTagRulesPanel";
 import { OMNICHANNEL_CARD_DEFINITIONS } from "@/lib/chat/omnichannel-catalog";
 import { normalizeChannelType } from "@/lib/chat/channel-type-utils";
 import {
@@ -167,14 +168,16 @@ export default function EditarCanalPage() {
           Credenciales y opciones
         </h2>
         {isWhatsapp ? (
-          <WhatsAppChannelForm
-            mode="edit"
-            connectionProfile={isYcloud ? "ycloud" : "meta"}
-            channelId={row.id}
-            initialRow={row}
-            cancelHref="/configuracion/canales"
-            onSaved={() => void load()}
-          />
+          <>
+            <WhatsAppChannelForm
+              mode="edit"
+              connectionProfile={isYcloud ? "ycloud" : "meta"}
+              channelId={row.id}
+              initialRow={row}
+              cancelHref="/configuracion/canales"
+              onSaved={() => void load()}
+            />
+          </>
         ) : (
           <div className="space-y-5">
             <GenericOmnichannelChannelForm
@@ -196,6 +199,10 @@ export default function EditarCanalPage() {
           </div>
         )}
       </section>
+
+      {isWhatsapp ? (
+        <WhatsAppTagRulesPanel channelId={row.id} />
+      ) : null}
     </div>
   );
 }
