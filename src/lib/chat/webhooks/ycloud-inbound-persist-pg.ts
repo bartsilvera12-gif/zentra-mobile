@@ -186,7 +186,8 @@ export async function persistYCloudInboundMessagePg(input: YCloudPersistPgInput)
         : !fromMe && senderType.toLowerCase() === "contact";
 
     const convRow = await client.query(
-      `SELECT status, unread_count, flow_code, flow_current_node, flow_status, human_taken_over
+      `SELECT status, unread_count, flow_code, flow_current_node, flow_status, human_taken_over,
+              hidden_by_tag, current_tag_id, hidden_by_tag_rule_id, hidden_by_tag_at
        FROM ${convT}
        WHERE id = $1::uuid AND empresa_id = $2::uuid`,
       [conversationId, input.empresa_id]
@@ -199,6 +200,11 @@ export async function persistYCloudInboundMessagePg(input: YCloudPersistPgInput)
           flow_current_node: string | null;
           flow_status: string;
           human_taken_over: boolean;
+          // FASE 5A: campos de etiquetas para reactivar la conversación si estaba oculta.
+          hidden_by_tag: boolean | null;
+          current_tag_id: string | null;
+          hidden_by_tag_rule_id: string | null;
+          hidden_by_tag_at: Date | string | null;
         }
       | undefined;
     const prevStatus = row?.status ?? conv.status ?? "open";
@@ -254,6 +260,69 @@ export async function persistYCloudInboundMessagePg(input: YCloudPersistPgInput)
         input.empresa_id,
       ]
     );
+
+    // FASE 5A: Reactivación automática de conversaciones ocultas por etiqueta.
+    // Si la conversación tenía hidden_by_tag=true y el cliente vuelve a escribir
+    // (inbound del contacto, NO outbound del bot/agente), limpiamos los campos
+    // de etiqueta y registramos un evento 'cleared' en chat_conversation_tag_history.
+    //
+    // Idempotencia: el UPDATE está condicionado a "hidden_by_tag IS TRUE", así que
+    // un segundo webhook concurrente verá la fila ya limpiada (rowCount=0) y no
+    // emitirá historial duplicado. Para mensajes outbound (from_me=true) no
+    // disparamos reactivación: solo el inbound real del cliente reabre.
+    if (!fromMe && row?.hidden_by_tag === true) {
+      const previousTagId = row.current_tag_id ?? null;
+      const previousRuleId = row.hidden_by_tag_rule_id ?? null;
+      const previousHiddenAtRaw = row.hidden_by_tag_at ?? null;
+      const previousHiddenAtIso =
+        previousHiddenAtRaw instanceof Date
+          ? previousHiddenAtRaw.toISOString()
+          : previousHiddenAtRaw;
+
+      const clearRes = await client.query(
+        `UPDATE ${convT}
+            SET hidden_by_tag = false,
+                current_tag_id = NULL,
+                hidden_by_tag_rule_id = NULL,
+                tag_reactivated_at = now(),
+                updated_at = now()
+          WHERE id = $1::uuid
+            AND empresa_id = $2::uuid
+            AND hidden_by_tag IS TRUE`,
+        [conversationId, input.empresa_id]
+      );
+
+      if ((clearRes.rowCount ?? 0) > 0) {
+        const historyT = quoteSchemaTable(schema, "chat_conversation_tag_history");
+        await client.query(
+          `INSERT INTO ${historyT}
+             (empresa_id, conversation_id, contact_id, previous_tag_id, new_tag_id, rule_id,
+              action, reason, source, metadata)
+           VALUES ($1::uuid, $2::uuid, $3::uuid, $4, NULL, $5,
+                   'cleared', 'inbound_reactivated_conversation', 'client_replied', $6::jsonb)`,
+          [
+            input.empresa_id,
+            conversationId,
+            contactId,
+            previousTagId,
+            previousRuleId,
+            JSON.stringify({
+              wa_message_id: ext ?? null,
+              message_id: messageId,
+              previous_tag_id: previousTagId,
+              previous_rule_id: previousRuleId,
+              previous_hidden_by_tag_at: previousHiddenAtIso,
+              source_phase: "fase_5a_inbound_reactivation",
+            }),
+          ]
+        );
+        console.info(LOG, LOG_IN, "[chat-tags][reactivated-by-inbound]", {
+          empresa_id: input.empresa_id,
+          conversation_id_short: conversationId.slice(0, 8),
+          previous_tag_id: previousTagId,
+        });
+      }
+    }
 
     await client.query("COMMIT");
 
