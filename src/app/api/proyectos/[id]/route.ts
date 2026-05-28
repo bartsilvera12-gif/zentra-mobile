@@ -116,6 +116,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
         comentarios: comentariosRich,
         archivos: archivos.data ?? [],
         avance_pct: avance,
+        current_user_id: auth.usuarioCatalogId,
       })
     );
   } catch (e) {

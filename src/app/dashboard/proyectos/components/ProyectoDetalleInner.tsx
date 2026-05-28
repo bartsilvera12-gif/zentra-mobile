@@ -37,6 +37,7 @@ export type DetalleResp = {
   comentarios: Record<string, unknown>[];
   archivos: Record<string, unknown>[];
   avance_pct: number | null;
+  current_user_id?: string | null;
 };
 
 type UsuarioActivo = { id: string; nombre?: string | null; email?: string | null };
@@ -231,6 +232,9 @@ export default function ProyectoDetalleInner({
   const [err, setErr] = useState<string | null>(null);
 
   const [comTexto, setComTexto] = useState("");
+  const [comEditandoId, setComEditandoId] = useState<string | null>(null);
+  const [comEditTexto, setComEditTexto] = useState("");
+  const [comActionId, setComActionId] = useState<string | null>(null);
   const [tareaTitulo, setTareaTitulo] = useState("");
   const [tareaDescripcion, setTareaDescripcion] = useState("");
   const [tareaResponsableId, setTareaResponsableId] = useState("");
@@ -422,6 +426,65 @@ export default function ProyectoDetalleInner({
     setComTexto("");
     await load();
     onProjectUpdated?.();
+  }
+
+  function iniciarEdicionComentario(cid: string, texto: string) {
+    setComEditandoId(cid);
+    setComEditTexto(texto);
+  }
+
+  function cancelarEdicionComentario() {
+    setComEditandoId(null);
+    setComEditTexto("");
+  }
+
+  async function guardarEdicionComentario(cid: string) {
+    const texto = comEditTexto.trim();
+    if (!texto || comActionId) return;
+    setComActionId(cid);
+    try {
+      const res = await fetchWithSupabaseSession(
+        `/api/proyectos/${projectId}/comentarios/${cid}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ comentario: texto }),
+        }
+      );
+      const j = (await res.json()) as { success?: boolean; error?: string };
+      if (!res.ok || !j.success) {
+        setErr(j.error ?? "Error");
+        return;
+      }
+      cancelarEdicionComentario();
+      await load();
+      onProjectUpdated?.();
+    } finally {
+      setComActionId(null);
+    }
+  }
+
+  async function eliminarComentario(cid: string) {
+    if (comActionId) return;
+    const ok = window.confirm("¿Eliminar este comentario? Esta acción no se puede deshacer.");
+    if (!ok) return;
+    setComActionId(cid);
+    try {
+      const res = await fetchWithSupabaseSession(
+        `/api/proyectos/${projectId}/comentarios/${cid}`,
+        { method: "DELETE" }
+      );
+      const j = (await res.json()) as { success?: boolean; error?: string };
+      if (!res.ok || !j.success) {
+        setErr(j.error ?? "Error");
+        return;
+      }
+      if (comEditandoId === cid) cancelarEdicionComentario();
+      await load();
+      onProjectUpdated?.();
+    } finally {
+      setComActionId(null);
+    }
   }
 
   async function agregarTarea(e: React.FormEvent) {
@@ -1228,23 +1291,82 @@ export default function ProyectoDetalleInner({
               </button>
             </form>
             <ul className="space-y-3">
-              {(data.comentarios ?? []).map((c) => (
-                <li
-                  key={String(c.id)}
-                  className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm shadow-sm"
-                >
-                  <div className="flex flex-wrap items-center gap-x-2 text-xs text-slate-500">
-                    <span className="font-medium text-[#4FAEB2]">
-                      {String((c as { usuario_nombre?: string }).usuario_nombre ?? "")}
-                    </span>
-                    <span className="text-slate-300">·</span>
-                    <span>{formatFechaPyFull(String(c.created_at ?? ""))}</span>
-                  </div>
-                  <div className="mt-1.5 whitespace-pre-line break-words text-sm leading-relaxed text-slate-700">
-                    {String(c.comentario ?? "")}
-                  </div>
-                </li>
-              ))}
+              {(data.comentarios ?? []).map((c) => {
+                const cid = String(c.id ?? "");
+                const autorId = String((c as { usuario_id?: string }).usuario_id ?? "");
+                const esAutor =
+                  !!data.current_user_id && autorId === data.current_user_id;
+                const enEdicion = comEditandoId === cid;
+                const enAccion = comActionId === cid;
+                const textoOriginal = String(c.comentario ?? "");
+                return (
+                  <li
+                    key={cid}
+                    className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm shadow-sm"
+                  >
+                    <div className="flex flex-wrap items-center gap-x-2 text-xs text-slate-500">
+                      <span className="font-medium text-[#4FAEB2]">
+                        {String((c as { usuario_nombre?: string }).usuario_nombre ?? "")}
+                      </span>
+                      <span className="text-slate-300">·</span>
+                      <span>{formatFechaPyFull(String(c.created_at ?? ""))}</span>
+                      {esAutor && !enEdicion ? (
+                        <span className="ml-auto flex items-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => iniciarEdicionComentario(cid, textoOriginal)}
+                            disabled={enAccion}
+                            className="rounded-md px-2 py-0.5 text-[11px] font-medium text-slate-500 transition-colors hover:bg-[#4FAEB2]/10 hover:text-[#3F8E91] disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            Editar
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => void eliminarComentario(cid)}
+                            disabled={enAccion}
+                            className="rounded-md px-2 py-0.5 text-[11px] font-medium text-slate-500 transition-colors hover:bg-rose-50 hover:text-rose-600 disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            {enAccion ? "Eliminando…" : "Eliminar"}
+                          </button>
+                        </span>
+                      ) : null}
+                    </div>
+                    {enEdicion ? (
+                      <div className="mt-2 space-y-2">
+                        <textarea
+                          className={`${inputCls} min-h-[72px]`}
+                          rows={3}
+                          value={comEditTexto}
+                          onChange={(e) => setComEditTexto(e.target.value)}
+                          autoFocus
+                        />
+                        <div className="flex items-center justify-end gap-2">
+                          <button
+                            type="button"
+                            onClick={cancelarEdicionComentario}
+                            disabled={enAccion}
+                            className="rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 transition-colors hover:border-slate-300 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            Cancelar
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => void guardarEdicionComentario(cid)}
+                            disabled={enAccion || !comEditTexto.trim()}
+                            className="rounded-xl bg-[#4FAEB2] px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-[#3F8E91] disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400 disabled:shadow-none"
+                          >
+                            {enAccion ? "Guardando…" : "Guardar"}
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="mt-1.5 whitespace-pre-line break-words text-sm leading-relaxed text-slate-700">
+                        {textoOriginal}
+                      </div>
+                    )}
+                  </li>
+                );
+              })}
               {(data.comentarios ?? []).length === 0 ? (
                 <li className="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-6 text-center text-sm text-slate-500">
                   Aún no hay comentarios.
