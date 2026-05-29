@@ -198,6 +198,8 @@ export default function EtiquetasClient() {
   const [campTagCode, setCampTagCode] = useState("");
   const [campTemplates, setCampTemplates] = useState<CampanaTemplate[]>([]);
   const [campTemplatesLoading, setCampTemplatesLoading] = useState(false);
+  const [campTemplatesSyncing, setCampTemplatesSyncing] = useState(false);
+  const [campTemplatesSyncNotice, setCampTemplatesSyncNotice] = useState<string | null>(null);
   const [campTemplateId, setCampTemplateId] = useState("");
   const [campHeaderImageUrl, setCampHeaderImageUrl] = useState("");
   const [campCampaignName, setCampCampaignName] = useState("");
@@ -423,6 +425,61 @@ export default function EtiquetasClient() {
       setCampError(e instanceof Error ? e.message : "Error al cargar templates");
     } finally {
       setCampTemplatesLoading(false);
+    }
+  }, []);
+
+  // ETQ-CAMP-FIX-1: refrescar plantillas pulleando de Meta para que aparezcan
+  // las nuevas aprobaciones (sin esto, la DB local solo tiene las del último sync).
+  const syncTemplatesFromMeta = useCallback(async () => {
+    setCampTemplatesSyncing(true);
+    setCampError(null);
+    setCampTemplatesSyncNotice(null);
+    try {
+      const optsRes = await fetch(`/api/campanas/options`, { cache: "no-store" });
+      const optsJson = (await optsRes.json()) as {
+        ok?: boolean;
+        data?: { channels?: Array<{ id: string; provider: string }> };
+        error?: string;
+      };
+      if (!optsRes.ok || optsJson.ok === false) {
+        setCampError(optsJson.error || "No se pudieron cargar los canales");
+        return;
+      }
+      const channels = optsJson.data?.channels ?? [];
+      if (channels.length === 0) {
+        setCampError("No hay canales WhatsApp activos");
+        return;
+      }
+      let totalFetched = 0;
+      let totalInserted = 0;
+      for (const c of channels) {
+        const r = await fetch(`/api/campanas/templates/sync`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ channel_id: c.id }),
+          cache: "no-store",
+        });
+        const j = (await r.json()) as {
+          ok?: boolean;
+          data?: { fetched?: number; inserted?: number };
+          error?: string;
+        };
+        if (!r.ok || j.ok === false) {
+          setCampError(j.error || `Error al sincronizar canal ${c.id.slice(0, 8)}`);
+          return;
+        }
+        totalFetched += j.data?.fetched ?? 0;
+        totalInserted += j.data?.inserted ?? 0;
+      }
+      setCampTemplatesSyncNotice(
+        `Sincronizado: ${totalFetched} plantilla(s) encontrada(s), ${totalInserted} actualizada(s)/nueva(s).`
+      );
+      // Recargar la lista local de plantillas tras el sync.
+      setCampTemplates([]);
+    } catch (e) {
+      setCampError(e instanceof Error ? e.message : "Error al sincronizar plantillas");
+    } finally {
+      setCampTemplatesSyncing(false);
     }
   }, []);
 
@@ -918,13 +975,30 @@ export default function EtiquetasClient() {
 
               {campStep === 2 && (
                 <div className="space-y-3">
-                  <p className="text-sm text-slate-700">Elegí la plantilla aprobada por Meta.</p>
+                  <div className="flex items-start justify-between gap-3">
+                    <p className="text-sm text-slate-700">Elegí la plantilla aprobada por Meta.</p>
+                    <button
+                      type="button"
+                      onClick={syncTemplatesFromMeta}
+                      disabled={campTemplatesSyncing || campTemplatesLoading}
+                      className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 shadow-sm transition-colors hover:border-emerald-400/60 hover:bg-emerald-50/30 hover:text-emerald-700 disabled:opacity-50"
+                      title="Pull desde Meta y refrescar lista de plantillas"
+                    >
+                      <RefreshCw size={12} className={campTemplatesSyncing ? "animate-spin" : ""} />
+                      {campTemplatesSyncing ? "Sincronizando…" : "Sincronizar con Meta"}
+                    </button>
+                  </div>
+                  {campTemplatesSyncNotice && (
+                    <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800">
+                      {campTemplatesSyncNotice}
+                    </div>
+                  )}
                   {campTemplatesLoading && (
                     <div className="text-sm text-slate-500">Cargando plantillas…</div>
                   )}
                   {!campTemplatesLoading && campTemplates.length === 0 && (
                     <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
-                      No hay plantillas aprobadas. Sincronizalas desde Configuración → Canales.
+                      No hay plantillas aprobadas. Tocá <span className="font-semibold">Sincronizar con Meta</span> para traer las últimas aprobaciones.
                     </div>
                   )}
                   <div className="grid gap-2">
