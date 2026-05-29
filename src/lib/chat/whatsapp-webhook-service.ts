@@ -1217,6 +1217,86 @@ export async function processInboundWebhookValue(
         }
       }
 
+      // ETQ-CAMP-FIX-5: reactivación automática de conversación oculta por etiqueta.
+      // Si la conv tenía hidden_by_tag=true y este inbound es del cliente (from_me=false),
+      // limpiar campos de etiqueta y registrar history action='cleared'.
+      // Idempotente: UPDATE condicional con AND hidden_by_tag=true; un segundo evento ve rowCount=0.
+      // Multi-tenant: try/catch silencia errores en schemas sin la columna (la propagación a otros
+      // tenants se hace cuando reciban la migración de etiquetas).
+      try {
+        const { data: convForTag } = await supabase
+          .from("chat_conversations")
+          .select("contact_id, hidden_by_tag, current_tag_id, hidden_by_tag_rule_id, hidden_by_tag_at")
+          .eq("id", conversationId)
+          .eq("empresa_id", empresaId)
+          .maybeSingle();
+        const cur = convForTag as
+          | {
+              contact_id?: string | null;
+              hidden_by_tag?: boolean | null;
+              current_tag_id?: string | null;
+              hidden_by_tag_rule_id?: string | null;
+              hidden_by_tag_at?: string | null;
+            }
+          | null;
+        if (cur?.hidden_by_tag === true) {
+          const prevTagId = cur.current_tag_id ?? null;
+          const prevRuleId = cur.hidden_by_tag_rule_id ?? null;
+          const prevHiddenAt = cur.hidden_by_tag_at ?? null;
+          const contactIdForHistory = cur.contact_id ?? null;
+          const nowIso = new Date().toISOString();
+          const { error: updErr, count: updRows } = await supabase
+            .from("chat_conversations")
+            .update(
+              {
+                hidden_by_tag: false,
+                current_tag_id: null,
+                hidden_by_tag_rule_id: null,
+                tag_reactivated_at: nowIso,
+                updated_at: nowIso,
+              },
+              { count: "exact" }
+            )
+            .eq("id", conversationId)
+            .eq("empresa_id", empresaId)
+            .eq("hidden_by_tag", true);
+          if (!updErr && (updRows ?? 0) > 0) {
+            await supabase.from("chat_conversation_tag_history").insert({
+              empresa_id: empresaId,
+              conversation_id: conversationId,
+              contact_id: contactIdForHistory,
+              previous_tag_id: prevTagId,
+              new_tag_id: null,
+              rule_id: prevRuleId,
+              action: "cleared",
+              reason: "inbound_reactivated_conversation_meta",
+              source: "client_replied",
+              metadata: {
+                source_phase: "etq_camp_fix_5_meta_reactivation",
+                provider: "meta",
+                wa_message_id: waMid ?? null,
+                message_id: inboundRowId,
+                previous_tag_id: prevTagId,
+                previous_rule_id: prevRuleId,
+                previous_hidden_by_tag_at: prevHiddenAt,
+              },
+            });
+            console.info(logW, "[chat-tags][reactivated-by-inbound-meta]", {
+              empresa_id_short: empresaId.slice(0, 8),
+              conversation_id_short: conversationId.slice(0, 8),
+              previous_tag_id: prevTagId,
+            });
+          }
+        }
+      } catch (reactErr) {
+        // No bloquear el persist por errores en la reactivación. Tenants sin la columna
+        // hidden_by_tag (no Papu) caen acá y siguen normal.
+        console.warn(logW, "[chat-tags][reactivation-meta-skip]", {
+          conversationId,
+          error: reactErr instanceof Error ? reactErr.message : String(reactErr),
+        });
+      }
+
       if (!inboundRowId) {
         errors.push("Mensaje entrante sin id de fila");
         continue;
