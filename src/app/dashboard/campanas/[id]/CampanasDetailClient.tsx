@@ -448,6 +448,15 @@ export default function CampanasDetailClient({
   }
 
   async function cancelSend() {
+    const confirmMsg =
+      "¿Cancelar esta campaña?\n\n" +
+      "• Esto NO borra mensajes ya enviados.\n" +
+      "• Solo detiene envíos pendientes (en cola o por enviar).\n" +
+      "• Los destinatarios ya enviados/respondidos/fallidos se conservan.\n" +
+      "• Esta acción no se puede deshacer.";
+    if (typeof window !== "undefined" && !window.confirm(confirmMsg)) {
+      return;
+    }
     setBusy(true);
     const res = await fetchWithSupabaseSession(`/api/campanas/${campaignId}/cancel`, {
       method: "POST",
@@ -923,9 +932,13 @@ export default function CampanasDetailClient({
       <div className="flex flex-wrap items-center justify-end gap-2">
         <button
           type="button"
-          disabled={busy || campaign.status !== "sending"}
+          disabled={
+            busy ||
+            !["draft", "ready", "sending"].includes(String(campaign.status ?? ""))
+          }
           onClick={() => void cancelSend()}
           className="inline-flex items-center gap-1.5 rounded-lg border border-red-300 bg-white px-4 py-2 text-sm font-semibold text-red-700 transition-colors hover:bg-red-50 disabled:opacity-50"
+          title="Detiene envíos pendientes. No borra mensajes ya enviados."
         >
           Cancelar envío
         </button>
