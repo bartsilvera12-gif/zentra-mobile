@@ -17,6 +17,11 @@ import { schemaHasHiddenByTagColumn } from "@/lib/chat/tags/has-hidden-by-tag-co
 const DEFAULT_LIMIT = 50;
 const MAX_LIMIT = 100;
 
+// P2-CAMP-PAPU-REPAIR-1: tags para los que NUNCA debemos incluir compradores reales
+// (tienen ticket entregado o entrada con cupones). El clasificador puede haberlos
+// dejado mal etiquetados antes de que completaran la compra.
+const EXCLUDE_BUYERS_FOR_TAG_CODES = new Set(["datos_incompletos"]);
+
 function parseIntCap(v: string | null, fallback: number, max?: number): number {
   if (!v) return fallback;
   const n = parseInt(v, 10);
@@ -104,6 +109,7 @@ export async function GET(request: NextRequest) {
       24 * 30
     );
     const dedupeByPhone = parseBool(url.searchParams.get("dedupe_by_phone"), true);
+    const excludeBuyers = EXCLUDE_BUYERS_FOR_TAG_CODES.has(tagCode);
 
     // Resolver tag (label y id).
     const tagRes = await pool.query(
@@ -173,7 +179,14 @@ export async function GET(request: NextRequest) {
                     AND m.conversation_id = c.id
                     AND m.from_me = false
                     AND m.created_at > now() - ($3::int * interval '1 hour')
-               ) AS has_recent_inbound
+               ) AS has_recent_inbound,
+               EXISTS (
+                 SELECT 1 FROM "${schema}".sorteo_ticket_deliveries t
+                  WHERE t.empresa_id = $1
+                    AND t.conversation_id = c.id
+                    AND t.is_current = true
+                    AND t.status = 'sent'
+               ) AS has_real_purchase
           FROM "${schema}".chat_conversations c
           JOIN "${schema}".chat_contacts ct ON ct.id = c.contact_id
          WHERE c.empresa_id = $1
@@ -199,6 +212,7 @@ export async function GET(request: NextRequest) {
         count(*) FILTER (WHERE is_reactivated)::int AS reactivated_count,
         count(*) FILTER (WHERE human_taken_over)::int AS human_count,
         count(*) FILTER (WHERE has_recent_inbound)::int AS recent_inbound_count,
+        count(*) FILTER (WHERE has_real_purchase)::int AS real_purchase_count,
         (count(*) FILTER (WHERE valid_phone)
           - count(DISTINCT phone_norm) FILTER (WHERE valid_phone))::int AS duplicate_phone_count
       FROM classified
@@ -213,6 +227,7 @@ export async function GET(request: NextRequest) {
       reactivated_count: number;
       human_count: number;
       recent_inbound_count: number;
+      real_purchase_count: number;
       duplicate_phone_count: number;
     };
 
@@ -238,6 +253,13 @@ export async function GET(request: NextRequest) {
                       AND m.from_me = false
                       AND m.created_at > now() - ($${recentHoursIdx}::int * interval '1 hour'))`
     );
+    if (excludeBuyers) {
+      sampleWhere.push(
+        `NOT EXISTS (SELECT 1 FROM "${schema}".sorteo_ticket_deliveries t
+                      WHERE t.empresa_id = $1 AND t.conversation_id = c.id
+                        AND t.is_current = true AND t.status = 'sent')`
+      );
+    }
 
     sampleParams.push(limit);
     const limitIdx = sampleParams.length;
@@ -358,6 +380,15 @@ export async function GET(request: NextRequest) {
         meta: { count: agg.recent_inbound_count, hours: excludeRecentInboundHours },
       });
     }
+    if (excludeBuyers && agg.real_purchase_count > 0) {
+      warnings.push({
+        code: "compra_real_excluida",
+        message:
+          `${agg.real_purchase_count} contacto(s) con compra real detectada (ticket entregado) ` +
+          `serán excluidos de esta audiencia. Ya completaron su compra.`,
+        meta: { count: agg.real_purchase_count, tag_code: tagCode },
+      });
+    }
     if (dedupeByPhone && agg.duplicate_phone_count > 0) {
       warnings.push({
         code: "duplicados_por_telefono",
@@ -390,6 +421,8 @@ export async function GET(request: NextRequest) {
       human_excluded_count: excludeHuman ? agg.human_count : 0,
       human_total_count: agg.human_count,
       recent_inbound_excluded_count: agg.recent_inbound_count,
+      compra_real_excluida_count: excludeBuyers ? agg.real_purchase_count : 0,
+      compra_real_total_count: agg.real_purchase_count,
       duplicate_phone_count: dedupeByPhone ? agg.duplicate_phone_count : 0,
       sample_recipients,
       warnings,
@@ -401,6 +434,7 @@ export async function GET(request: NextRequest) {
         exclude_human_taken_over: excludeHuman,
         exclude_recent_inbound_hours: excludeRecentInboundHours,
         dedupe_by_phone: dedupeByPhone,
+        exclude_buyers: excludeBuyers,
       },
     });
   } catch (e) {

@@ -27,6 +27,10 @@ import { normalizeCampaignPhone } from "@/lib/campaigns/campaign-phone";
 
 const HARD_CAP_RECIPIENTS = 5000;
 
+// P2-CAMP-PAPU-REPAIR-1: tags para los que NUNCA debemos incluir compradores reales
+// (tienen ticket entregado o entrada con cupones).
+const EXCLUDE_BUYERS_FOR_TAG_CODES = new Set(["datos_incompletos"]);
+
 interface Body {
   tag_code?: string;
   template_id?: string;
@@ -189,6 +193,14 @@ export async function POST(request: NextRequest) {
                     AND m.from_me = false
                     AND m.created_at > now() - ($${recentHoursIdx}::int * interval '1 hour'))`
   );
+  const excludeBuyers = EXCLUDE_BUYERS_FOR_TAG_CODES.has(tagCode);
+  if (excludeBuyers) {
+    audienceWhere.push(
+      `NOT EXISTS (SELECT 1 FROM "${schema}".sorteo_ticket_deliveries t
+                    WHERE t.empresa_id = $1 AND t.conversation_id = c.id
+                      AND t.is_current = true AND t.status = 'sent')`
+    );
+  }
   audienceParams.push(maxRecipients);
   const limitIdx = audienceParams.length;
 
@@ -229,6 +241,21 @@ export async function POST(request: NextRequest) {
          AND length(COALESCE(ct.phone_normalized, regexp_replace(COALESCE(ct.phone_number,''), '\\D','','g'))) BETWEEN 8 AND 15
        ORDER BY c.last_message_at DESC NULLS LAST
        LIMIT $${limitIdx}`;
+
+  // Conteo de compradores excluidos por guard (informativo).
+  let realPurchaseExcludedCount = 0;
+  if (excludeBuyers) {
+    const exclRes = await pool.query(
+      `SELECT count(DISTINCT c.id)::int AS n
+         FROM "${schema}".chat_conversations c
+         JOIN "${schema}".sorteo_ticket_deliveries t ON t.conversation_id=c.id
+        WHERE c.empresa_id=$1 AND c.current_tag_id=$2::uuid
+          AND c.hidden_by_tag=true AND c.status IN ('open','pending')
+          AND t.empresa_id=$1 AND t.is_current=true AND t.status='sent'`,
+      [empresaId, tagId]
+    );
+    realPurchaseExcludedCount = (exclRes.rows[0] as { n?: number })?.n ?? 0;
+  }
 
   const audRes = await pool.query(audienceSql, audienceParams);
   const audience = audRes.rows as AudienceRow[];
@@ -395,6 +422,8 @@ export async function POST(request: NextRequest) {
       exclude_reactivated: excludeReactivated,
       exclude_human_taken_over: excludeHuman,
       exclude_recent_inbound_hours: excludeRecentInboundHours,
+      exclude_buyers: excludeBuyers,
+      compra_real_excluida_count: realPurchaseExcludedCount,
     },
   });
 
@@ -416,6 +445,7 @@ export async function POST(request: NextRequest) {
       redirect_to: `/dashboard/campanas/${campaignId}`,
       // Nunca se invocó launch/process. La campaña queda en draft.
       launched: false,
+      compra_real_excluida_count: realPurchaseExcludedCount,
     })
   );
 }
