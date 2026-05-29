@@ -1,8 +1,8 @@
 "use client";
 
-import { ChevronDown, RefreshCw } from "lucide-react";
+import { ChevronDown, RefreshCw, Search, X } from "lucide-react";
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
 
 const BASE_LABEL: Record<string, string> = {
@@ -120,6 +120,87 @@ function formatDate(iso: string | null): string {
 function currentMonthInputValue(): string {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
+
+// ── Búsqueda local de movimientos (no altera cálculo ni totales) ─────────────
+
+/**
+ * Filtro 100% visual sobre las filas ya cargadas en el preview.
+ * Coincide por nombre de cliente, comprobante, tipo de movimiento y fecha.
+ * No modifica base, comisión, pendiente ni progreso del vendedor.
+ */
+function lineaMatchesQuery(ln: Linea, query: string): boolean {
+  const needle = query.trim().toLowerCase();
+  if (!needle) return true;
+  const haystacks = [
+    ln.cliente_label ?? "",
+    ln.numero_factura ?? "",
+    MOVIMIENTO_LABEL[ln.tipo] ?? "",
+    ln.tipo ?? "",
+    formatDate(ln.fecha),
+    ln.fecha ?? "",
+  ];
+  return haystacks.some((h) => h.toLowerCase().includes(needle));
+}
+
+function MovimientosSearch({
+  value,
+  onChange,
+  shown,
+  total,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  shown: number;
+  total: number;
+}) {
+  const active = value.trim().length > 0;
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className="relative w-full sm:max-w-sm">
+        <Search
+          aria-hidden="true"
+          className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"
+        />
+        <input
+          type="text"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder="Buscar cliente, comprobante o movimiento…"
+          className="w-full rounded-xl border border-slate-200 bg-white py-2 pl-9 pr-9 text-sm text-slate-800 shadow-sm transition-colors placeholder:text-slate-400 hover:border-[#4FAEB2]/60 focus:border-[#4FAEB2] focus:outline-none focus:ring-2 focus:ring-[#4FAEB2]/20"
+        />
+        {active ? (
+          <button
+            type="button"
+            onClick={() => onChange("")}
+            aria-label="Limpiar búsqueda"
+            className="absolute right-2 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+        ) : null}
+      </div>
+      {active ? (
+        <p className="text-xs font-medium tabular-nums text-slate-500">
+          Mostrando {shown} de {total} movimientos
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+function MovimientosEmptyState() {
+  return (
+    <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/60 px-4 py-10 text-center">
+      <div className="mx-auto mb-2.5 flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-400">
+        <Search className="h-4 w-4" aria-hidden="true" />
+      </div>
+      <p className="text-sm font-semibold text-slate-700">
+        No se encontraron movimientos para esta búsqueda.
+      </p>
+      <p className="mt-1 text-xs text-slate-500">Probá con otro nombre, comprobante o fecha.</p>
+    </div>
+  );
 }
 
 function escalaActualLabel(r: VendedorRow): string {
@@ -294,76 +375,110 @@ function TotalsStrip({ row }: { row: VendedorRow }) {
 }
 
 function MovimientosTable({ row }: { row: VendedorRow }) {
+  const [query, setQuery] = useState("");
+  const lineasFiltradas = useMemo(
+    () => row.lineas.filter((ln) => lineaMatchesQuery(ln, query)),
+    [row.lineas, query]
+  );
+
   return (
-    <div className="mt-4 overflow-hidden rounded-xl border border-slate-200">
-      <div className="overflow-x-auto">
-        <table className="w-full min-w-[980px] text-left text-sm">
-          <thead className="bg-slate-50/80">
-            <tr>
-              {[
-                "Cliente",
-                "Movimiento",
-                "Comprobante",
-                "Fecha",
-                "Base comisionable",
-                "Comisión estimada",
-                "Cobrado",
-                "Pendiente",
-                "Pendiente por comisionar",
-              ].map((h, i) => (
-                <th
-                  key={h}
-                  className={`px-4 py-2.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-500 whitespace-nowrap ${
-                    i >= 4 ? "text-right" : "text-left"
-                  }`}
-                >
-                  {h}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100">
-            {row.lineas.map((ln, i) => (
-              <tr
-                key={`${ln.pago_id ?? ""}-${ln.factura_id ?? ""}-${i}`}
-                className="transition-colors hover:bg-[#4FAEB2]/[0.04]"
-              >
-                <td className="px-4 py-3 text-sm font-medium text-slate-800">{ln.cliente_label}</td>
-                <td className="px-4 py-3 text-xs text-slate-600">
-                  {MOVIMIENTO_LABEL[ln.tipo] ?? "Movimiento"}
-                </td>
-                <td className="px-4 py-3 text-xs font-medium text-slate-700">
-                  {ln.numero_factura ?? "—"}
-                </td>
-                <td className="px-4 py-3 text-xs tabular-nums text-slate-600">{formatDate(ln.fecha)}</td>
-                <td className="px-4 py-3 text-right text-sm font-semibold tabular-nums text-slate-900">
-                  {fmtMoney(ln.monto_base)}
-                </td>
-                <td className="px-4 py-3 text-right text-sm font-semibold tabular-nums text-[#3F8E91]">
-                  {fmtMoney(ln.comision_estimada_linea)}
-                </td>
-                <td className="px-4 py-3 text-right text-sm tabular-nums text-slate-700">
-                  {fmtMoney(ln.cobrado_periodo ?? 0)}
-                </td>
-                <td className="px-4 py-3 text-right text-sm tabular-nums text-slate-700">
-                  {fmtMoney(ln.saldo_pendiente ?? 0)}
-                </td>
-                <td className="px-4 py-3 text-right text-sm tabular-nums text-slate-700">
-                  {fmtMoney(ln.pendiente_por_comisionar ?? 0)}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+    <div className="space-y-3">
+      <MovimientosSearch
+        value={query}
+        onChange={setQuery}
+        shown={lineasFiltradas.length}
+        total={row.lineas.length}
+      />
+      {lineasFiltradas.length === 0 ? (
+        <MovimientosEmptyState />
+      ) : (
+        <div className="overflow-hidden rounded-xl border border-slate-200">
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[980px] text-left text-sm">
+              <thead className="bg-slate-50/80">
+                <tr>
+                  {[
+                    "Cliente",
+                    "Movimiento",
+                    "Comprobante",
+                    "Fecha",
+                    "Base comisionable",
+                    "Comisión estimada",
+                    "Cobrado",
+                    "Pendiente",
+                    "Pendiente por comisionar",
+                  ].map((h, i) => (
+                    <th
+                      key={h}
+                      className={`px-4 py-2.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-500 whitespace-nowrap ${
+                        i >= 4 ? "text-right" : "text-left"
+                      }`}
+                    >
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {lineasFiltradas.map((ln, i) => (
+                  <tr
+                    key={`${ln.pago_id ?? ""}-${ln.factura_id ?? ""}-${i}`}
+                    className="transition-colors hover:bg-[#4FAEB2]/[0.04]"
+                  >
+                    <td className="px-4 py-3 text-sm font-medium text-slate-800">{ln.cliente_label}</td>
+                    <td className="px-4 py-3 text-xs text-slate-600">
+                      {MOVIMIENTO_LABEL[ln.tipo] ?? "Movimiento"}
+                    </td>
+                    <td className="px-4 py-3 text-xs font-medium text-slate-700">
+                      {ln.numero_factura ?? "—"}
+                    </td>
+                    <td className="px-4 py-3 text-xs tabular-nums text-slate-600">{formatDate(ln.fecha)}</td>
+                    <td className="px-4 py-3 text-right text-sm font-semibold tabular-nums text-slate-900">
+                      {fmtMoney(ln.monto_base)}
+                    </td>
+                    <td className="px-4 py-3 text-right text-sm font-semibold tabular-nums text-[#3F8E91]">
+                      {fmtMoney(ln.comision_estimada_linea)}
+                    </td>
+                    <td className="px-4 py-3 text-right text-sm tabular-nums text-slate-700">
+                      {fmtMoney(ln.cobrado_periodo ?? 0)}
+                    </td>
+                    <td className="px-4 py-3 text-right text-sm tabular-nums text-slate-700">
+                      {fmtMoney(ln.saldo_pendiente ?? 0)}
+                    </td>
+                    <td className="px-4 py-3 text-right text-sm tabular-nums text-slate-700">
+                      {fmtMoney(ln.pendiente_por_comisionar ?? 0)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
 function SellerMovimientosList({ row }: { row: VendedorRow }) {
+  const [query, setQuery] = useState("");
+  const lineasFiltradas = useMemo(
+    () => row.lineas.filter((ln) => lineaMatchesQuery(ln, query)),
+    [row.lineas, query]
+  );
+
   return (
-    <div className="mt-3 grid gap-3">
-      {row.lineas.map((ln, i) => (
+    <div className="mt-3 space-y-3">
+      <MovimientosSearch
+        value={query}
+        onChange={setQuery}
+        shown={lineasFiltradas.length}
+        total={row.lineas.length}
+      />
+      {lineasFiltradas.length === 0 ? (
+        <MovimientosEmptyState />
+      ) : (
+        <div className="grid gap-3">
+          {lineasFiltradas.map((ln, i) => (
         <article
           key={`${ln.pago_id ?? ""}-${ln.factura_id ?? ""}-${i}`}
           className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition-shadow hover:shadow-md"
@@ -402,8 +517,10 @@ function SellerMovimientosList({ row }: { row: VendedorRow }) {
               </div>
             ))}
           </div>
-        </article>
-      ))}
+            </article>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
