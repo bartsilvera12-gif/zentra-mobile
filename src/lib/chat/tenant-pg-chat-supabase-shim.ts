@@ -20,6 +20,7 @@ const ALLOWED_TABLES = new Set([
   "chat_channels",
   "chat_comprobante_validaciones",
   "chat_contacts",
+  "chat_conversation_tags",
   "chat_conversations",
   "chat_flow_data",
   "chat_flow_events",
