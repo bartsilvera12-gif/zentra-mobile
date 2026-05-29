@@ -719,6 +719,42 @@ export default function CampanasDetailClient({
         </section>
       ) : null}
 
+      {/* ETQ-CAMP-FIX-4: si la template NO tiene variables, igual hace falta pasar por /validate
+          para marcar la campaña como ready y habilitar "Enviar ahora". Antes este bloque solo
+          existia dentro de la sección de mapeo, que se ocultaba cuando placeholders=0. */}
+      {placeholderSlots.length === 0 && campaign.status !== "ready" && campaign.status !== "sending" && campaign.status !== "completed" && campaign.status !== "cancelled" ? (
+        <section className="space-y-3 rounded-2xl border border-amber-200 bg-amber-50/40 p-5 shadow-sm">
+          <div className="flex items-center gap-2">
+            <span
+              aria-hidden="true"
+              className="inline-block h-1.5 w-1.5 rounded-full bg-amber-500 shadow-[0_0_0_3px_rgba(245,158,11,0.18)]"
+            />
+            <h2 className="text-[11px] font-semibold uppercase tracking-[0.18em] text-amber-700">
+              Listo para validar
+            </h2>
+          </div>
+          <p className="text-sm text-slate-700">
+            Esta plantilla no tiene variables <code className="rounded bg-slate-100 px-1 text-xs">{`{{var}}`}</code> en el body, así que no hay mapeo a configurar.
+            Igual hace falta marcar la campaña como lista antes de enviar.
+          </p>
+          {campaign.status === "draft" ? (
+            <p className="text-xs text-slate-500">
+              Al pulsar el botón el backend valida los destinatarios y el estado pasa de <strong>draft</strong> a <strong>ready</strong>. Recién entonces se habilita <strong>Enviar ahora</strong>.
+            </p>
+          ) : null}
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <button
+              type="button"
+              disabled={busy || !canImport}
+              onClick={() => void validateMapping()}
+              className="rounded-lg bg-[#4FAEB2] px-4 py-1.5 text-xs font-semibold text-white shadow-sm shadow-[#4FAEB2]/25 transition-colors hover:bg-[#3F8E91] disabled:opacity-50"
+            >
+              Marcar campaña como lista para enviar
+            </button>
+          </div>
+        </section>
+      ) : null}
+
       {quickReplyTemplateButtons.length > 0 ? (
         <section className="space-y-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm ring-1 ring-[#4FAEB2]/15">
           <div className="flex items-center gap-2">
