@@ -188,6 +188,23 @@ export function formatFechaPyFull(iso?: string | null): string {
   }).format(d);
 }
 
+// Para campos solo-fecha (sin hora real, ej. fecha_limite). Lee el prefijo
+// YYYY-MM-DD del valor para no convertir zona horaria: un valor guardado como
+// medianoche UTC no debe retroceder un día al mostrarse en Paraguay (UTC-3/-4).
+export function formatFechaPySolo(iso?: string | null): string {
+  if (!iso) return "—";
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(iso).trim());
+  if (m) return `${m[3]}/${m[2]}/${m[1]}`;
+  const d = new Date(iso);
+  if (!Number.isFinite(d.getTime())) return "—";
+  return new Intl.DateTimeFormat("es-PY", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    timeZone: "UTC",
+  }).format(d);
+}
+
 export function formatDurationHuman(seconds: number | null | undefined): string {
   if (seconds == null || !Number.isFinite(seconds) || seconds < 0) return "—";
   const s = Math.floor(seconds);

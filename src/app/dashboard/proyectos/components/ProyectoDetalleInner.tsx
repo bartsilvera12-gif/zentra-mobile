@@ -16,6 +16,7 @@ import {
   applySaasFormToExisting,
   coalesceBriefData,
   formatFechaPyFull,
+  formatFechaPySolo,
   readBriefUrlList,
   readSaasBriefData,
   type ProyectoModuloSnapshot,
@@ -1418,7 +1419,7 @@ export default function ProyectoDetalleInner({
                               {fechaLimite ? (
                                 <p className="mt-1.5 inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] font-medium text-slate-600">
                                   <IconTareaCalendar />
-                                  Vence {formatFechaPyFull(fechaLimite).slice(0, 10)}
+                                  Vence {formatFechaPySolo(fechaLimite)}
                                 </p>
                               ) : null}
                             </div>
