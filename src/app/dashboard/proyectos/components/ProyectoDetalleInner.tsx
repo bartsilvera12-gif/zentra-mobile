@@ -297,6 +297,12 @@ export default function ProyectoDetalleInner({
   const [tareaResponsableId, setTareaResponsableId] = useState("");
   const [tareaFechaLimite, setTareaFechaLimite] = useState("");
   const [tareaSaving, setTareaSaving] = useState(false);
+  const [tareaEditandoId, setTareaEditandoId] = useState<string | null>(null);
+  const [tareaEditTitulo, setTareaEditTitulo] = useState("");
+  const [tareaEditDescripcion, setTareaEditDescripcion] = useState("");
+  const [tareaEditResponsableId, setTareaEditResponsableId] = useState("");
+  const [tareaEditFechaLimite, setTareaEditFechaLimite] = useState("");
+  const [tareaActionId, setTareaActionId] = useState<string | null>(null);
 
   const [briefForm, setBriefForm] = useState<Record<string, string>>({});
   const [briefLists, setBriefLists] = useState<Record<string, string[]>>({});
@@ -594,6 +600,78 @@ export default function ProyectoDetalleInner({
     else {
       await load();
       onProjectUpdated?.();
+    }
+  }
+
+  function iniciarEdicionTarea(t: Record<string, unknown>) {
+    setTareaEditandoId(String(t.id ?? ""));
+    setTareaEditTitulo(typeof t.titulo === "string" ? t.titulo : "");
+    setTareaEditDescripcion(typeof t.descripcion === "string" ? t.descripcion : "");
+    setTareaEditResponsableId(typeof t.responsable_id === "string" ? t.responsable_id : "");
+    setTareaEditFechaLimite(
+      typeof t.fecha_limite === "string" && t.fecha_limite ? t.fecha_limite.slice(0, 10) : ""
+    );
+  }
+
+  function cancelarEdicionTarea() {
+    setTareaEditandoId(null);
+    setTareaEditTitulo("");
+    setTareaEditDescripcion("");
+    setTareaEditResponsableId("");
+    setTareaEditFechaLimite("");
+  }
+
+  async function guardarEdicionTarea(tareaId: string) {
+    const titulo = tareaEditTitulo.trim();
+    if (!titulo || tareaActionId) return;
+    setTareaActionId(tareaId);
+    try {
+      const res = await fetchWithSupabaseSession(
+        `/api/proyectos/${projectId}/tareas/${tareaId}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            titulo,
+            descripcion: tareaEditDescripcion.trim(),
+            responsable_id: tareaEditResponsableId || null,
+            fecha_limite: tareaEditFechaLimite || null,
+          }),
+        }
+      );
+      const j = (await res.json()) as { success?: boolean; error?: string };
+      if (!res.ok || !j.success) {
+        setErr(j.error ?? "Error");
+        return;
+      }
+      cancelarEdicionTarea();
+      await load();
+      onProjectUpdated?.();
+    } finally {
+      setTareaActionId(null);
+    }
+  }
+
+  async function eliminarTarea(tareaId: string) {
+    if (tareaActionId) return;
+    const ok = window.confirm("¿Eliminar esta tarea? Esta acción no se puede deshacer.");
+    if (!ok) return;
+    setTareaActionId(tareaId);
+    try {
+      const res = await fetchWithSupabaseSession(
+        `/api/proyectos/${projectId}/tareas/${tareaId}`,
+        { method: "DELETE" }
+      );
+      const j = (await res.json()) as { success?: boolean; error?: string };
+      if (!res.ok || !j.success) {
+        setErr(j.error ?? "Error");
+        return;
+      }
+      if (tareaEditandoId === tareaId) cancelarEdicionTarea();
+      await load();
+      onProjectUpdated?.();
+    } finally {
+      setTareaActionId(null);
     }
   }
 
@@ -1234,85 +1312,208 @@ export default function ProyectoDetalleInner({
                     Boolean(cambioAt) &&
                     Boolean(creadoAt) &&
                     new Date(cambioAt).getTime() - new Date(creadoAt).getTime() > 2000;
+                  const creadorId = String(t.created_by ?? "");
+                  const esCreadorTarea =
+                    !!data.current_user_id && creadorId === data.current_user_id;
+                  const responsable =
+                    (t.responsable_nombre as string | null | undefined) ?? null;
+                  const enEdicionTarea = tareaEditandoId === tid;
+                  const enAccionTarea = tareaActionId === tid;
                   return (
                     <li
                       key={tid}
                       className={`rounded-2xl border border-slate-200 bg-white p-3.5 shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition-shadow hover:shadow-md`}
                     >
-                      <div className="flex flex-wrap items-start gap-2">
-                        <span
-                          className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ring-2 ${tone.dot} ${tone.ring}`}
-                          aria-hidden="true"
-                        />
-                        <div className="min-w-0 flex-1">
-                          <p
-                            className={`text-sm font-semibold ${
-                              estado === "completada"
-                                ? "text-slate-500 line-through"
-                                : "text-slate-900"
-                            }`}
-                          >
-                            {String(t.titulo ?? "")}
-                          </p>
-                          {descripcion ? (
-                            <p className="mt-1 whitespace-pre-line text-xs leading-relaxed text-slate-600">
-                              {descripcion}
-                            </p>
-                          ) : null}
-                          {fechaLimite ? (
-                            <p className="mt-1.5 inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] font-medium text-slate-600">
-                              <IconTareaCalendar />
-                              Vence {formatFechaPyFull(fechaLimite).slice(0, 10)}
-                            </p>
-                          ) : null}
+                      {enEdicionTarea ? (
+                        <div className="space-y-3">
+                          <label className="block">
+                            <span className={labelCls}>Título de la tarea *</span>
+                            <input
+                              className={inputCls}
+                              value={tareaEditTitulo}
+                              onChange={(e) => setTareaEditTitulo(e.target.value)}
+                              maxLength={200}
+                              autoFocus
+                            />
+                          </label>
+                          <label className="block">
+                            <span className={labelCls}>Descripción / Contexto</span>
+                            <textarea
+                              className={`${inputCls} min-h-[72px] resize-y`}
+                              rows={3}
+                              value={tareaEditDescripcion}
+                              onChange={(e) => setTareaEditDescripcion(e.target.value)}
+                            />
+                          </label>
+                          <div className="grid gap-3 sm:grid-cols-2">
+                            <div className="block">
+                              <span className={labelCls}>Técnico asignado</span>
+                              <div className="mt-1.5">
+                                <FancySelect
+                                  ariaLabel="Técnico asignado a la tarea"
+                                  placeholder="Sin asignar"
+                                  value={tareaEditResponsableId}
+                                  onChange={setTareaEditResponsableId}
+                                  options={[
+                                    { value: "", label: "Sin asignar" },
+                                    ...usuarios.map((u) => ({
+                                      value: u.id,
+                                      label: u.nombre || u.email || u.id.slice(0, 8),
+                                    })),
+                                  ]}
+                                />
+                              </div>
+                            </div>
+                            <label className="block">
+                              <span className={labelCls}>Fecha límite</span>
+                              <input
+                                type="date"
+                                className={inputCls}
+                                value={tareaEditFechaLimite}
+                                onChange={(e) => setTareaEditFechaLimite(e.target.value)}
+                              />
+                            </label>
+                          </div>
+                          <div className="flex items-center justify-end gap-2 border-t border-slate-100 pt-3">
+                            <button
+                              type="button"
+                              onClick={cancelarEdicionTarea}
+                              disabled={enAccionTarea}
+                              className="rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-semibold text-slate-600 transition-colors hover:border-slate-300 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                              Cancelar
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => void guardarEdicionTarea(tid)}
+                              disabled={enAccionTarea || !tareaEditTitulo.trim()}
+                              className="rounded-xl bg-[#4FAEB2] px-4 py-2 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-[#3F8E91] disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400 disabled:shadow-none"
+                            >
+                              {enAccionTarea ? "Guardando…" : "Guardar cambios"}
+                            </button>
+                          </div>
                         </div>
-                        <FancySelect
-                          size="sm"
-                          className="min-w-[150px]"
-                          ariaLabel="Estado de la tarea"
-                          value={estado}
-                          onChange={(v) => void patchTarea(tid, { estado: v })}
-                          options={TAREA_ESTADO_OPTIONS.map((opt) => ({ ...opt }))}
-                        />
-                      </div>
-                      <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1.5 border-t border-slate-100 pt-2.5 text-[11px] text-slate-500">
-                        <span
-                          className="inline-flex items-center gap-1.5"
-                          title={creadoAt ? formatFechaPyFull(creadoAt) : undefined}
-                        >
-                          <span className="text-slate-400">
-                            <IconTareaUser />
-                          </span>
-                          <span>
-                            Creada por{" "}
-                            <span className="font-medium text-slate-700">{creadoPor}</span>
-                            {creadoAt ? ` · ${formatFechaRelativa(creadoAt)}` : ""}
-                          </span>
-                        </span>
-                        {huboCambioEstado ? (
-                          <span
-                            className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 ${tone.chip}`}
-                            title={cambioAt ? formatFechaPyFull(cambioAt) : undefined}
-                          >
-                            <IconTareaRefresh />
-                            <span>
-                              {tareaEstadoLabel(estado)}
-                              {cambioPor ? (
+                      ) : (
+                        <>
+                          <div className="flex flex-wrap items-start gap-2">
+                            <span
+                              className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ring-2 ${tone.dot} ${tone.ring}`}
+                              aria-hidden="true"
+                            />
+                            <div className="min-w-0 flex-1">
+                              <p
+                                className={`text-sm font-semibold ${
+                                  estado === "completada"
+                                    ? "text-slate-500 line-through"
+                                    : "text-slate-900"
+                                }`}
+                              >
+                                {String(t.titulo ?? "")}
+                              </p>
+                              {descripcion ? (
+                                <p className="mt-1 whitespace-pre-line text-xs leading-relaxed text-slate-600">
+                                  {descripcion}
+                                </p>
+                              ) : null}
+                              {fechaLimite ? (
+                                <p className="mt-1.5 inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] font-medium text-slate-600">
+                                  <IconTareaCalendar />
+                                  Vence {formatFechaPyFull(fechaLimite).slice(0, 10)}
+                                </p>
+                              ) : null}
+                            </div>
+                            <div className="flex items-center gap-1.5">
+                              <FancySelect
+                                size="sm"
+                                className="min-w-[150px]"
+                                ariaLabel="Estado de la tarea"
+                                value={estado}
+                                onChange={(v) => void patchTarea(tid, { estado: v })}
+                                options={TAREA_ESTADO_OPTIONS.map((opt) => ({ ...opt }))}
+                              />
+                              {esCreadorTarea ? (
                                 <>
-                                  {" "}por{" "}
-                                  <span className="font-medium">{cambioPor}</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => iniciarEdicionTarea(t)}
+                                    disabled={enAccionTarea}
+                                    aria-label="Editar tarea"
+                                    title="Editar"
+                                    className="inline-flex h-7 w-7 items-center justify-center rounded-md text-slate-400 transition-colors hover:bg-[#4FAEB2]/10 hover:text-[#3F8E91] disabled:cursor-not-allowed disabled:opacity-50"
+                                  >
+                                    <IconPencil />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => void eliminarTarea(tid)}
+                                    disabled={enAccionTarea}
+                                    aria-label="Eliminar tarea"
+                                    title="Eliminar"
+                                    className="inline-flex h-7 w-7 items-center justify-center rounded-md text-slate-400 transition-colors hover:bg-rose-50 hover:text-rose-600 disabled:cursor-not-allowed disabled:opacity-50"
+                                  >
+                                    {enAccionTarea ? <IconSpinner /> : <IconTrash />}
+                                  </button>
                                 </>
                               ) : null}
-                              {cambioAt ? ` · ${formatFechaRelativa(cambioAt)}` : ""}
+                            </div>
+                          </div>
+                          <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1.5 border-t border-slate-100 pt-2.5 text-[11px] text-slate-500">
+                            <span
+                              className="inline-flex items-center gap-1.5"
+                              title={creadoAt ? formatFechaPyFull(creadoAt) : undefined}
+                            >
+                              <span className="text-slate-400">
+                                <IconTareaUser />
+                              </span>
+                              <span>
+                                Creada por{" "}
+                                <span className="font-medium text-slate-700">{creadoPor}</span>
+                                {creadoAt ? ` · ${formatFechaRelativa(creadoAt)}` : ""}
+                              </span>
                             </span>
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5">
-                            <IconTareaRefresh />
-                            <span>Estado: {tareaEstadoLabel(estado)} (inicial)</span>
-                          </span>
-                        )}
-                      </div>
+                            <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5">
+                              <span className="text-slate-400">
+                                <IconTareaUser />
+                              </span>
+                              <span>
+                                {responsable ? (
+                                  <>
+                                    Asignada a{" "}
+                                    <span className="font-medium text-slate-700">
+                                      {responsable}
+                                    </span>
+                                  </>
+                                ) : (
+                                  "Sin asignar"
+                                )}
+                              </span>
+                            </span>
+                            {huboCambioEstado ? (
+                              <span
+                                className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 ${tone.chip}`}
+                                title={cambioAt ? formatFechaPyFull(cambioAt) : undefined}
+                              >
+                                <IconTareaRefresh />
+                                <span>
+                                  {tareaEstadoLabel(estado)}
+                                  {cambioPor ? (
+                                    <>
+                                      {" "}por{" "}
+                                      <span className="font-medium">{cambioPor}</span>
+                                    </>
+                                  ) : null}
+                                  {cambioAt ? ` · ${formatFechaRelativa(cambioAt)}` : ""}
+                                </span>
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5">
+                                <IconTareaRefresh />
+                                <span>Estado: {tareaEstadoLabel(estado)} (inicial)</span>
+                              </span>
+                            )}
+                          </div>
+                        </>
+                      )}
                     </li>
                   );
                 })}

@@ -69,12 +69,14 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     const tareaRows = (tareas.data ?? []) as Array<{
       created_by?: string | null;
       status_changed_by?: string | null;
+      responsable_id?: string | null;
     }>;
     const uids = [
       ...new Set([
         ...comRows.map((c) => c.usuario_id),
         ...tareaRows.map((t) => t.created_by ?? ""),
         ...tareaRows.map((t) => t.status_changed_by ?? ""),
+        ...tareaRows.map((t) => t.responsable_id ?? ""),
       ].filter((u): u is string => Boolean(u))),
     ];
     const catalog = createServiceRoleClient();
@@ -95,6 +97,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
       status_changed_by_nombre: t.status_changed_by
         ? nameMap.get(t.status_changed_by) ?? null
         : null,
+      responsable_nombre: t.responsable_id ? nameMap.get(t.responsable_id) ?? null : null,
     }));
 
     const base = enrichedArr[0] ?? (proyecto as Record<string, unknown>);

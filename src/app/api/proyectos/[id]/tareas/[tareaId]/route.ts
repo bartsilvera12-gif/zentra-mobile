@@ -60,16 +60,30 @@ export async function PATCH(
 
     const sb = await getChatServiceClientForEmpresa(auth.empresaId);
 
+    const { data: actual, error: eActual } = await sb
+      .from("proyecto_tareas")
+      .select("estado, created_by")
+      .eq("empresa_id", auth.empresaId)
+      .eq("proyecto_id", pid)
+      .eq("id", tid)
+      .maybeSingle();
+    if (eActual) return NextResponse.json(errorResponse(eActual.message), { status: 400 });
+    if (!actual) return NextResponse.json(errorResponse("No encontrado"), { status: 404 });
+
+    // Editar el contenido de la tarea (título, descripción, responsable, fecha, orden)
+    // queda reservado a quien la creó. El cambio de estado sigue abierto para que el
+    // responsable asignado pueda mover el flujo de trabajo.
+    const editaContenido = ["titulo", "descripcion", "responsable_id", "fecha_limite", "sort_order"].some(
+      (k) => k in patch
+    );
+    if (editaContenido && (actual as { created_by?: string }).created_by !== auth.usuarioCatalogId) {
+      return NextResponse.json(
+        errorResponse("Solo quien creó la tarea puede editarla"),
+        { status: 403 }
+      );
+    }
+
     if (estadoTransicion) {
-      const { data: actual, error: eActual } = await sb
-        .from("proyecto_tareas")
-        .select("estado")
-        .eq("empresa_id", auth.empresaId)
-        .eq("proyecto_id", pid)
-        .eq("id", tid)
-        .maybeSingle();
-      if (eActual) return NextResponse.json(errorResponse(eActual.message), { status: 400 });
-      if (!actual) return NextResponse.json(errorResponse("No encontrado"), { status: 404 });
       if ((actual as { estado?: string }).estado !== patch.estado) {
         patch.status_changed_by = auth.usuarioCatalogId;
         patch.status_changed_at = new Date().toISOString();
@@ -103,6 +117,61 @@ export async function PATCH(
       .eq("id", pid);
 
     return NextResponse.json(successResponse(row));
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "Error";
+    return NextResponse.json(errorResponse(msg), { status: 500 });
+  }
+}
+
+export async function DELETE(
+  request: Request,
+  { params }: { params: Promise<{ id: string; tareaId: string }> }
+) {
+  const auth = await requireProyectosApiAccess(request);
+  if (!auth.ok) {
+    return NextResponse.json(errorResponse(auth.message), { status: auth.status });
+  }
+
+  const { id: proyectoId, tareaId } = await params;
+  const pid = proyectoId?.trim() ?? "";
+  const tid = tareaId?.trim() ?? "";
+  if (!pid || !tid) return NextResponse.json(errorResponse("ids obligatorios"), { status: 400 });
+
+  try {
+    const sb = await getChatServiceClientForEmpresa(auth.empresaId);
+
+    const { data: actual, error: eActual } = await sb
+      .from("proyecto_tareas")
+      .select("created_by")
+      .eq("empresa_id", auth.empresaId)
+      .eq("proyecto_id", pid)
+      .eq("id", tid)
+      .maybeSingle();
+    if (eActual) return NextResponse.json(errorResponse(eActual.message), { status: 400 });
+    if (!actual) return NextResponse.json(errorResponse("No encontrado"), { status: 404 });
+    if ((actual as { created_by?: string }).created_by !== auth.usuarioCatalogId) {
+      return NextResponse.json(
+        errorResponse("Solo quien creó la tarea puede eliminarla"),
+        { status: 403 }
+      );
+    }
+
+    const { error } = await sb
+      .from("proyecto_tareas")
+      .delete()
+      .eq("empresa_id", auth.empresaId)
+      .eq("proyecto_id", pid)
+      .eq("id", tid);
+
+    if (error) return NextResponse.json(errorResponse(error.message), { status: 400 });
+
+    await sb
+      .from("proyectos")
+      .update({ last_activity_at: new Date().toISOString(), updated_by: auth.usuarioCatalogId })
+      .eq("empresa_id", auth.empresaId)
+      .eq("id", pid);
+
+    return NextResponse.json(successResponse({ id: tid }));
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Error";
     return NextResponse.json(errorResponse(msg), { status: 500 });
