@@ -135,6 +135,30 @@ function formatFechaRelativa(iso?: string | null): string {
   return `hace ${Math.round(days / 365)} a`;
 }
 
+// Debe coincidir con PROYECTOS_ARCHIVO_MAX_BYTES del helper server-only (no importable acá).
+const ARCHIVO_MAX_BYTES = 50 * 1024 * 1024;
+
+function formatBytes(bytes: unknown): string {
+  const n = typeof bytes === "number" ? bytes : Number(bytes);
+  if (!Number.isFinite(n) || n <= 0) return "—";
+  if (n < 1024) return `${n} B`;
+  const units = ["KB", "MB", "GB", "TB"];
+  let val = n / 1024;
+  let i = 0;
+  while (val >= 1024 && i < units.length - 1) {
+    val /= 1024;
+    i += 1;
+  }
+  return `${val >= 10 || Number.isInteger(val) ? Math.round(val) : val.toFixed(1)} ${units[i]}`;
+}
+
+function isPreviewableMime(mime: unknown): boolean {
+  if (typeof mime !== "string" || !mime) return false;
+  const m = mime.toLowerCase();
+  if (m === "application/pdf") return true;
+  return ["image/", "text/", "audio/", "video/"].some((p) => m.startsWith(p));
+}
+
 const IconTareaUser = () => (
   <svg
     xmlns="http://www.w3.org/2000/svg"
@@ -250,6 +274,80 @@ const IconSpinner = () => (
   </svg>
 );
 
+const IconUpload = () => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    width="15"
+    height="15"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    aria-hidden="true"
+  >
+    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+    <polyline points="17 8 12 3 7 8" />
+    <line x1="12" y1="3" x2="12" y2="15" />
+  </svg>
+);
+
+const IconDownload = () => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    width="13"
+    height="13"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    aria-hidden="true"
+  >
+    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+    <polyline points="7 10 12 15 17 10" />
+    <line x1="12" y1="15" x2="12" y2="3" />
+  </svg>
+);
+
+const IconEye = () => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    width="13"
+    height="13"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    aria-hidden="true"
+  >
+    <path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z" />
+    <circle cx="12" cy="12" r="3" />
+  </svg>
+);
+
+const IconFile = () => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    width="16"
+    height="16"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.8"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    aria-hidden="true"
+  >
+    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+    <polyline points="14 2 14 8 20 8" />
+  </svg>
+);
+
 export type ProyectoDetalleInnerProps = {
   projectId: string;
   variant: "page" | "modal";
@@ -304,6 +402,11 @@ export default function ProyectoDetalleInner({
   const [tareaEditResponsableId, setTareaEditResponsableId] = useState("");
   const [tareaEditFechaLimite, setTareaEditFechaLimite] = useState("");
   const [tareaActionId, setTareaActionId] = useState<string | null>(null);
+
+  const [archivoUploading, setArchivoUploading] = useState(false);
+  const [archivoActionId, setArchivoActionId] = useState<string | null>(null);
+  const [archivoDragActive, setArchivoDragActive] = useState(false);
+  const archivoInputRef = useRef<HTMLInputElement | null>(null);
 
   const [briefForm, setBriefForm] = useState<Record<string, string>>({});
   const [briefLists, setBriefLists] = useState<Record<string, string[]>>({});
@@ -673,6 +776,125 @@ export default function ProyectoDetalleInner({
       onProjectUpdated?.();
     } finally {
       setTareaActionId(null);
+    }
+  }
+
+  async function subirArchivos(files: File[]) {
+    if (archivoUploading) return;
+    const validos: File[] = [];
+    for (const f of files) {
+      if (f.size === 0) {
+        setErr(`"${f.name}" está vacío y no se subió.`);
+        continue;
+      }
+      if (f.size > ARCHIVO_MAX_BYTES) {
+        setErr(`"${f.name}" supera el máximo de ${Math.round(ARCHIVO_MAX_BYTES / (1024 * 1024))} MB.`);
+        continue;
+      }
+      validos.push(f);
+    }
+    if (validos.length === 0) return;
+    setArchivoUploading(true);
+    try {
+      for (const file of validos) {
+        const fd = new FormData();
+        fd.append("file", file);
+        const res = await fetchWithSupabaseSession(`/api/proyectos/${projectId}/archivos`, {
+          method: "POST",
+          body: fd,
+        });
+        const j = (await res.json()) as { success?: boolean; error?: string };
+        if (!res.ok || !j.success) {
+          setErr(j.error ?? `No se pudo subir "${file.name}"`);
+          break;
+        }
+      }
+      await load();
+      onProjectUpdated?.();
+    } finally {
+      setArchivoUploading(false);
+    }
+  }
+
+  function onArchivoInputChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = e.target.files ? Array.from(e.target.files) : [];
+    e.target.value = "";
+    if (files.length > 0) void subirArchivos(files);
+  }
+
+  function onArchivoDrop(e: React.DragEvent<HTMLDivElement>) {
+    e.preventDefault();
+    setArchivoDragActive(false);
+    const files = e.dataTransfer?.files ? Array.from(e.dataTransfer.files) : [];
+    if (files.length > 0) void subirArchivos(files);
+  }
+
+  async function fetchArchivoUrl(aid: string, download: boolean): Promise<string | null> {
+    const res = await fetchWithSupabaseSession(
+      `/api/proyectos/${projectId}/archivos/${aid}${download ? "?download=1" : ""}`,
+      { cache: "no-store" }
+    );
+    const j = (await res.json()) as { success?: boolean; data?: { url?: string }; error?: string };
+    if (!res.ok || !j.success || !j.data?.url) {
+      setErr(j.error ?? "No se pudo abrir el archivo");
+      return null;
+    }
+    return j.data.url;
+  }
+
+  async function descargarArchivo(aid: string) {
+    if (archivoActionId) return;
+    setArchivoActionId(aid);
+    try {
+      const url = await fetchArchivoUrl(aid, true);
+      if (!url) return;
+      const a = document.createElement("a");
+      a.href = url;
+      a.rel = "noopener";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    } finally {
+      setArchivoActionId(null);
+    }
+  }
+
+  async function previsualizarArchivo(aid: string) {
+    if (archivoActionId) return;
+    // Abrimos la pestaña en el click (sincrónico) para evitar el bloqueo de pop-ups.
+    const win = window.open("about:blank", "_blank");
+    setArchivoActionId(aid);
+    try {
+      const url = await fetchArchivoUrl(aid, false);
+      if (!url) {
+        win?.close();
+        return;
+      }
+      if (win) win.location.href = url;
+      else window.open(url, "_blank", "noopener,noreferrer");
+    } finally {
+      setArchivoActionId(null);
+    }
+  }
+
+  async function eliminarArchivo(aid: string, nombre: string) {
+    if (archivoActionId) return;
+    const ok = window.confirm(`¿Eliminar "${nombre}"? Esta acción no se puede deshacer.`);
+    if (!ok) return;
+    setArchivoActionId(aid);
+    try {
+      const res = await fetchWithSupabaseSession(`/api/proyectos/${projectId}/archivos/${aid}`, {
+        method: "DELETE",
+      });
+      const j = (await res.json()) as { success?: boolean; error?: string };
+      if (!res.ok || !j.success) {
+        setErr(j.error ?? "No se pudo eliminar");
+        return;
+      }
+      await load();
+      onProjectUpdated?.();
+    } finally {
+      setArchivoActionId(null);
     }
   }
 
@@ -1641,28 +1863,138 @@ export default function ProyectoDetalleInner({
 
         {tab === "archivos" ? (
           <div className={`${panelCls}`}>
-            <div className="flex items-center gap-2">
-              <span className="h-5 w-1 rounded-full bg-[#4FAEB2]" />
-              <h2 className="text-sm font-semibold text-slate-900">Archivos del proyecto</h2>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <span className="h-5 w-1 rounded-full bg-[#4FAEB2]" />
+                <h2 className="text-sm font-semibold text-slate-900">Archivos del proyecto</h2>
+              </div>
+              <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-medium text-slate-500">
+                {(data.archivos ?? []).length} archivo{(data.archivos ?? []).length === 1 ? "" : "s"}
+              </span>
             </div>
             <p className="mt-2 text-xs text-slate-500">
-              Registro en base de datos listo; subida a almacenamiento en una siguiente iteración.
+              Subí documentos, imágenes o PDFs (hasta {Math.round(ARCHIVO_MAX_BYTES / (1024 * 1024))} MB cada uno).
+              Podés previsualizarlos y descargarlos cuando quieras.
             </p>
+
+            <input
+              ref={archivoInputRef}
+              type="file"
+              multiple
+              className="hidden"
+              onChange={onArchivoInputChange}
+            />
+            <div
+              role="button"
+              tabIndex={0}
+              onClick={() => !archivoUploading && archivoInputRef.current?.click()}
+              onKeyDown={(e) => {
+                if ((e.key === "Enter" || e.key === " ") && !archivoUploading) {
+                  e.preventDefault();
+                  archivoInputRef.current?.click();
+                }
+              }}
+              onDragOver={(e) => {
+                e.preventDefault();
+                if (!archivoUploading) setArchivoDragActive(true);
+              }}
+              onDragLeave={(e) => {
+                e.preventDefault();
+                setArchivoDragActive(false);
+              }}
+              onDrop={onArchivoDrop}
+              className={`mt-4 flex cursor-pointer flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed px-4 py-7 text-center transition-colors ${
+                archivoDragActive
+                  ? "border-[#4FAEB2] bg-[#4FAEB2]/10"
+                  : "border-slate-300 bg-slate-50 hover:border-[#4FAEB2]/60 hover:bg-[#4FAEB2]/5"
+              } ${archivoUploading ? "pointer-events-none opacity-70" : ""}`}
+            >
+              <span className="flex h-10 w-10 items-center justify-center rounded-full bg-[#4FAEB2]/10 text-[#3F8E91]">
+                {archivoUploading ? <IconSpinner /> : <IconUpload />}
+              </span>
+              <span className="text-sm font-medium text-slate-700">
+                {archivoUploading ? "Subiendo…" : "Arrastrá archivos o hacé clic para seleccionar"}
+              </span>
+              <span className="text-xs text-slate-400">Se aceptan varios archivos a la vez</span>
+            </div>
+
             <ul className="mt-4 space-y-2">
               {(data.archivos ?? []).length === 0 ? (
                 <li className="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-6 text-center text-sm text-slate-500">
                   Sin archivos registrados.
                 </li>
               ) : (
-                (data.archivos ?? []).map((a) => (
-                  <li
-                    key={String(a.id)}
-                    className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-700 shadow-sm"
-                  >
-                    <span className="font-medium text-slate-800">{String(a.nombre ?? "")}</span>
-                    <span className="text-xs text-slate-500">{formatFechaPyFull(String(a.created_at ?? ""))}</span>
-                  </li>
-                ))
+                (data.archivos ?? []).map((a) => {
+                  const aid = String(a.id ?? "");
+                  const nombre = String(a.nombre ?? "");
+                  const mime = typeof a.mime_type === "string" ? a.mime_type : "";
+                  const subidoPor =
+                    (a.uploaded_by_nombre as string | null | undefined) ?? null;
+                  const esPropietario =
+                    !!data.current_user_id &&
+                    typeof a.uploaded_by === "string" &&
+                    a.uploaded_by === data.current_user_id;
+                  const enAccionArchivo = archivoActionId === aid;
+                  return (
+                    <li
+                      key={aid}
+                      className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-700 shadow-sm transition-shadow hover:shadow-md"
+                    >
+                      <div className="flex min-w-0 flex-1 items-center gap-3">
+                        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-500">
+                          <IconFile />
+                        </span>
+                        <div className="min-w-0">
+                          <p className="truncate font-medium text-slate-800" title={nombre}>
+                            {nombre}
+                          </p>
+                          <p className="mt-0.5 truncate text-xs text-slate-500">
+                            {formatBytes(a.size_bytes)} · {formatFechaPyFull(String(a.created_at ?? ""))}
+                            {subidoPor ? ` · ${subidoPor}` : ""}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex shrink-0 items-center gap-1.5">
+                        {isPreviewableMime(mime) ? (
+                          <button
+                            type="button"
+                            onClick={() => void previsualizarArchivo(aid)}
+                            disabled={enAccionArchivo}
+                            title="Vista previa"
+                            aria-label={`Vista previa de ${nombre}`}
+                            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-600 transition-colors hover:border-[#4FAEB2]/60 hover:text-[#3F8E91] disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            {enAccionArchivo ? <IconSpinner /> : <IconEye />}
+                            <span className="hidden sm:inline">Vista previa</span>
+                          </button>
+                        ) : null}
+                        <button
+                          type="button"
+                          onClick={() => void descargarArchivo(aid)}
+                          disabled={enAccionArchivo}
+                          title="Descargar"
+                          aria-label={`Descargar ${nombre}`}
+                          className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-600 transition-colors hover:border-[#4FAEB2]/60 hover:text-[#3F8E91] disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          {enAccionArchivo ? <IconSpinner /> : <IconDownload />}
+                          <span className="hidden sm:inline">Descargar</span>
+                        </button>
+                        {esPropietario ? (
+                          <button
+                            type="button"
+                            onClick={() => void eliminarArchivo(aid, nombre)}
+                            disabled={enAccionArchivo}
+                            title="Eliminar"
+                            aria-label={`Eliminar ${nombre}`}
+                            className="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white p-1.5 text-slate-400 transition-colors hover:border-rose-200 hover:bg-rose-50 hover:text-rose-500 disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            <IconTrash />
+                          </button>
+                        ) : null}
+                      </div>
+                    </li>
+                  );
+                })
               )}
             </ul>
           </div>

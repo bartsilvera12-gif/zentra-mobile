@@ -58,7 +58,12 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
         .eq("empresa_id", empresaId)
         .eq("proyecto_id", pid)
         .order("created_at", { ascending: false }),
-      sb.from("proyecto_archivos").select("id, nombre, mime_type, size_bytes, created_at").eq("empresa_id", empresaId).eq("proyecto_id", pid),
+      sb
+        .from("proyecto_archivos")
+        .select("id, nombre, mime_type, size_bytes, uploaded_by, created_at")
+        .eq("empresa_id", empresaId)
+        .eq("proyecto_id", pid)
+        .order("created_at", { ascending: false }),
     ]);
 
     const histRows = (hist.data ?? []) as HistorialRow[];
@@ -71,12 +76,14 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
       status_changed_by?: string | null;
       responsable_id?: string | null;
     }>;
+    const archivoRows = (archivos.data ?? []) as Array<{ uploaded_by?: string | null }>;
     const uids = [
       ...new Set([
         ...comRows.map((c) => c.usuario_id),
         ...tareaRows.map((t) => t.created_by ?? ""),
         ...tareaRows.map((t) => t.status_changed_by ?? ""),
         ...tareaRows.map((t) => t.responsable_id ?? ""),
+        ...archivoRows.map((a) => a.uploaded_by ?? ""),
       ].filter((u): u is string => Boolean(u))),
     ];
     const catalog = createServiceRoleClient();
@@ -100,6 +107,15 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
       responsable_nombre: t.responsable_id ? nameMap.get(t.responsable_id) ?? null : null,
     }));
 
+    const archivosRich = (archivos.data ?? []).map((a) => {
+      const row = a as Record<string, unknown>;
+      const uploadedBy = typeof row.uploaded_by === "string" ? row.uploaded_by : null;
+      return {
+        ...row,
+        uploaded_by_nombre: uploadedBy ? nameMap.get(uploadedBy) ?? null : null,
+      };
+    });
+
     const base = enrichedArr[0] ?? (proyecto as Record<string, unknown>);
     const avance =
       (tareas.data ?? []).length === 0
@@ -117,7 +133,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
         sla,
         tareas: tareasRich,
         comentarios: comentariosRich,
-        archivos: archivos.data ?? [],
+        archivos: archivosRich,
         avance_pct: avance,
         current_user_id: auth.usuarioCatalogId,
       })
