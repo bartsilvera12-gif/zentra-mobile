@@ -28,6 +28,7 @@ const SIDEBAR_SLUG_HREF_ORDER: { slug: string; href: string }[] = [
   { slug: "sorteos", href: "/sorteos" },
   { slug: "campanas", href: "/dashboard/campanas" },
   { slug: "proyectos", href: "/dashboard/proyectos" },
+  { slug: "agenda", href: "/dashboard/agenda" },
   { slug: "etiquetas", href: "/dashboard/etiquetas" },
 ];
 
@@ -97,6 +98,7 @@ export function pathRequiresModuleSlug(pathname: string): string | null {
   if (p.startsWith("/dashboard")) {
     if (p.startsWith("/dashboard/marketing-ops")) return "marketing_ops";
     if (p.startsWith("/dashboard/proyectos")) return "proyectos";
+    if (p.startsWith("/dashboard/agenda")) return "agenda";
     if (p.startsWith("/dashboard/conversaciones-finalizadas")) return "conversaciones-finalizadas";
     if (p.startsWith("/dashboard/historial-omnicanal")) return "historial-omnicanal";
     if (p.startsWith("/dashboard/monitoreo")) return "monitoreo";

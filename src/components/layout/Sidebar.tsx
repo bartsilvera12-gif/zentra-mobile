@@ -34,6 +34,7 @@ import {
   FolderKanban,
   Percent,
   Tags,
+  CalendarDays,
 } from "lucide-react";
 import type { Session } from "@supabase/supabase-js";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
@@ -173,6 +174,13 @@ const MENU_STRUCTURE: MenuItem[] = [
     label: "Proyectos",
     href: "/dashboard/proyectos",
     icon: FolderKanban,
+  },
+  {
+    key: "agenda",
+    slug: "agenda",
+    label: "Agenda",
+    href: "/dashboard/agenda",
+    icon: CalendarDays,
   },
   {
     key: "sorteos",
