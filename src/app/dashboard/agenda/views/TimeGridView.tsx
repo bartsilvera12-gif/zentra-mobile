@@ -50,29 +50,32 @@ export default function TimeGridView({
 
   return (
     <div className="overflow-hidden rounded-xl border border-slate-300/80 bg-white shadow-sm ring-1 ring-slate-100">
-      {/* Encabezado de días */}
-      <div className="flex border-b border-slate-300/80 bg-slate-50">
-        <div className="shrink-0 border-r border-slate-200" style={{ width: GUTTER_W }} />
-        {days.map((d) => {
-          const today = isToday(d);
-          return (
-            <div
-              key={d.toISOString()}
-              className={`flex-1 border-l border-slate-200 px-2 py-2 text-center ${today ? "bg-teal-50/70" : ""}`}
-            >
-              <div className={`text-[11px] font-medium uppercase tracking-wide ${today ? "text-teal-600" : "text-slate-400"}`}>
-                {WEEKDAYS_ES[(d.getDay() + 6) % 7]}
+      {/* Header + grilla comparten el MISMO contenedor de scroll para que el
+          ancho de la barra de scroll afecte por igual a encabezado y cuerpo y
+          las divisiones de columnas queden alineadas. El header es sticky. */}
+      <div className="relative max-h-[68vh] overflow-y-auto">
+        {/* Encabezado de días (sticky) */}
+        <div className="sticky top-0 z-30 flex border-b border-slate-300/80 bg-slate-50">
+          <div className="shrink-0 border-r border-slate-200" style={{ width: GUTTER_W }} />
+          {days.map((d) => {
+            const today = isToday(d);
+            return (
+              <div
+                key={d.toISOString()}
+                className={`flex-1 border-l border-slate-200 px-2 py-2 text-center ${today ? "bg-teal-50/70" : ""}`}
+              >
+                <div className={`text-[11px] font-medium uppercase tracking-wide ${today ? "text-teal-600" : "text-slate-400"}`}>
+                  {WEEKDAYS_ES[(d.getDay() + 6) % 7]}
+                </div>
+                <div className={`mx-auto mt-0.5 flex h-7 w-7 items-center justify-center rounded-full text-sm font-semibold ${today ? "bg-teal-500 text-white shadow-sm" : "text-slate-700"}`}>
+                  {d.getDate()}
+                </div>
               </div>
-              <div className={`mx-auto mt-0.5 flex h-7 w-7 items-center justify-center rounded-full text-sm font-semibold ${today ? "bg-teal-500 text-white shadow-sm" : "text-slate-700"}`}>
-                {d.getDate()}
-              </div>
-            </div>
-          );
-        })}
-      </div>
+            );
+          })}
+        </div>
 
-      {/* Grilla con scroll */}
-      <div className="relative max-h-[64vh] overflow-y-auto">
+        {/* Cuerpo de la grilla */}
         <div className="flex" style={{ height: gridHeight }}>
           {/* Gutter de horas */}
           <div className="shrink-0 border-r border-slate-200 bg-slate-50/40" style={{ width: GUTTER_W }}>
