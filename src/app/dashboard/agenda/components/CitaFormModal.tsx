@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { X } from "lucide-react";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
 import { AGENDA_ESTADOS, type AgendaCitaEnriquecida } from "@/lib/agenda/types";
 import { estadoStyle, pad, ymd } from "../calendar-utils";
@@ -15,6 +16,9 @@ type Mode = "crear" | "editar" | "reprogramar";
 type ClienteMode = "existente" | "nuevo";
 
 const DURACIONES = [15, 30, 45, 60, 90, 120];
+
+const TEAL = "#4FAEB2";
+const TEAL_DARK = "#3F8E91";
 
 function hhmmLocal(d: Date): string {
   return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
@@ -38,9 +42,19 @@ function diffMin(hi: string, hf: string): number | null {
 }
 
 const inputCls =
-  "w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 outline-none focus:border-slate-500 focus:ring-1 focus:ring-slate-400";
+  "w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 shadow-sm transition-colors hover:border-[#4FAEB2]/60 focus:border-[#4FAEB2] focus:outline-none focus:ring-2 focus:ring-[#4FAEB2]/20";
 const labelCls = "block text-xs font-medium text-slate-600 mb-1";
-const sectionTitle = "text-[11px] font-semibold uppercase tracking-wide text-slate-400";
+
+function SectionHead({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="flex items-center gap-2">
+      <span className="h-5 w-1 rounded-full" style={{ backgroundColor: TEAL }} />
+      <span className="text-[11px] font-semibold uppercase tracking-[0.08em]" style={{ color: TEAL }}>
+        {children}
+      </span>
+    </div>
+  );
+}
 
 export default function CitaFormModal({
   open,
@@ -160,6 +174,7 @@ export default function CitaFormModal({
 
   const duracionActual = useMemo(() => diffMin(horaInicio, horaFin), [horaInicio, horaFin]);
   const tituloModal = mode === "crear" ? "Nueva cita" : mode === "reprogramar" ? "Reprogramar cita" : "Editar cita";
+  const subtitulo = mode === "crear" ? "Programá una nueva cita o reunión" : mode === "reprogramar" ? "Mové la cita a un nuevo horario" : "Actualizá los datos de la cita";
 
   if (!open) return null;
 
@@ -239,18 +254,32 @@ export default function CitaFormModal({
   const reprog = mode === "reprogramar";
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4">
-      <div className="flex max-h-[88vh] w-full max-w-lg flex-col rounded-2xl bg-white shadow-xl">
-        <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
-          <h2 className="text-base font-semibold text-slate-800">{tituloModal}</h2>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-600" aria-label="Cerrar">✕</button>
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <button className="absolute inset-0 cursor-default bg-slate-900/55 backdrop-blur-sm" aria-label="Cerrar" onClick={onClose} />
+      <div className="relative flex max-h-[88vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl shadow-[#4FAEB2]/10 ring-1 ring-[#4FAEB2]/15">
+        {/* barra superior degradé */}
+        <div className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-[#4FAEB2] via-[#4FAEB2]/80 to-[#4FAEB2]/40" />
+
+        {/* header con gradiente sutil */}
+        <div className="flex items-start justify-between gap-4 border-b border-slate-100 bg-gradient-to-br from-white via-white to-[#4FAEB2]/5 px-5 pb-4 pt-5">
+          <div className="min-w-0">
+            <h2 className="text-lg font-semibold tracking-tight text-slate-900">{tituloModal}</h2>
+            <p className="mt-0.5 text-sm text-slate-500">{subtitulo}</p>
+          </div>
+          <button
+            onClick={onClose}
+            className="rounded-xl border border-slate-200 bg-white p-2 text-slate-400 shadow-sm transition-colors hover:border-[#4FAEB2]/60 hover:text-[#4FAEB2]"
+            aria-label="Cerrar"
+          >
+            <X className="h-4 w-4" />
+          </button>
         </div>
 
         <div className="flex-1 space-y-5 overflow-y-auto px-5 py-4">
           {/* BÁSICO */}
           {!reprog && (
             <section className="space-y-3">
-              <div className={sectionTitle}>Básico</div>
+              <SectionHead>Básico</SectionHead>
               <div>
                 <label className={labelCls}>Título *</label>
                 <input className={inputCls} value={titulo} onChange={(e) => setTitulo(e.target.value)} placeholder="Ej: Demo con cliente" />
@@ -283,14 +312,14 @@ export default function CitaFormModal({
           )}
 
           {reprog && (
-            <div className="rounded-lg border border-violet-200 bg-violet-50 px-3 py-2 text-xs text-violet-700">
+            <div className="rounded-xl border border-violet-200 bg-violet-50 px-3.5 py-2.5 text-xs text-violet-700">
               Vas a reprogramar “{cita?.titulo}”. La cita original quedará marcada como <b>reprogramada</b> y se creará una nueva.
             </div>
           )}
 
           {/* FECHA Y HORA */}
           <section className="space-y-3">
-            <div className={sectionTitle}>Fecha y hora</div>
+            <SectionHead>Fecha y hora</SectionHead>
             <div className="grid grid-cols-3 gap-3">
               <div>
                 <label className={labelCls}>Fecha *</label>
@@ -307,43 +336,49 @@ export default function CitaFormModal({
             </div>
             <div className="flex flex-wrap items-center gap-1.5">
               <span className="text-[11px] text-slate-400">Duración:</span>
-              {DURACIONES.map((d) => (
-                <button
-                  key={d}
-                  type="button"
-                  onClick={() => aplicarDuracion(d)}
-                  className={`rounded-full border px-2.5 py-0.5 text-[11px] ${
-                    duracionActual === d ? "border-slate-700 bg-slate-800 text-white" : "border-slate-300 text-slate-600 hover:bg-slate-100"
-                  }`}
-                >
-                  {d < 60 ? `${d}m` : d === 60 ? "1h" : `${d / 60}h`}
-                </button>
-              ))}
+              {DURACIONES.map((d) => {
+                const active = duracionActual === d;
+                return (
+                  <button
+                    key={d}
+                    type="button"
+                    onClick={() => aplicarDuracion(d)}
+                    style={active ? { backgroundColor: TEAL, borderColor: TEAL } : undefined}
+                    className={`rounded-full border px-2.5 py-0.5 text-[11px] font-medium transition-colors ${
+                      active ? "text-white shadow-sm" : "border-slate-300 text-slate-600 hover:border-[#4FAEB2]/60 hover:text-[#3F8E91]"
+                    }`}
+                  >
+                    {d < 60 ? `${d}m` : d === 60 ? "1h" : `${d / 60}h`}
+                  </button>
+                );
+              })}
               {duracionActual != null && !DURACIONES.includes(duracionActual) && duracionActual > 0 && (
                 <span className="text-[11px] text-slate-500">({duracionActual}m)</span>
               )}
             </div>
             {aviso && (
-              <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">⚠ {aviso}</div>
+              <div className="rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-2.5 text-xs text-amber-700">⚠ {aviso}</div>
             )}
           </section>
 
           {/* PERSONA */}
           {!reprog && (
             <section className="space-y-3">
-              <div className={sectionTitle}>Persona</div>
-              <div className="flex rounded-lg border border-slate-300 bg-white p-0.5 text-xs">
+              <SectionHead>Persona</SectionHead>
+              <div className="flex rounded-xl border border-slate-200 bg-slate-50 p-1 text-xs">
                 <button
                   type="button"
                   onClick={() => setClienteMode("existente")}
-                  className={`flex-1 rounded-md px-3 py-1.5 font-medium ${clienteMode === "existente" ? "bg-slate-800 text-white" : "text-slate-600"}`}
+                  style={clienteMode === "existente" ? { backgroundColor: TEAL } : undefined}
+                  className={`flex-1 rounded-lg px-3 py-2 font-medium transition-colors ${clienteMode === "existente" ? "text-white shadow-sm" : "text-slate-600 hover:text-slate-800"}`}
                 >
                   Cliente existente
                 </button>
                 <button
                   type="button"
                   onClick={() => setClienteMode("nuevo")}
-                  className={`flex-1 rounded-md px-3 py-1.5 font-medium ${clienteMode === "nuevo" ? "bg-slate-800 text-white" : "text-slate-600"}`}
+                  style={clienteMode === "nuevo" ? { backgroundColor: TEAL } : undefined}
+                  className={`flex-1 rounded-lg px-3 py-2 font-medium transition-colors ${clienteMode === "nuevo" ? "text-white shadow-sm" : "text-slate-600 hover:text-slate-800"}`}
                 >
                   Nuevo contacto
                 </button>
@@ -355,7 +390,7 @@ export default function CitaFormModal({
                   {options.clientes.map((c) => (<option key={c.id} value={c.id}>{c.nombre ?? c.id}</option>))}
                 </select>
               ) : (
-                <div className="space-y-3">
+                <div className="space-y-3 rounded-2xl border border-[#4FAEB2]/20 bg-[#4FAEB2]/5 p-4">
                   <div className="grid grid-cols-2 gap-3">
                     <div>
                       <label className={labelCls}>Nombre</label>
@@ -377,7 +412,7 @@ export default function CitaFormModal({
                     </div>
                   </div>
                   <label className="flex items-center gap-2 text-xs text-slate-400" title="Disponible en una próxima fase">
-                    <input type="checkbox" disabled checked={guardarComoCliente} onChange={(e) => setGuardarComoCliente(e.target.checked)} className="rounded border-slate-300" />
+                    <input type="checkbox" disabled checked={guardarComoCliente} onChange={(e) => setGuardarComoCliente(e.target.checked)} className="h-4 w-4 rounded border-slate-300 accent-[#4FAEB2]" />
                     Guardar también como cliente del ERP <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px]">próximamente</span>
                   </label>
                 </div>
@@ -387,7 +422,7 @@ export default function CitaFormModal({
 
           {/* EXTRA */}
           <section className="space-y-3">
-            <div className={sectionTitle}>Extra</div>
+            <SectionHead>Extra</SectionHead>
             {!reprog && (
               <div>
                 <label className={labelCls}>Ubicación / enlace</label>
@@ -400,12 +435,21 @@ export default function CitaFormModal({
             </div>
           </section>
 
-          {error && <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">{error}</div>}
+          {error && <div className="rounded-xl border border-rose-200 bg-rose-50 px-3.5 py-2.5 text-xs text-rose-700">{error}</div>}
         </div>
 
-        <div className="flex justify-end gap-2 border-t border-slate-100 px-5 py-4">
-          <button onClick={onClose} className="rounded-lg px-4 py-2 text-sm text-slate-600 hover:bg-slate-100">Cancelar</button>
-          <button onClick={submit} disabled={saving} className="rounded-lg bg-slate-800 px-4 py-2 text-sm font-medium text-white hover:bg-slate-900 disabled:opacity-50">
+        <div className="flex justify-end gap-2 border-t border-slate-100 bg-slate-50/60 px-5 py-4">
+          <button onClick={onClose} className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 shadow-sm transition-colors hover:border-[#4FAEB2]/60 hover:text-[#4FAEB2]">
+            Cancelar
+          </button>
+          <button
+            onClick={submit}
+            disabled={saving}
+            style={!saving ? { backgroundColor: TEAL } : undefined}
+            onMouseEnter={(e) => { if (!saving) e.currentTarget.style.backgroundColor = TEAL_DARK; }}
+            onMouseLeave={(e) => { if (!saving) e.currentTarget.style.backgroundColor = TEAL; }}
+            className="rounded-xl px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400 disabled:shadow-none"
+          >
             {saving ? "Guardando…" : "Guardar"}
           </button>
         </div>
