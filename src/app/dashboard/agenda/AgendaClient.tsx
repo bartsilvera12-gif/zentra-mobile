@@ -1,12 +1,22 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
 import { AGENDA_ESTADOS, type AgendaCitaEnriquecida } from "@/lib/agenda/types";
 import CitaFormModal, { type AgendaOptions } from "./components/CitaFormModal";
 import CitaDetalleModal from "./components/CitaDetalleModal";
-
-const TZ = "America/Asuncion";
+import TimeGridView from "./views/TimeGridView";
+import MonthView from "./views/MonthView";
+import ListView from "./views/ListView";
+import {
+  addDays,
+  addMonths,
+  estadoStyle,
+  rangeForView,
+  tituloPeriodo,
+  type AgendaView,
+} from "./calendar-utils";
 
 type Resumen = {
   hoy: number;
@@ -16,48 +26,12 @@ type Resumen = {
   canceladas_no_asistio: number;
 };
 
-function estadoBadge(estado: string): { cls: string; label: string } {
-  switch (estado) {
-    case "pendiente":
-      return { cls: "border-amber-200 bg-amber-50 text-amber-700", label: "Pendiente" };
-    case "confirmada":
-      return { cls: "border-sky-200 bg-sky-50 text-sky-700", label: "Confirmada" };
-    case "completada":
-      return { cls: "border-emerald-200 bg-emerald-50 text-emerald-700", label: "Completada" };
-    case "no_asistio":
-      return { cls: "border-orange-200 bg-orange-50 text-orange-700", label: "No asistió" };
-    case "cancelada":
-      return { cls: "border-rose-200 bg-rose-50 text-rose-700", label: "Cancelada" };
-    case "reprogramada":
-      return { cls: "border-violet-200 bg-violet-50 text-violet-700", label: "Reprogramada" };
-    default:
-      return { cls: "border-slate-200 bg-slate-50 text-slate-600", label: estado };
-  }
-}
-
-function dayKey(iso: string): string {
-  return new Intl.DateTimeFormat("en-CA", { timeZone: TZ, year: "numeric", month: "2-digit", day: "2-digit" }).format(
-    new Date(iso)
-  );
-}
-function dayHeader(iso: string): string {
-  return new Date(iso).toLocaleDateString("es-PY", {
-    timeZone: TZ,
-    weekday: "long",
-    day: "2-digit",
-    month: "long",
-  });
-}
-function hora(iso: string): string {
-  return new Date(iso).toLocaleTimeString("es-PY", { timeZone: TZ, hour: "2-digit", minute: "2-digit" });
-}
-
-function todayPlus(days: number): string {
-  const d = new Date();
-  d.setDate(d.getDate() + days);
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-}
+const VIEWS: { key: AgendaView; label: string }[] = [
+  { key: "dia", label: "Día" },
+  { key: "semana", label: "Semana" },
+  { key: "mes", label: "Mes" },
+  { key: "lista", label: "Listado" },
+];
 
 export default function AgendaClient() {
   const [citas, setCitas] = useState<AgendaCitaEnriquecida[]>([]);
@@ -66,9 +40,11 @@ export default function AgendaClient() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Filtros
-  const [desde, setDesde] = useState(todayPlus(0));
-  const [hasta, setHasta] = useState(todayPlus(14));
+  // Vista de calendario
+  const [view, setView] = useState<AgendaView>("semana"); // default: Semana (ver justificación en reporte)
+  const [anchor, setAnchor] = useState<Date>(new Date());
+
+  // Filtros (sutiles)
   const [estado, setEstado] = useState("");
   const [responsableId, setResponsableId] = useState("");
   const [q, setQ] = useState("");
@@ -77,6 +53,7 @@ export default function AgendaClient() {
   const [formOpen, setFormOpen] = useState(false);
   const [formMode, setFormMode] = useState<"crear" | "editar" | "reprogramar">("crear");
   const [formCita, setFormCita] = useState<AgendaCitaEnriquecida | null>(null);
+  const [prefill, setPrefill] = useState<{ inicio: Date; fin: Date } | null>(null);
   const [detalle, setDetalle] = useState<AgendaCitaEnriquecida | null>(null);
 
   const loadResumen = useCallback(async () => {
@@ -103,9 +80,10 @@ export default function AgendaClient() {
     setLoading(true);
     setError(null);
     try {
+      const { start, end } = rangeForView(view, anchor);
       const params = new URLSearchParams();
-      if (desde) params.set("desde", new Date(`${desde}T00:00:00`).toISOString());
-      if (hasta) params.set("hasta", new Date(`${hasta}T23:59:59`).toISOString());
+      params.set("desde", start.toISOString());
+      params.set("hasta", end.toISOString());
       if (estado) params.set("estado", estado);
       if (responsableId) params.set("responsable_id", responsableId);
       if (q.trim()) params.set("q", q.trim());
@@ -122,7 +100,7 @@ export default function AgendaClient() {
     } finally {
       setLoading(false);
     }
-  }, [desde, hasta, estado, responsableId, q]);
+  }, [view, anchor, estado, responsableId, q]);
 
   useEffect(() => {
     loadOptions();
@@ -133,17 +111,6 @@ export default function AgendaClient() {
     loadCitas();
   }, [loadCitas]);
 
-  const grupos = useMemo(() => {
-    const map = new Map<string, AgendaCitaEnriquecida[]>();
-    for (const c of citas) {
-      const k = dayKey(c.inicio_at);
-      const arr = map.get(k) ?? [];
-      arr.push(c);
-      map.set(k, arr);
-    }
-    return [...map.entries()].sort((a, b) => a[0].localeCompare(b[0]));
-  }, [citas]);
-
   function refreshAll() {
     setFormOpen(false);
     setDetalle(null);
@@ -151,138 +118,163 @@ export default function AgendaClient() {
     loadResumen();
   }
 
-  function openCrear() {
+  function navegar(dir: -1 | 1) {
+    if (view === "mes") setAnchor((a) => addMonths(a, dir));
+    else if (view === "dia") setAnchor((a) => addDays(a, dir));
+    else setAnchor((a) => addDays(a, dir * 7));
+  }
+
+  function openCrear(pf?: { inicio: Date; fin: Date }) {
     setFormMode("crear");
     setFormCita(null);
+    setPrefill(pf ?? null);
     setFormOpen(true);
+  }
+  function openCrearEn(d: Date) {
+    const fin = new Date(d);
+    fin.setMinutes(fin.getMinutes() + 30);
+    openCrear({ inicio: d, fin });
   }
   function openEditar(c: AgendaCitaEnriquecida) {
     setDetalle(null);
     setFormMode("editar");
     setFormCita(c);
+    setPrefill(null);
     setFormOpen(true);
   }
   function openReprogramar(c: AgendaCitaEnriquecida) {
     setDetalle(null);
     setFormMode("reprogramar");
     setFormCita(c);
+    setPrefill(null);
     setFormOpen(true);
   }
 
-  const cards: { label: string; value: number; cls: string }[] = [
-    { label: "Citas de hoy", value: resumen?.hoy ?? 0, cls: "text-slate-800" },
-    { label: "Pendientes", value: resumen?.pendientes ?? 0, cls: "text-amber-600" },
-    { label: "Confirmadas", value: resumen?.confirmadas ?? 0, cls: "text-sky-600" },
-    { label: "Completadas", value: resumen?.completadas ?? 0, cls: "text-emerald-600" },
-    { label: "Canceladas / No asistió", value: resumen?.canceladas_no_asistio ?? 0, cls: "text-rose-600" },
+  const stats: { label: string; value: number; dot: string }[] = [
+    { label: "Hoy", value: resumen?.hoy ?? 0, dot: "bg-slate-700" },
+    { label: "Pendientes", value: resumen?.pendientes ?? 0, dot: estadoStyle("pendiente").dot },
+    { label: "Confirmadas", value: resumen?.confirmadas ?? 0, dot: estadoStyle("confirmada").dot },
+    { label: "Completadas", value: resumen?.completadas ?? 0, dot: estadoStyle("completada").dot },
+    { label: "Cancel./No asist.", value: resumen?.canceladas_no_asistio ?? 0, dot: estadoStyle("cancelada").dot },
   ];
 
+  const selectCls =
+    "rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-xs text-slate-700 outline-none focus:border-slate-500";
+
   return (
-    <div className="mx-auto max-w-6xl px-4 py-6">
-      <div className="mb-5 flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-semibold text-slate-800">Agenda</h1>
-          <p className="text-sm text-slate-500">Citas, turnos y reuniones</p>
-        </div>
-        <button onClick={openCrear} className="rounded-lg bg-slate-800 px-4 py-2 text-sm font-medium text-white hover:bg-slate-900">
-          + Nueva cita
-        </button>
-      </div>
-
-      {/* Métricas */}
-      <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-        {cards.map((c) => (
-          <div key={c.label} className="rounded-xl border border-slate-200 bg-white p-4">
-            <div className={`text-2xl font-semibold ${c.cls}`}>{c.value}</div>
-            <div className="mt-1 text-xs text-slate-500">{c.label}</div>
-          </div>
-        ))}
-      </div>
-
-      {/* Filtros */}
-      <div className="mb-5 grid grid-cols-1 gap-3 rounded-xl border border-slate-200 bg-white p-4 sm:grid-cols-2 lg:grid-cols-5">
-        <Filtro label="Desde">
-          <input type="date" value={desde} onChange={(e) => setDesde(e.target.value)} className="filtro-input w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm" />
-        </Filtro>
-        <Filtro label="Hasta">
-          <input type="date" value={hasta} onChange={(e) => setHasta(e.target.value)} className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm" />
-        </Filtro>
-        <Filtro label="Estado">
-          <select value={estado} onChange={(e) => setEstado(e.target.value)} className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm">
-            <option value="">Todos</option>
-            {AGENDA_ESTADOS.map((s) => (
-              <option key={s} value={s}>
-                {estadoBadge(s).label}
-              </option>
-            ))}
-          </select>
-        </Filtro>
-        <Filtro label="Responsable">
-          <select value={responsableId} onChange={(e) => setResponsableId(e.target.value)} className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm">
-            <option value="">Todos</option>
-            {options.responsables.map((r) => (
-              <option key={r.id} value={r.id}>
-                {r.nombre ?? r.id}
-              </option>
-            ))}
-          </select>
-        </Filtro>
-        <Filtro label="Buscar">
-          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Título o contacto" className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm" />
-        </Filtro>
-      </div>
-
-      {/* Listado */}
-      {error && (
-        <div className="mb-4 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</div>
-      )}
-      {loading ? (
-        <div className="py-12 text-center text-sm text-slate-400">Cargando…</div>
-      ) : grupos.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-slate-300 py-12 text-center text-sm text-slate-400">
-          No hay citas en el rango seleccionado.
-        </div>
-      ) : (
-        <div className="space-y-6">
-          {grupos.map(([k, items]) => (
-            <div key={k}>
-              <h3 className="mb-2 text-sm font-semibold capitalize text-slate-600">{dayHeader(items[0].inicio_at)}</h3>
-              <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
-                {items.map((c, i) => {
-                  const badge = estadoBadge(c.estado);
-                  return (
-                    <button
-                      key={c.id}
-                      onClick={() => setDetalle(c)}
-                      className={`flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-slate-50 ${i > 0 ? "border-t border-slate-100" : ""}`}
-                    >
-                      <div className="w-24 shrink-0 text-sm font-medium text-slate-700">
-                        {hora(c.inicio_at)}–{hora(c.fin_at)}
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <div className="truncate text-sm font-medium text-slate-800">{c.titulo}</div>
-                        <div className="truncate text-xs text-slate-500">
-                          {(c.cliente?.nombre ?? c.contacto_nombre ?? "Sin cliente")}
-                          {c.responsable?.nombre ? ` · ${c.responsable.nombre}` : ""}
-                          {c.tipo ? ` · ${c.tipo}` : ""}
-                        </div>
-                      </div>
-                      <span className={`shrink-0 rounded-full border px-2.5 py-0.5 text-xs font-medium ${badge.cls}`}>
-                        {badge.label}
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
+    <div className="mx-auto max-w-7xl px-4 py-5">
+      {/* Encabezado + métricas compactas en una fila */}
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+        <h1 className="text-xl font-semibold text-slate-800">Agenda</h1>
+        <div className="flex flex-wrap items-center gap-1.5">
+          {stats.map((s) => (
+            <div key={s.label} className="flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1">
+              <span className={`h-2 w-2 rounded-full ${s.dot}`} />
+              <span className="text-sm font-semibold text-slate-800">{s.value}</span>
+              <span className="text-[11px] text-slate-500">{s.label}</span>
             </div>
           ))}
         </div>
+      </div>
+
+      {/* Toolbar tipo Google Calendar */}
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setAnchor(new Date())}
+            className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
+          >
+            Hoy
+          </button>
+          <div className="flex items-center">
+            <button onClick={() => navegar(-1)} className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100" aria-label="Anterior">
+              <ChevronLeft className="h-5 w-5" />
+            </button>
+            <button onClick={() => navegar(1)} className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100" aria-label="Siguiente">
+              <ChevronRight className="h-5 w-5" />
+            </button>
+          </div>
+          <span className="ml-1 text-sm font-medium capitalize text-slate-700">{tituloPeriodo(view, anchor)}</span>
+        </div>
+
+        <div className="flex items-center gap-2">
+          {/* Selector de vista */}
+          <div className="flex rounded-lg border border-slate-300 bg-white p-0.5">
+            {VIEWS.map((v) => (
+              <button
+                key={v.key}
+                onClick={() => setView(v.key)}
+                className={`rounded-md px-3 py-1 text-xs font-medium transition-colors ${
+                  view === v.key ? "bg-slate-800 text-white" : "text-slate-600 hover:bg-slate-100"
+                }`}
+              >
+                {v.label}
+              </button>
+            ))}
+          </div>
+          <button
+            onClick={() => openCrear()}
+            className="flex items-center gap-1 rounded-lg bg-slate-800 px-3 py-1.5 text-sm font-medium text-white hover:bg-slate-900"
+          >
+            <Plus className="h-4 w-4" /> Nueva cita
+          </button>
+        </div>
+      </div>
+
+      {/* Filtros sutiles */}
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        <select value={estado} onChange={(e) => setEstado(e.target.value)} className={selectCls}>
+          <option value="">Todos los estados</option>
+          {AGENDA_ESTADOS.map((s) => (
+            <option key={s} value={s}>
+              {estadoStyle(s).label}
+            </option>
+          ))}
+        </select>
+        <select value={responsableId} onChange={(e) => setResponsableId(e.target.value)} className={selectCls}>
+          <option value="">Todos los responsables</option>
+          {options.responsables.map((r) => (
+            <option key={r.id} value={r.id}>
+              {r.nombre ?? r.id}
+            </option>
+          ))}
+        </select>
+        <input
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          placeholder="Buscar título o contacto…"
+          className="min-w-[180px] flex-1 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-700 outline-none focus:border-slate-500 sm:max-w-xs"
+        />
+        {loading && <span className="text-xs text-slate-400">Cargando…</span>}
+      </div>
+
+      {error && (
+        <div className="mb-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</div>
+      )}
+
+      {/* Vista activa */}
+      {view === "lista" ? (
+        <ListView citas={citas} onSelect={setDetalle} />
+      ) : view === "mes" ? (
+        <MonthView
+          anchor={anchor}
+          citas={citas}
+          onSelect={setDetalle}
+          onCreateAt={openCrearEn}
+          onVerDia={(d) => {
+            setAnchor(d);
+            setView("dia");
+          }}
+        />
+      ) : (
+        <TimeGridView view={view} anchor={anchor} citas={citas} onSelect={setDetalle} onCreateAt={openCrearEn} />
       )}
 
       <CitaFormModal
         open={formOpen}
         mode={formMode}
         cita={formCita}
+        prefill={prefill}
         options={options}
         onClose={() => setFormOpen(false)}
         onSaved={refreshAll}
@@ -296,14 +288,5 @@ export default function AgendaClient() {
         onChanged={refreshAll}
       />
     </div>
-  );
-}
-
-function Filtro({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <label className="block">
-      <span className="mb-1 block text-xs font-medium text-slate-500">{label}</span>
-      {children}
-    </label>
   );
 }

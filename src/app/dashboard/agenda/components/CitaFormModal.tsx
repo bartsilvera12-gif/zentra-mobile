@@ -2,7 +2,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
-import type { AgendaCitaEnriquecida } from "@/lib/agenda/types";
+import { AGENDA_ESTADOS, type AgendaCitaEnriquecida } from "@/lib/agenda/types";
+import { estadoStyle, pad, ymd } from "../calendar-utils";
 
 export type AgendaOptions = {
   responsables: { id: string; nombre: string | null; rol: string | null }[];
@@ -11,31 +12,41 @@ export type AgendaOptions = {
 };
 
 type Mode = "crear" | "editar" | "reprogramar";
+type ClienteMode = "existente" | "nuevo";
 
-function isoToLocalInput(iso: string | null | undefined): string {
-  if (!iso) return "";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "";
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(
-    d.getMinutes()
-  )}`;
+const DURACIONES = [15, 30, 45, 60, 90, 120];
+
+function hhmmLocal(d: Date): string {
+  return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
-
-function localInputToIso(v: string): string | null {
-  if (!v) return null;
-  const ms = Date.parse(v);
+function combinar(fecha: string, hora: string): string | null {
+  if (!fecha || !hora) return null;
+  const ms = Date.parse(`${fecha}T${hora}`);
   return Number.isFinite(ms) ? new Date(ms).toISOString() : null;
+}
+function addMinToHora(hora: string, min: number): string {
+  const [h, m] = hora.split(":").map((x) => parseInt(x, 10));
+  const d = new Date(2000, 0, 1, h || 0, m || 0);
+  d.setMinutes(d.getMinutes() + min);
+  return hhmmLocal(d);
+}
+function diffMin(hi: string, hf: string): number | null {
+  const [h1, m1] = hi.split(":").map((x) => parseInt(x, 10));
+  const [h2, m2] = hf.split(":").map((x) => parseInt(x, 10));
+  if ([h1, m1, h2, m2].some((n) => Number.isNaN(n))) return null;
+  return h2 * 60 + m2 - (h1 * 60 + m1);
 }
 
 const inputCls =
   "w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 outline-none focus:border-slate-500 focus:ring-1 focus:ring-slate-400";
 const labelCls = "block text-xs font-medium text-slate-600 mb-1";
+const sectionTitle = "text-[11px] font-semibold uppercase tracking-wide text-slate-400";
 
 export default function CitaFormModal({
   open,
   mode,
   cita,
+  prefill,
   options,
   onClose,
   onSaved,
@@ -43,20 +54,31 @@ export default function CitaFormModal({
   open: boolean;
   mode: Mode;
   cita: AgendaCitaEnriquecida | null;
+  prefill: { inicio: Date; fin: Date } | null;
   options: AgendaOptions;
   onClose: () => void;
   onSaved: () => void;
 }) {
   const [titulo, setTitulo] = useState("");
   const [responsableId, setResponsableId] = useState("");
+  const [tipo, setTipo] = useState("");
+  const [estado, setEstado] = useState("pendiente");
+
+  const [fecha, setFecha] = useState("");
+  const [horaInicio, setHoraInicio] = useState("");
+  const [horaFin, setHoraFin] = useState("");
+
+  const [clienteMode, setClienteMode] = useState<ClienteMode>("existente");
   const [clienteId, setClienteId] = useState("");
   const [contactoNombre, setContactoNombre] = useState("");
   const [contactoTelefono, setContactoTelefono] = useState("");
-  const [tipo, setTipo] = useState("");
-  const [inicio, setInicio] = useState("");
-  const [fin, setFin] = useState("");
+  const [contactoEmail, setContactoEmail] = useState("");
+  const [contactoEmpresa, setContactoEmpresa] = useState("");
+  const [guardarComoCliente, setGuardarComoCliente] = useState(false);
+
   const [ubicacion, setUbicacion] = useState("");
   const [observaciones, setObservaciones] = useState("");
+
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [aviso, setAviso] = useState<string | null>(null);
@@ -65,36 +87,52 @@ export default function CitaFormModal({
     if (!open) return;
     setError(null);
     setAviso(null);
+    setGuardarComoCliente(false);
     if (mode === "crear") {
+      const ini = prefill?.inicio ?? (() => { const d = new Date(); d.setMinutes(0, 0, 0); d.setHours(d.getHours() + 1); return d; })();
+      const fin = prefill?.fin ?? (() => { const d = new Date(ini); d.setMinutes(d.getMinutes() + 30); return d; })();
       setTitulo("");
       setResponsableId(options.responsables[0]?.id ?? "");
+      setTipo("");
+      setEstado("pendiente");
+      setFecha(ymd(ini));
+      setHoraInicio(hhmmLocal(ini));
+      setHoraFin(hhmmLocal(fin));
+      setClienteMode("existente");
       setClienteId("");
       setContactoNombre("");
       setContactoTelefono("");
-      setTipo("");
-      setInicio("");
-      setFin("");
+      setContactoEmail("");
+      setContactoEmpresa("");
       setUbicacion("");
       setObservaciones("");
     } else if (cita) {
-      setTitulo(mode === "reprogramar" ? cita.titulo : cita.titulo);
+      const ini = new Date(cita.inicio_at);
+      const fin = new Date(cita.fin_at);
+      const meta = (cita.metadata ?? {}) as Record<string, unknown>;
+      setTitulo(cita.titulo);
       setResponsableId(cita.responsable_id);
+      setTipo(cita.tipo ?? "");
+      setEstado(cita.estado);
+      setFecha(ymd(ini));
+      setHoraInicio(hhmmLocal(ini));
+      setHoraFin(hhmmLocal(fin));
+      setClienteMode(cita.cliente_id ? "existente" : cita.contacto_nombre ? "nuevo" : "existente");
       setClienteId(cita.cliente_id ?? "");
       setContactoNombre(cita.contacto_nombre ?? "");
       setContactoTelefono(cita.contacto_telefono ?? "");
-      setTipo(cita.tipo ?? "");
-      setInicio(isoToLocalInput(cita.inicio_at));
-      setFin(isoToLocalInput(cita.fin_at));
+      setContactoEmail(typeof meta.contacto_email === "string" ? meta.contacto_email : "");
+      setContactoEmpresa(typeof meta.contacto_empresa === "string" ? meta.contacto_empresa : "");
       setUbicacion(cita.ubicacion ?? "");
       setObservaciones(cita.observaciones ?? "");
     }
-  }, [open, mode, cita, options.responsables]);
+  }, [open, mode, cita, prefill, options.responsables]);
 
-  // Chequeo de disponibilidad (advertencia, no bloqueante en el form).
+  // Disponibilidad (advertencia no bloqueante).
   useEffect(() => {
     if (!open) return;
-    const inicioIso = localInputToIso(inicio);
-    const finIso = localInputToIso(fin);
+    const inicioIso = combinar(fecha, horaInicio);
+    const finIso = combinar(fecha, horaFin);
     if (!responsableId || !inicioIso || !finIso || Date.parse(finIso) <= Date.parse(inicioIso)) {
       setAviso(null);
       return;
@@ -109,9 +147,7 @@ export default function CitaFormModal({
         if (cancelled) return;
         if (json?.success && json.data?.disponible === false) {
           setAviso(json.data.conflicto?.mensaje ?? "El responsable ya tiene una cita en ese horario.");
-        } else {
-          setAviso(null);
-        }
+        } else setAviso(null);
       } catch {
         /* silencioso */
       }
@@ -120,89 +156,70 @@ export default function CitaFormModal({
       cancelled = true;
       clearTimeout(t);
     };
-  }, [open, responsableId, inicio, fin, mode, cita]);
+  }, [open, responsableId, fecha, horaInicio, horaFin, mode, cita]);
 
-  const tituloModal = useMemo(() => {
-    if (mode === "crear") return "Nueva cita";
-    if (mode === "reprogramar") return "Reprogramar cita";
-    return "Editar cita";
-  }, [mode]);
+  const duracionActual = useMemo(() => diffMin(horaInicio, horaFin), [horaInicio, horaFin]);
+  const tituloModal = mode === "crear" ? "Nueva cita" : mode === "reprogramar" ? "Reprogramar cita" : "Editar cita";
 
   if (!open) return null;
 
+  function aplicarDuracion(min: number) {
+    if (!horaInicio) return;
+    setHoraFin(addMinToHora(horaInicio, min));
+  }
+  function onChangeInicio(v: string) {
+    const prevDur = duracionActual && duracionActual > 0 ? duracionActual : 30;
+    setHoraInicio(v);
+    if (v) setHoraFin(addMinToHora(v, prevDur));
+  }
+
   async function submit() {
     setError(null);
-    const inicioIso = localInputToIso(inicio);
-    const finIso = localInputToIso(fin);
-    if (mode !== "reprogramar" && !titulo.trim()) {
-      setError("El título es obligatorio.");
-      return;
-    }
-    if (!responsableId) {
-      setError("Elegí un responsable.");
-      return;
-    }
-    if (!inicioIso || !finIso) {
-      setError("Indicá fecha/hora de inicio y fin.");
-      return;
-    }
-    if (Date.parse(finIso) <= Date.parse(inicioIso)) {
-      setError("El fin debe ser posterior al inicio.");
-      return;
+    const inicioIso = combinar(fecha, horaInicio);
+    const finIso = combinar(fecha, horaFin);
+    if (mode !== "reprogramar" && !titulo.trim()) return setError("El título es obligatorio.");
+    if (!responsableId) return setError("Elegí un responsable.");
+    if (!inicioIso || !finIso) return setError("Indicá fecha, hora de inicio y fin.");
+    if (Date.parse(finIso) <= Date.parse(inicioIso)) return setError("El fin debe ser posterior al inicio.");
+
+    const metadata: Record<string, unknown> = { ...((cita?.metadata as Record<string, unknown>) ?? {}) };
+    if (clienteMode === "nuevo") {
+      if (contactoEmail.trim()) metadata.contacto_email = contactoEmail.trim();
+      else delete metadata.contacto_email;
+      if (contactoEmpresa.trim()) metadata.contacto_empresa = contactoEmpresa.trim();
+      else delete metadata.contacto_empresa;
     }
 
+    const esNuevo = clienteMode === "nuevo";
     setSaving(true);
     try {
       let res: Response;
-      if (mode === "crear") {
-        res = await fetchWithSupabaseSession("/api/agenda", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            titulo: titulo.trim(),
-            responsable_id: responsableId,
-            cliente_id: clienteId || null,
-            contacto_nombre: contactoNombre || null,
-            contacto_telefono: contactoTelefono || null,
-            tipo: tipo || null,
-            inicio_at: inicioIso,
-            fin_at: finIso,
-            ubicacion: ubicacion || null,
-            observaciones: observaciones || null,
-          }),
-        });
-      } else if (mode === "reprogramar" && cita) {
+      if (mode === "reprogramar" && cita) {
         res = await fetchWithSupabaseSession(`/api/agenda/${cita.id}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            accion: "reprogramar",
-            responsable_id: responsableId,
-            inicio_at: inicioIso,
-            fin_at: finIso,
-            observaciones: observaciones || null,
-          }),
-        });
-      } else if (cita) {
-        res = await fetchWithSupabaseSession(`/api/agenda/${cita.id}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            titulo: titulo.trim(),
-            responsable_id: responsableId,
-            cliente_id: clienteId || null,
-            contacto_nombre: contactoNombre || null,
-            contacto_telefono: contactoTelefono || null,
-            tipo: tipo || null,
-            inicio_at: inicioIso,
-            fin_at: finIso,
-            ubicacion: ubicacion || null,
-            observaciones: observaciones || null,
-          }),
+          body: JSON.stringify({ accion: "reprogramar", responsable_id: responsableId, inicio_at: inicioIso, fin_at: finIso, observaciones: observaciones || null }),
         });
       } else {
-        setSaving(false);
-        return;
+        const payload = {
+          titulo: titulo.trim(),
+          responsable_id: responsableId,
+          tipo: tipo || null,
+          estado,
+          inicio_at: inicioIso,
+          fin_at: finIso,
+          cliente_id: esNuevo ? null : clienteId || null,
+          contacto_nombre: esNuevo ? contactoNombre || null : null,
+          contacto_telefono: esNuevo ? contactoTelefono || null : null,
+          ubicacion: ubicacion || null,
+          observaciones: observaciones || null,
+          metadata,
+        };
+        res = await fetchWithSupabaseSession(mode === "crear" ? "/api/agenda" : `/api/agenda/${cita!.id}`, {
+          method: mode === "crear" ? "POST" : "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
       }
 
       const json = await res.json();
@@ -219,119 +236,176 @@ export default function CitaFormModal({
     }
   }
 
+  const reprog = mode === "reprogramar";
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4">
-      <div className="w-full max-w-lg rounded-2xl bg-white shadow-xl">
+      <div className="flex max-h-[88vh] w-full max-w-lg flex-col rounded-2xl bg-white shadow-xl">
         <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
           <h2 className="text-base font-semibold text-slate-800">{tituloModal}</h2>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-600" aria-label="Cerrar">
-            ✕
-          </button>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-600" aria-label="Cerrar">✕</button>
         </div>
 
-        <div className="max-h-[70vh] overflow-y-auto px-5 py-4 space-y-3">
-          {mode !== "reprogramar" && (
-            <div>
-              <label className={labelCls}>Título *</label>
-              <input className={inputCls} value={titulo} onChange={(e) => setTitulo(e.target.value)} placeholder="Ej: Demo con cliente" />
+        <div className="flex-1 space-y-5 overflow-y-auto px-5 py-4">
+          {/* BÁSICO */}
+          {!reprog && (
+            <section className="space-y-3">
+              <div className={sectionTitle}>Básico</div>
+              <div>
+                <label className={labelCls}>Título *</label>
+                <input className={inputCls} value={titulo} onChange={(e) => setTitulo(e.target.value)} placeholder="Ej: Demo con cliente" />
+              </div>
+              <div className="grid grid-cols-3 gap-3">
+                <div className="col-span-1">
+                  <label className={labelCls}>Responsable *</label>
+                  <select className={inputCls} value={responsableId} onChange={(e) => setResponsableId(e.target.value)}>
+                    <option value="">—</option>
+                    {options.responsables.map((r) => (
+                      <option key={r.id} value={r.id}>{r.nombre ?? r.id}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className={labelCls}>Tipo</label>
+                  <select className={inputCls} value={tipo} onChange={(e) => setTipo(e.target.value)}>
+                    <option value="">Sin tipo</option>
+                    {options.tipos.map((t) => (<option key={t} value={t}>{t}</option>))}
+                  </select>
+                </div>
+                <div>
+                  <label className={labelCls}>Estado</label>
+                  <select className={inputCls} value={estado} onChange={(e) => setEstado(e.target.value)}>
+                    {AGENDA_ESTADOS.map((s) => (<option key={s} value={s}>{estadoStyle(s).label}</option>))}
+                  </select>
+                </div>
+              </div>
+            </section>
+          )}
+
+          {reprog && (
+            <div className="rounded-lg border border-violet-200 bg-violet-50 px-3 py-2 text-xs text-violet-700">
+              Vas a reprogramar “{cita?.titulo}”. La cita original quedará marcada como <b>reprogramada</b> y se creará una nueva.
             </div>
           )}
 
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className={labelCls}>Responsable *</label>
-              <select className={inputCls} value={responsableId} onChange={(e) => setResponsableId(e.target.value)}>
-                <option value="">— Elegir —</option>
-                {options.responsables.map((r) => (
-                  <option key={r.id} value={r.id}>
-                    {r.nombre ?? r.id}
-                  </option>
-                ))}
-              </select>
-            </div>
-            {mode !== "reprogramar" && (
+          {/* FECHA Y HORA */}
+          <section className="space-y-3">
+            <div className={sectionTitle}>Fecha y hora</div>
+            <div className="grid grid-cols-3 gap-3">
               <div>
-                <label className={labelCls}>Tipo</label>
-                <select className={inputCls} value={tipo} onChange={(e) => setTipo(e.target.value)}>
-                  <option value="">— Sin tipo —</option>
-                  {options.tipos.map((t) => (
-                    <option key={t} value={t}>
-                      {t}
-                    </option>
-                  ))}
-                </select>
+                <label className={labelCls}>Fecha *</label>
+                <input type="date" className={inputCls} value={fecha} onChange={(e) => setFecha(e.target.value)} />
               </div>
+              <div>
+                <label className={labelCls}>Inicio *</label>
+                <input type="time" className={inputCls} value={horaInicio} onChange={(e) => onChangeInicio(e.target.value)} />
+              </div>
+              <div>
+                <label className={labelCls}>Fin *</label>
+                <input type="time" className={inputCls} value={horaFin} onChange={(e) => setHoraFin(e.target.value)} />
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="text-[11px] text-slate-400">Duración:</span>
+              {DURACIONES.map((d) => (
+                <button
+                  key={d}
+                  type="button"
+                  onClick={() => aplicarDuracion(d)}
+                  className={`rounded-full border px-2.5 py-0.5 text-[11px] ${
+                    duracionActual === d ? "border-slate-700 bg-slate-800 text-white" : "border-slate-300 text-slate-600 hover:bg-slate-100"
+                  }`}
+                >
+                  {d < 60 ? `${d}m` : d === 60 ? "1h" : `${d / 60}h`}
+                </button>
+              ))}
+              {duracionActual != null && !DURACIONES.includes(duracionActual) && duracionActual > 0 && (
+                <span className="text-[11px] text-slate-500">({duracionActual}m)</span>
+              )}
+            </div>
+            {aviso && (
+              <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">⚠ {aviso}</div>
             )}
-          </div>
+          </section>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className={labelCls}>Inicio *</label>
-              <input type="datetime-local" className={inputCls} value={inicio} onChange={(e) => setInicio(e.target.value)} />
-            </div>
-            <div>
-              <label className={labelCls}>Fin *</label>
-              <input type="datetime-local" className={inputCls} value={fin} onChange={(e) => setFin(e.target.value)} />
-            </div>
-          </div>
-
-          {aviso && (
-            <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
-              ⚠ {aviso}
-            </div>
-          )}
-
-          {mode !== "reprogramar" && (
-            <>
-              <div>
-                <label className={labelCls}>Cliente</label>
-                <select className={inputCls} value={clienteId} onChange={(e) => setClienteId(e.target.value)}>
-                  <option value="">— Sin cliente (contacto manual) —</option>
-                  {options.clientes.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.nombre ?? c.id}
-                    </option>
-                  ))}
-                </select>
+          {/* PERSONA */}
+          {!reprog && (
+            <section className="space-y-3">
+              <div className={sectionTitle}>Persona</div>
+              <div className="flex rounded-lg border border-slate-300 bg-white p-0.5 text-xs">
+                <button
+                  type="button"
+                  onClick={() => setClienteMode("existente")}
+                  className={`flex-1 rounded-md px-3 py-1.5 font-medium ${clienteMode === "existente" ? "bg-slate-800 text-white" : "text-slate-600"}`}
+                >
+                  Cliente existente
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setClienteMode("nuevo")}
+                  className={`flex-1 rounded-md px-3 py-1.5 font-medium ${clienteMode === "nuevo" ? "bg-slate-800 text-white" : "text-slate-600"}`}
+                >
+                  Nuevo contacto
+                </button>
               </div>
-              {!clienteId && (
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className={labelCls}>Contacto (nombre)</label>
-                    <input className={inputCls} value={contactoNombre} onChange={(e) => setContactoNombre(e.target.value)} />
+
+              {clienteMode === "existente" ? (
+                <select className={inputCls} value={clienteId} onChange={(e) => setClienteId(e.target.value)}>
+                  <option value="">— Sin cliente —</option>
+                  {options.clientes.map((c) => (<option key={c.id} value={c.id}>{c.nombre ?? c.id}</option>))}
+                </select>
+              ) : (
+                <div className="space-y-3">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className={labelCls}>Nombre</label>
+                      <input className={inputCls} value={contactoNombre} onChange={(e) => setContactoNombre(e.target.value)} />
+                    </div>
+                    <div>
+                      <label className={labelCls}>Teléfono</label>
+                      <input className={inputCls} value={contactoTelefono} onChange={(e) => setContactoTelefono(e.target.value)} />
+                    </div>
                   </div>
-                  <div>
-                    <label className={labelCls}>Contacto (teléfono)</label>
-                    <input className={inputCls} value={contactoTelefono} onChange={(e) => setContactoTelefono(e.target.value)} />
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className={labelCls}>Email</label>
+                      <input className={inputCls} value={contactoEmail} onChange={(e) => setContactoEmail(e.target.value)} />
+                    </div>
+                    <div>
+                      <label className={labelCls}>Empresa / referencia</label>
+                      <input className={inputCls} value={contactoEmpresa} onChange={(e) => setContactoEmpresa(e.target.value)} />
+                    </div>
                   </div>
+                  <label className="flex items-center gap-2 text-xs text-slate-400" title="Disponible en una próxima fase">
+                    <input type="checkbox" disabled checked={guardarComoCliente} onChange={(e) => setGuardarComoCliente(e.target.checked)} className="rounded border-slate-300" />
+                    Guardar también como cliente del ERP <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px]">próximamente</span>
+                  </label>
                 </div>
               )}
+            </section>
+          )}
+
+          {/* EXTRA */}
+          <section className="space-y-3">
+            <div className={sectionTitle}>Extra</div>
+            {!reprog && (
               <div>
                 <label className={labelCls}>Ubicación / enlace</label>
                 <input className={inputCls} value={ubicacion} onChange={(e) => setUbicacion(e.target.value)} placeholder="Dirección, sala o link" />
               </div>
-            </>
-          )}
+            )}
+            <div>
+              <label className={labelCls}>Observaciones internas</label>
+              <textarea className={inputCls} rows={2} value={observaciones} onChange={(e) => setObservaciones(e.target.value)} />
+            </div>
+          </section>
 
-          <div>
-            <label className={labelCls}>Observaciones internas</label>
-            <textarea className={inputCls} rows={2} value={observaciones} onChange={(e) => setObservaciones(e.target.value)} />
-          </div>
-
-          {error && (
-            <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">{error}</div>
-          )}
+          {error && <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">{error}</div>}
         </div>
 
         <div className="flex justify-end gap-2 border-t border-slate-100 px-5 py-4">
-          <button onClick={onClose} className="rounded-lg px-4 py-2 text-sm text-slate-600 hover:bg-slate-100">
-            Cancelar
-          </button>
-          <button
-            onClick={submit}
-            disabled={saving}
-            className="rounded-lg bg-slate-800 px-4 py-2 text-sm font-medium text-white hover:bg-slate-900 disabled:opacity-50"
-          >
+          <button onClick={onClose} className="rounded-lg px-4 py-2 text-sm text-slate-600 hover:bg-slate-100">Cancelar</button>
+          <button onClick={submit} disabled={saving} className="rounded-lg bg-slate-800 px-4 py-2 text-sm font-medium text-white hover:bg-slate-900 disabled:opacity-50">
             {saving ? "Guardando…" : "Guardar"}
           </button>
         </div>
