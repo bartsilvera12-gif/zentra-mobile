@@ -161,16 +161,31 @@ export type PositionedEvent = {
   widthPct: number;
 };
 
-/** Empaqueta eventos solapados en columnas (algoritmo greedy estándar). */
-export function layoutDayEvents(citas: AgendaCitaEnriquecida[], dayStart: Date): PositionedEvent[] {
+/**
+ * Empaqueta eventos solapados en columnas (algoritmo greedy estándar).
+ * `startHour`/`endHour` definen la ventana horaria visible: los topPx se calculan
+ * relativos a `startHour` y los eventos se recortan a la ventana. Eventos totalmente
+ * fuera de la ventana no se posicionan.
+ */
+export function layoutDayEvents(
+  citas: AgendaCitaEnriquecida[],
+  dayStart: Date,
+  startHour = 0,
+  endHour = 24
+): PositionedEvent[] {
+  const winStart = startHour * 60;
+  const winEnd = endHour * 60;
   const items = citas
     .map((c) => {
       const ini = new Date(c.inicio_at);
       const fin = new Date(c.fin_at);
-      const startMin = Math.max(0, (ini.getTime() - dayStart.getTime()) / 60000);
-      const endMin = Math.min(24 * 60, (fin.getTime() - dayStart.getTime()) / 60000);
-      return { cita: c, startMin, endMin: Math.max(endMin, startMin + 15) };
+      const rawStart = (ini.getTime() - dayStart.getTime()) / 60000;
+      const rawEnd = (fin.getTime() - dayStart.getTime()) / 60000;
+      const startMin = Math.max(winStart, rawStart);
+      const endMin = Math.min(winEnd, Math.max(rawEnd, rawStart + 15));
+      return { cita: c, startMin, endMin };
     })
+    .filter((x) => x.endMin > x.startMin && x.startMin < winEnd && x.endMin > winStart)
     .sort((a, b) => a.startMin - b.startMin || a.endMin - b.endMin);
 
   const out: PositionedEvent[] = [];
@@ -202,7 +217,7 @@ export function layoutDayEvents(citas: AgendaCitaEnriquecida[], dayStart: Date):
       const col = colOf.get(ev) ?? 0;
       out.push({
         cita: ev.cita,
-        topPx: (ev.startMin / 60) * HOUR_PX,
+        topPx: ((ev.startMin - winStart) / 60) * HOUR_PX,
         heightPx: Math.max(((ev.endMin - ev.startMin) / 60) * HOUR_PX, 18),
         leftPct: (col / total) * 100,
         widthPct: (1 / total) * 100,

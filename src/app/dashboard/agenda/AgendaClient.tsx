@@ -1,11 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, Settings2 } from "lucide-react";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
 import { AGENDA_ESTADOS, type AgendaCitaEnriquecida } from "@/lib/agenda/types";
 import CitaFormModal, { type AgendaOptions } from "./components/CitaFormModal";
 import CitaDetalleModal from "./components/CitaDetalleModal";
+import RangoHorarioConfig from "./components/RangoHorarioConfig";
+import HoyResumen from "./components/HoyResumen";
 import TimeGridView from "./views/TimeGridView";
 import MonthView from "./views/MonthView";
 import ListView from "./views/ListView";
@@ -17,6 +19,7 @@ import {
   tituloPeriodo,
   type AgendaView,
 } from "./calendar-utils";
+import { DEFAULT_PREFS, getAgendaPrefs, setAgendaPrefs, type AgendaPrefs } from "./agenda-prefs";
 
 type Resumen = {
   hoy: number;
@@ -41,10 +44,23 @@ export default function AgendaClient() {
   const [error, setError] = useState<string | null>(null);
 
   // Vista de calendario
-  const [view, setView] = useState<AgendaView>("semana"); // default: Semana (ver justificación en reporte)
+  const [view, setView] = useState<AgendaView>("semana"); // default: Semana
   const [anchor, setAnchor] = useState<Date>(new Date());
 
-  // Filtros (sutiles)
+  // Preferencias (rango horario visible) — localStorage por navegador
+  const [prefs, setPrefs] = useState<AgendaPrefs>(DEFAULT_PREFS);
+  useEffect(() => {
+    setPrefs(getAgendaPrefs());
+  }, []);
+  function updatePrefs(p: AgendaPrefs) {
+    setPrefs(setAgendaPrefs(p));
+  }
+
+  // Popovers
+  const [hoyOpen, setHoyOpen] = useState(false);
+  const [configOpen, setConfigOpen] = useState(false);
+
+  // Filtros
   const [estado, setEstado] = useState("");
   const [responsableId, setResponsableId] = useState("");
   const [q, setQ] = useState("");
@@ -124,6 +140,12 @@ export default function AgendaClient() {
     else setAnchor((a) => addDays(a, dir * 7));
   }
 
+  function irAHoy() {
+    setAnchor(new Date());
+    setView("dia");
+    setHoyOpen(false);
+  }
+
   function openCrear(pf?: { inicio: Date; fin: Date }) {
     setFormMode("crear");
     setFormCita(null);
@@ -151,7 +173,7 @@ export default function AgendaClient() {
   }
 
   const stats: { label: string; value: number; dot: string }[] = [
-    { label: "Hoy", value: resumen?.hoy ?? 0, dot: "bg-slate-700" },
+    { label: "Hoy", value: resumen?.hoy ?? 0, dot: "bg-teal-500" },
     { label: "Pendientes", value: resumen?.pendientes ?? 0, dot: estadoStyle("pendiente").dot },
     { label: "Confirmadas", value: resumen?.confirmadas ?? 0, dot: estadoStyle("confirmada").dot },
     { label: "Completadas", value: resumen?.completadas ?? 0, dot: estadoStyle("completada").dot },
@@ -159,16 +181,17 @@ export default function AgendaClient() {
   ];
 
   const selectCls =
-    "rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-xs text-slate-700 outline-none focus:border-slate-500";
+    "rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-xs text-slate-700 outline-none transition-colors focus:border-teal-500 focus:ring-1 focus:ring-teal-400";
+  const esTimeGrid = view === "dia" || view === "semana";
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-5">
-      {/* Encabezado + métricas compactas en una fila */}
+      {/* Encabezado + métricas compactas */}
       <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-xl font-semibold text-slate-800">Agenda</h1>
         <div className="flex flex-wrap items-center gap-1.5">
           {stats.map((s) => (
-            <div key={s.label} className="flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1">
+            <div key={s.label} className="flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1 shadow-sm">
               <span className={`h-2 w-2 rounded-full ${s.dot}`} />
               <span className="text-sm font-semibold text-slate-800">{s.value}</span>
               <span className="text-[11px] text-slate-500">{s.label}</span>
@@ -177,15 +200,32 @@ export default function AgendaClient() {
         </div>
       </div>
 
-      {/* Toolbar tipo Google Calendar */}
+      {/* Toolbar */}
       <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2">
-          <button
-            onClick={() => setAnchor(new Date())}
-            className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
-          >
-            Hoy
-          </button>
+          {/* Botón Hoy con popover de resumen */}
+          <div className="relative">
+            <button
+              onClick={() => setHoyOpen((v) => !v)}
+              className={`rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors ${
+                hoyOpen ? "border-teal-500 bg-teal-50 text-teal-700" : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
+              }`}
+            >
+              Hoy
+            </button>
+            {hoyOpen && (
+              <Popover onClose={() => setHoyOpen(false)} align="left">
+                <HoyResumen
+                  onSelect={(c) => {
+                    setHoyOpen(false);
+                    setDetalle(c);
+                  }}
+                  onVerDia={irAHoy}
+                />
+              </Popover>
+            )}
+          </div>
+
           <div className="flex items-center">
             <button onClick={() => navegar(-1)} className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100" aria-label="Anterior">
               <ChevronLeft className="h-5 w-5" />
@@ -199,22 +239,45 @@ export default function AgendaClient() {
 
         <div className="flex items-center gap-2">
           {/* Selector de vista */}
-          <div className="flex rounded-lg border border-slate-300 bg-white p-0.5">
+          <div className="flex rounded-lg border border-slate-300 bg-white p-0.5 shadow-sm">
             {VIEWS.map((v) => (
               <button
                 key={v.key}
                 onClick={() => setView(v.key)}
                 className={`rounded-md px-3 py-1 text-xs font-medium transition-colors ${
-                  view === v.key ? "bg-slate-800 text-white" : "text-slate-600 hover:bg-slate-100"
+                  view === v.key ? "bg-teal-500 text-white shadow-sm" : "text-slate-600 hover:bg-slate-100"
                 }`}
               >
                 {v.label}
               </button>
             ))}
           </div>
+
+          {/* Configuración de rango horario (teal) */}
+          <div className="relative">
+            <button
+              onClick={() => setConfigOpen((v) => !v)}
+              disabled={!esTimeGrid}
+              title={esTimeGrid ? "Rango horario visible" : "Disponible en Día/Semana"}
+              className={`rounded-lg border p-1.5 transition-colors ${
+                configOpen
+                  ? "border-teal-500 bg-teal-50 text-teal-600"
+                  : "border-slate-300 bg-white text-teal-600 hover:bg-teal-50"
+              } disabled:cursor-not-allowed disabled:text-slate-300 disabled:hover:bg-white`}
+              aria-label="Configurar rango horario"
+            >
+              <Settings2 className="h-4 w-4" />
+            </button>
+            {configOpen && esTimeGrid && (
+              <Popover onClose={() => setConfigOpen(false)} align="right">
+                <RangoHorarioConfig prefs={prefs} onChange={updatePrefs} />
+              </Popover>
+            )}
+          </div>
+
           <button
             onClick={() => openCrear()}
-            className="flex items-center gap-1 rounded-lg bg-slate-800 px-3 py-1.5 text-sm font-medium text-white hover:bg-slate-900"
+            className="flex items-center gap-1 rounded-lg bg-teal-500 px-3 py-1.5 text-sm font-medium text-white shadow-sm hover:bg-teal-600"
           >
             <Plus className="h-4 w-4" /> Nueva cita
           </button>
@@ -243,7 +306,7 @@ export default function AgendaClient() {
           value={q}
           onChange={(e) => setQ(e.target.value)}
           placeholder="Buscar título o contacto…"
-          className="min-w-[180px] flex-1 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-700 outline-none focus:border-slate-500 sm:max-w-xs"
+          className="min-w-[180px] flex-1 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-700 outline-none transition-colors focus:border-teal-500 focus:ring-1 focus:ring-teal-400 sm:max-w-xs"
         />
         {loading && <span className="text-xs text-slate-400">Cargando…</span>}
       </div>
@@ -267,7 +330,15 @@ export default function AgendaClient() {
           }}
         />
       ) : (
-        <TimeGridView view={view} anchor={anchor} citas={citas} onSelect={setDetalle} onCreateAt={openCrearEn} />
+        <TimeGridView
+          view={view}
+          anchor={anchor}
+          citas={citas}
+          startHour={prefs.startHour}
+          endHour={prefs.endHour}
+          onSelect={setDetalle}
+          onCreateAt={openCrearEn}
+        />
       )}
 
       <CitaFormModal
@@ -288,5 +359,29 @@ export default function AgendaClient() {
         onChanged={refreshAll}
       />
     </div>
+  );
+}
+
+/** Popover liviano con cierre por click afuera. */
+function Popover({
+  children,
+  onClose,
+  align,
+}: {
+  children: React.ReactNode;
+  onClose: () => void;
+  align: "left" | "right";
+}) {
+  return (
+    <>
+      <button className="fixed inset-0 z-40 cursor-default" aria-label="Cerrar" onClick={onClose} />
+      <div
+        className={`absolute z-50 mt-2 rounded-xl border border-slate-200 bg-white p-3 shadow-lg ${
+          align === "right" ? "right-0" : "left-0"
+        }`}
+      >
+        {children}
+      </div>
+    </>
   );
 }
