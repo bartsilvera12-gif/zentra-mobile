@@ -15,6 +15,8 @@ import {
   WEEKDAYS_ES,
 } from "../calendar-utils";
 
+const GUTTER_W = 56; // px (w-14)
+
 export default function TimeGridView({
   view,
   anchor,
@@ -50,7 +52,7 @@ export default function TimeGridView({
     <div className="overflow-hidden rounded-xl border border-slate-300/80 bg-white shadow-sm ring-1 ring-slate-100">
       {/* Encabezado de días */}
       <div className="flex border-b border-slate-300/80 bg-slate-50">
-        <div className="w-14 shrink-0 border-r border-slate-200" />
+        <div className="shrink-0 border-r border-slate-200" style={{ width: GUTTER_W }} />
         {days.map((d) => {
           const today = isToday(d);
           return (
@@ -73,10 +75,14 @@ export default function TimeGridView({
       <div className="relative max-h-[64vh] overflow-y-auto">
         <div className="flex" style={{ height: gridHeight }}>
           {/* Gutter de horas */}
-          <div className="w-14 shrink-0 border-r border-slate-200 bg-slate-50/40">
-            {hours.map((h) => (
-              <div key={h} className="relative border-b border-slate-200/70" style={{ height: HOUR_PX }}>
-                <span className="absolute -top-2 right-1.5 bg-slate-50/40 px-0.5 text-[10px] font-medium text-slate-500">{`${pad(h)}:00`}</span>
+          <div className="shrink-0 border-r border-slate-200 bg-slate-50/40" style={{ width: GUTTER_W }}>
+            {hours.map((h, i) => (
+              <div key={h} className="relative border-t border-slate-200" style={{ height: HOUR_PX }}>
+                <span
+                  className={`absolute right-1.5 ${i === 0 ? "top-0.5" : "-top-2"} text-[10px] font-medium text-slate-500`}
+                >
+                  {`${pad(h)}:00`}
+                </span>
               </div>
             ))}
           </div>
@@ -91,12 +97,12 @@ export default function TimeGridView({
               <div
                 key={day.toISOString()}
                 onClick={(e) => handleColumnClick(day, e)}
-                className={`group relative flex-1 cursor-pointer border-l border-slate-200 transition-colors hover:bg-teal-50/20 ${today ? "bg-teal-50/40" : ""}`}
+                className={`relative flex-1 cursor-pointer border-l border-slate-200 transition-colors hover:bg-teal-50/20 ${today ? "bg-teal-50/40" : ""}`}
               >
-                {/* líneas horarias + media hora */}
+                {/* líneas horarias (alineadas con el gutter) + media hora */}
                 {hours.map((h) => (
-                  <div key={h} className="relative border-b border-slate-200" style={{ height: HOUR_PX }}>
-                    <div className="absolute inset-x-0 top-1/2 border-b border-dashed border-slate-100" />
+                  <div key={h} className="relative border-t border-slate-200" style={{ height: HOUR_PX }}>
+                    <div className="pointer-events-none absolute inset-x-0 top-1/2 border-t border-dashed border-slate-100" />
                   </div>
                 ))}
                 {/* eventos */}
@@ -118,7 +124,7 @@ export default function TimeGridView({
                         left: `calc(${p.leftPct}% + 2px)`,
                         width: `calc(${p.widthPct}% - 4px)`,
                       }}
-                      className={`absolute overflow-hidden rounded-md border border-l-[3px] px-1.5 py-0.5 text-left text-[11px] leading-tight shadow-sm transition-shadow hover:shadow-md hover:ring-1 hover:ring-black/5 ${st.block}`}
+                      className={`absolute z-10 overflow-hidden rounded-md border border-l-[3px] px-1.5 py-0.5 text-left text-[11px] leading-tight shadow-sm transition-shadow hover:shadow-md hover:ring-1 hover:ring-black/5 ${st.block}`}
                     >
                       <div className="truncate font-semibold">{p.cita.titulo}</div>
                       <div className="truncate opacity-80">

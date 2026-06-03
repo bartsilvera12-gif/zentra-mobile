@@ -185,7 +185,7 @@ export default function AgendaClient() {
   const esTimeGrid = view === "dia" || view === "semana";
 
   return (
-    <div className="mx-auto max-w-7xl px-4 py-5">
+    <div className="mx-auto w-full max-w-[1800px] px-4 py-5">
       {/* Encabezado + métricas compactas */}
       <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-xl font-semibold text-slate-800">Agenda</h1>
