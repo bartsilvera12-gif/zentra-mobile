@@ -29,6 +29,7 @@ import {
   MessageCircle,
   History,
   Activity,
+  TrendingUp,
   ScrollText,
   ListChecks,
   FolderKanban,
@@ -87,6 +88,7 @@ function adminEmpresasMatchesQuery(queryRaw: string): boolean {
 
 const MENU_STRUCTURE: MenuItem[] = [
   { key: "dashboard", slug: "dashboard", label: "Dashboard", href: "/", icon: LayoutDashboard },
+  { key: "gerencia", slug: "gerencia", label: "Gerencia", href: "/dashboard/gerencia", icon: TrendingUp },
   {
     key: "conversaciones",
     slug: "conversaciones",

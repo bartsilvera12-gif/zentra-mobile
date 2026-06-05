@@ -6,6 +6,7 @@
 /** Orden del menú lateral (misma idea que Sidebar): primera entrada accesible = “home” sin dashboard. */
 const SIDEBAR_SLUG_HREF_ORDER: { slug: string; href: string }[] = [
   { slug: "dashboard", href: "/" },
+  { slug: "gerencia", href: "/dashboard/gerencia" },
   { slug: "conversaciones", href: "/dashboard/conversaciones" },
   { slug: "historial-omnicanal", href: "/dashboard/historial-omnicanal" },
   { slug: "conversaciones-finalizadas", href: "/dashboard/conversaciones-finalizadas" },
