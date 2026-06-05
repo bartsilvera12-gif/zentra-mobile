@@ -7,12 +7,11 @@ const nextConfig: NextConfig = {
    * (SIGKILL, exit 255) en builds fríos con dependencias pesadas (recharts).
    * La validez de tipos y lint se garantiza fuera del build de producción
    * con `npm run build` / `tsc --noEmit` / `npm run lint` en local/CI (corren
-   * en verde sobre este commit). Por eso se omiten esas fases en el build del
+   * en verde sobre este commit). Por eso se omite esa fase en el build del
    * servidor para que el deploy no caiga por memoria. Revisar si se agrega
    * swap/upgrade de RAM al host de build → reactivar.
    */
   typescript: { ignoreBuildErrors: true },
-  eslint: { ignoreDuringBuilds: true },
 };
 
 export default nextConfig;
