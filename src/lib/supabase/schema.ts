@@ -6,7 +6,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
  * Requiere en Supabase: Settings → API → "Exposed schemas" incluir `zentra_erp`
  * (además de lo que ya tengas para auth/storage).
  */
-export const SUPABASE_APP_SCHEMA = "zentra_erp" as const;
+export const SUPABASE_APP_SCHEMA: string = process.env.APP_DB_SCHEMA?.trim() || "zentra_erp";
 
 /**
  * Schema PostgREST para tablas de negocio de una empresa (`clientes`, `productos`, `chat_*` en tenant, etc.).

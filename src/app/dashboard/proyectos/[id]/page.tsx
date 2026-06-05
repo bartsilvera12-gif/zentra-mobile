@@ -1,4 +1,5 @@
 import { resolveDataSchemaForCurrentUserServer } from "@/lib/supabase/empresa-data-server";
+import { SUPABASE_APP_SCHEMA } from "@/lib/supabase/schema";
 import ProyectoDetalleClient from "./ProyectoDetalleClient";
 
 export default async function ProyectoDetallePage({
@@ -6,7 +7,7 @@ export default async function ProyectoDetallePage({
 }: {
   params: Promise<{ id: string }>;
 }) {
-  let dataSchema = "zentra_erp";
+  let dataSchema = SUPABASE_APP_SCHEMA;
   try {
     dataSchema = await resolveDataSchemaForCurrentUserServer();
   } catch (e) {

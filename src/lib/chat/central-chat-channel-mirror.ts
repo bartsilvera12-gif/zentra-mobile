@@ -101,7 +101,7 @@ async function upsertZentraMirror(pool: Pool, row: TenantChannelRow): Promise<vo
   const connMode = row.connection_mode?.trim() || "standard";
 
   const sql = `
-    INSERT INTO zentra_erp.chat_channels (
+    INSERT INTO ${SUPABASE_APP_SCHEMA}.chat_channels (
       id,
       empresa_id,
       nombre,

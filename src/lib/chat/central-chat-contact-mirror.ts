@@ -94,7 +94,7 @@ async function loadTenantContactRow(opts: {
 
 async function upsertZentraContactMirror(pool: Pool, row: TenantContactRow): Promise<void> {
   const sql = `
-    INSERT INTO zentra_erp.chat_contacts (
+    INSERT INTO ${SUPABASE_APP_SCHEMA}.chat_contacts (
       id,
       empresa_id,
       phone_number,

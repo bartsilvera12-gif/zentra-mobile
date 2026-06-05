@@ -1,6 +1,7 @@
 import "server-only";
 import type { Pool } from "pg";
 import type { SupabaseAdmin } from "@/lib/chat/types";
+import { SUPABASE_APP_SCHEMA } from "@/lib/supabase/schema";
 import {
   extractInboundIdentifiers,
   extractSmbEchoIdentifiersForRouting,
@@ -35,12 +36,12 @@ async function listCampaignRecipientSchemas(pool: Pool): Promise<string[]> {
     WHERE c.relname = 'chat_campaign_recipients'
       AND c.relkind = 'r'
       AND (
-        n.nspname IN ('public', 'zentra_erp')
+        n.nspname IN ('public', $1)
         OR n.nspname ~ '^er_[0-9a-f]{32}$'
         OR n.nspname LIKE 'erp\\_%' ESCAPE '\\'
       )
     ORDER BY 1
-  `);
+  `, [SUPABASE_APP_SCHEMA]);
   return rows.map((r) => r.nspname);
 }
 

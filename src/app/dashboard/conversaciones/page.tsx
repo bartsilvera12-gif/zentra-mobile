@@ -3,9 +3,10 @@ import { getCurrentUserDisplayNameServer } from "@/lib/auth/get-current-user-dis
 import { getChatDataSchemaForCurrentUser } from "@/lib/chat/empresa-chat-schema-server";
 import { getConversacionesInboxBootstrap, type InboxCabeceraInsignia } from "@/lib/chat/chat-ops-actions";
 import { ConversacionesClient, type ConversacionesInitialOperationalPresence } from "./ConversacionesClient";
+import { SUPABASE_APP_SCHEMA } from "@/lib/supabase/schema";
 
 export default async function ConversacionesInboxPage() {
-  let chatDataSchema = "zentra_erp";
+  let chatDataSchema = SUPABASE_APP_SCHEMA;
   try {
     chatDataSchema = await getChatDataSchemaForCurrentUser();
   } catch (e) {

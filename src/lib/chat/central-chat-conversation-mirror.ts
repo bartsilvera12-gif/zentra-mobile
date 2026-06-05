@@ -161,7 +161,7 @@ function rowValuesForZentra(payload: Record<MirrorColumns, unknown>): unknown[] 
 
 async function upsertZentraConversationMirror(pool: Pool, payload: Record<MirrorColumns, unknown>): Promise<void> {
   const sql = `
-    INSERT INTO zentra_erp.chat_conversations (
+    INSERT INTO ${SUPABASE_APP_SCHEMA}.chat_conversations (
       id,
       empresa_id,
       channel_id,

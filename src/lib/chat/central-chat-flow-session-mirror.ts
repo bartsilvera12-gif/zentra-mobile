@@ -78,7 +78,7 @@ async function loadTenantFlowSessionRow(opts: {
 
 async function upsertZentraFlowSessionMirror(pool: Pool, raw: Record<string, unknown>): Promise<void> {
   const sql = `
-    INSERT INTO zentra_erp.chat_flow_sessions (
+    INSERT INTO ${SUPABASE_APP_SCHEMA}.chat_flow_sessions (
       id,
       empresa_id,
       conversation_id,
