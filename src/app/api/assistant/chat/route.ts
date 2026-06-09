@@ -58,12 +58,17 @@ Después de ofrecer las dos opciones:
 - Si elige la 1 (cargarlo él mismo): recién ahí dale los pasos numerados con el link a la pantalla. Cortá ahí.
 - Si elige la 2 (que lo cargues vos): seguí con el flujo de recolección de datos:
    a) Pedile los datos obligatorios primero (para proyecto: título y tipo). Después los opcionales clave (cliente, descripción, fecha prometida, monto).
-   b) Antes de pedir el TIPO de proyecto, llamá listar_tipos_proyecto y mostrale las opciones reales.
-   c) Si menciona un cliente por nombre, llamá buscar_clientes y confirmá cuál es.
-   d) Cuando tengas todos los datos, mostrale un RESUMEN claro con los valores y preguntale: "¿Confirmás la creación con estos datos?".
-   e) ESPERÁ su confirmación explícita ("sí", "confirmar", "dale", "ok", "creá", "creálo"). Si responde con una modificación, ajustala y volvé a pedir confirmación.
-   f) Recién entonces llamá la tool crear_proyecto. Si responde OK, contale que se creó y dale el link al proyecto. Si falla, mostrale el error y sugerí qué corregir.
-   g) NUNCA llames crear_proyecto sin haber pedido y recibido la confirmación explícita del paso (d)-(e).
+   b) ⚠️ REGLA CRÍTICA SOBRE IDs: NUNCA, JAMÁS inventes un valor para los campos tipo_id ni cliente_id. Esos son UUIDs reales del sistema. La ÚNICA forma válida de obtenerlos es llamando las tools:
+      - tipo_id → debe venir del resultado de listar_tipos_proyecto.
+      - cliente_id → debe venir del resultado de buscar_clientes.
+      Si todavía no llamaste a esas tools, NO podés tener el ID. Llamalas ANTES de mostrar el resumen al usuario.
+   c) Antes de pedir el TIPO de proyecto al usuario, SIEMPRE llamá listar_tipos_proyecto primero y mostrale las opciones reales (con sus nombres legibles, no IDs). Guardá mentalmente el id que corresponde a cada nombre para usarlo en crear_proyecto.
+   d) Si menciona un cliente por nombre, llamá buscar_clientes con ese texto y confirmá cuál de los resultados es. Guardá el id real.
+   e) Cuando tengas TODOS los datos (incluidos los IDs reales obtenidos por tools), mostrale un RESUMEN claro con los valores LEGIBLES (no IDs) y preguntale: "¿Confirmás la creación con estos datos?".
+   f) ESPERÁ su confirmación explícita ("sí", "confirmar", "dale", "ok", "creá", "creálo"). Si responde con una modificación, ajustala y volvé a pedir confirmación.
+   g) Recién entonces llamá la tool crear_proyecto pasando los IDs reales que ya obtuviste. Si responde OK, contale que se creó y dale el link al proyecto. Si falla, mostrale el error y sugerí qué corregir.
+   h) NUNCA llames crear_proyecto sin haber pedido y recibido la confirmación explícita del paso (e)-(f).
+   i) NUNCA llames crear_proyecto con un tipo_id o cliente_id que no haya salido de una tool en esta misma conversación.
 
 Si el usuario pide crear/cargar algo que NO está en la lista ✅ de arriba (ej. una factura, un cliente, una campaña), explicale brevemente dónde hacerlo en el sistema (con link a la pantalla) y aclará que aún no podés ejecutar esa acción directamente — solo ayudás a orientar.
 
@@ -446,7 +451,7 @@ export async function POST(request: Request) {
   }));
 
   const encoder = new TextEncoder();
-  const MAX_TOOL_ITERATIONS = 5; // Tope de seguridad para evitar loops infinitos.
+  const MAX_TOOL_ITERATIONS = 10; // Tope de seguridad para evitar loops infinitos.
 
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
@@ -523,7 +528,9 @@ export async function POST(request: Request) {
           }
 
           conversationMessages.push({ role: "user", content: toolResults });
-          fullText += "\n";
+          // Salto visual entre rondas para que el texto no quede pegado al deltas siguiente.
+          controller.enqueue(encoder.encode(sseChunk("delta", { text: "\n\n" })));
+          fullText += "\n\n";
 
           if (iter === MAX_TOOL_ITERATIONS - 1) {
             // Salvavidas: si el modelo sigue queriendo ejecutar tools, cortamos.
