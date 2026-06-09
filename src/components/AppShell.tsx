@@ -3,8 +3,12 @@
 import { usePathname } from "next/navigation";
 import Sidebar from "./layout/Sidebar";
 import Header from "./layout/Header";
+import AssistantWidget from "./assistant/AssistantWidget";
 
 const STANDALONE_ROUTES = ["/login"];
+
+/** Asistente de ayuda (Fase 1): apagado por defecto; se habilita por env en el deploy. */
+const ASSISTANT_ENABLED = process.env.NEXT_PUBLIC_ASSISTANT_ENABLED === "1";
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -23,6 +27,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           {children}
         </main>
       </div>
+      {ASSISTANT_ENABLED && <AssistantWidget />}
     </div>
   );
 }

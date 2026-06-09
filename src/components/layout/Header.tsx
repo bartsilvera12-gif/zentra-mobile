@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { Bell, ChevronDown, LogOut } from "lucide-react";
+import { Bell, ChevronDown, HelpCircle, LogOut } from "lucide-react";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
 import { signOut } from "@/lib/auth";
 
@@ -85,6 +85,19 @@ export default function Header() {
       className="z-40 flex h-16 shrink-0 items-center justify-end gap-3 border-b border-slate-200/90 bg-white/95 px-4 sm:px-6 shadow-[inset_0_-1px_0_0_rgba(10,37,64,0.05)] backdrop-blur-sm"
     >
       <div className="flex items-center gap-2">
+        {/* Asistente de ayuda */}
+        {process.env.NEXT_PUBLIC_ASSISTANT_ENABLED === "1" && (
+          <button
+            type="button"
+            onClick={() => window.dispatchEvent(new CustomEvent("neura:assistant:toggle"))}
+            className="rounded-lg p-2 text-[#475569] transition-colors hover:bg-slate-50 hover:text-[#0EA5E9]"
+            aria-label="Abrir asistente de ayuda"
+            title="Asistente de ayuda"
+          >
+            <HelpCircle className="h-5 w-5" />
+          </button>
+        )}
+
         {/* Notificaciones */}
         <button
           type="button"

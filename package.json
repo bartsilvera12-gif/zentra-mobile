@@ -54,9 +54,13 @@
     "qa:sorteo-coupon-numbering": "tsx scripts/qa-sorteo-coupon-numbering-unit.ts",
     "qa:campaign-template-vars": "tsx scripts/qa-campaign-template-variables.ts",
     "qa:chat-flow-node-fks": "node scripts/qa-chat-flow-node-fks-tenants.cjs",
-    "db:apply-provision-chat-flow-node-fks": "node scripts/apply-migration-file-pg.cjs supabase/migrations/20260531100000_provision_fix_chat_flow_node_fks_one_schema.sql"
+    "db:apply-provision-chat-flow-node-fks": "node scripts/apply-migration-file-pg.cjs supabase/migrations/20260531100000_provision_fix_chat_flow_node_fks_one_schema.sql",
+    "assistant:ingest": "tsx scripts/assistant-ingest.ts",
+    "assistant:ingest:dry": "tsx scripts/assistant-ingest.ts --dry-run",
+    "db:apply-assistant-module": "node scripts/apply-assistant-module.cjs"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.100.1",
     "@dnd-kit/core": "^6.3.1",
     "@fontsource/inter": "^5.2.8",
     "@supabase/ssr": "^0.9.0",
