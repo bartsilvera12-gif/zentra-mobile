@@ -271,3 +271,52 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     return NextResponse.json(errorResponse(msg), { status: 500 });
   }
 }
+
+/** Eliminación definitiva (HARD DELETE). Cascade borra tareas/comentarios/archivos/historial.
+ *  Restringido a admin y super_admin. Para los demás roles existe PATCH { archivado: true } (soft delete). */
+export async function DELETE(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const auth = await requireProyectosApiAccess(request);
+  if (!auth.ok) {
+    return NextResponse.json(errorResponse(auth.message), { status: auth.status });
+  }
+
+  const rol = (auth.rol ?? "").trim().toLowerCase();
+  if (rol !== "super_admin" && rol !== "admin" && rol !== "administrador") {
+    return NextResponse.json(
+      errorResponse("Solo administradores pueden eliminar proyectos definitivamente. Podés archivarlo en su lugar."),
+      { status: 403 }
+    );
+  }
+
+  const { id } = await params;
+  const pid = id?.trim() ?? "";
+  if (!pid) {
+    return NextResponse.json(errorResponse("id obligatorio"), { status: 400 });
+  }
+
+  try {
+    const sb = await getChatServiceClientForEmpresa(auth.empresaId);
+    const { data: existing, error: eFind } = await sb
+      .from("proyectos")
+      .select("id, titulo")
+      .eq("empresa_id", auth.empresaId)
+      .eq("id", pid)
+      .maybeSingle();
+    if (eFind) return NextResponse.json(errorResponse(eFind.message), { status: 400 });
+    if (!existing) return NextResponse.json(errorResponse("No encontrado"), { status: 404 });
+
+    const { error: eDel } = await sb
+      .from("proyectos")
+      .delete()
+      .eq("empresa_id", auth.empresaId)
+      .eq("id", pid);
+    if (eDel) return NextResponse.json(errorResponse(eDel.message), { status: 400 });
+
+    return NextResponse.json(
+      successResponse({ id: pid, titulo: (existing as { titulo?: string }).titulo ?? null, eliminado: true })
+    );
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "Error";
+    return NextResponse.json(errorResponse(msg), { status: 500 });
+  }
+}

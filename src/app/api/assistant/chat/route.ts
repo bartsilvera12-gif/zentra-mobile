@@ -42,9 +42,11 @@ REGLA 0 — PRIORIDAD MÁXIMA — Acciones ejecutables
 
 Cuando el usuario te pida CREAR, CARGAR, AGREGAR, REGISTRAR, DAR DE ALTA, NUEVO/NUEVA, o equivalente, sobre uno de estos ítems:
 
-✅ Proyecto: crear (crear_proyecto + listar_tipos_proyecto + buscar_clientes), eliminar/archivar (archivar_proyecto + buscar_proyectos).
+✅ Proyecto: crear (crear_proyecto + listar_tipos_proyecto + buscar_clientes), archivar (archivar_proyecto + buscar_proyectos), eliminar definitivamente (eliminar_proyecto + buscar_proyectos, solo admin/super_admin).
 
-(En este sistema "eliminar un proyecto" significa archivarlo: deja de aparecer en el listado activo pero los datos se conservan y se puede restaurar. SIEMPRE aclará esto al usuario antes de archivar.)
+DIFERENCIA IMPORTANTE entre archivar y eliminar:
+- ARCHIVAR (archivar_proyecto): soft delete. El proyecto deja de aparecer en el listado activo pero los datos se conservan y se puede restaurar. REVERSIBLE. Cualquier rol con acceso al módulo puede archivar.
+- ELIMINAR DEFINITIVAMENTE (eliminar_proyecto): hard delete. Borra el proyecto y CASCADE-borra todas sus tareas, comentarios, archivos e historial. IRREVERSIBLE — no hay forma de recuperar nada. Solo admin y super_admin pueden ejecutarla.
 
 DEBÉS — antes de cualquier otra cosa, antes de mostrar pasos manuales, antes de citar documentación — responder OFRECIENDO LAS DOS OPCIONES textualmente, así:
 
@@ -78,18 +80,28 @@ Si el usuario pide crear/cargar algo que NO está en la lista ✅ de arriba (ej.
 Flujo cuando el usuario te pide ELIMINAR / ARCHIVAR un proyecto
 ══════════════════════════════════════════════════════
 
-1. Ofrecele las dos opciones, igual que con crear:
+1. Primero ofrecele LAS DOS OPCIONES de cómo proceder + LAS DOS MODALIDADES (archivar vs eliminar):
    "Tenés dos opciones:
-   1. Puedo guiarte para que lo hagas vos desde la pantalla del proyecto, o
-   2. Pasame el nombre del proyecto y lo archivo yo por vos.
-   ¿Cómo preferís?"
-2. Antes de proceder, aclará textualmente: "En el sistema 'eliminar' un proyecto en realidad es archivarlo: deja de aparecer en el listado activo pero los datos se conservan y se puede restaurar después. ¿Querés que lo archive igual?"
-3. Si confirma, pedile el NOMBRE del proyecto (no el ID — eso lo conseguís vos con buscar_proyectos).
+   1. Te guío para que lo hagas vos desde la pantalla del proyecto, o
+   2. Lo hago yo por vos. En ese caso, ¿lo querés **archivar** (deja de aparecer en el listado activo pero podés restaurarlo después) o **eliminar definitivamente** (borra el proyecto y todo lo asociado: tareas, comentarios, archivos e historial — **no se puede recuperar**)?"
+2. Si elige guía manual: dale los pasos para archivar/eliminar desde la pantalla y cortá.
+3. Si elige que vos lo hagas, pedile el NOMBRE del proyecto.
 4. Llamá buscar_proyectos con el texto que dio. Si hay varios resultados parecidos, mostrale la lista (título + cliente + estado) y preguntale cuál.
-5. Cuando tengas el id real, mostrale UN último resumen: "Voy a archivar el proyecto **{titulo}** ({estado}, cliente {cliente}). Esta acción se puede deshacer desde la pantalla del proyecto. ¿Confirmás?"
-6. ESPERÁ confirmación explícita ("sí", "confirmá", "archivá", "eliminá", "dale"). Si responde algo distinto, no archives.
-7. Recién entonces llamá archivar_proyecto con el id real. Si responde OK, decile algo como: "✅ Listo, archivé el proyecto **{titulo}**. Ya no aparece en el listado activo. Si lo necesitás recuperar, podés desarchivarlo desde [Proyectos](/proyectos) filtrando por archivados."
-8. NUNCA llames archivar_proyecto sin confirmación explícita ni con un proyecto_id que no haya salido de buscar_proyectos en esta misma conversación.
+
+CASO A — usuario eligió ARCHIVAR:
+5a. Mostrale el resumen: "Voy a archivar el proyecto **{titulo}** ({estado}, cliente {cliente}). Esta acción se puede deshacer. ¿Confirmás?"
+6a. Esperá confirmación explícita ("sí", "confirmá", "archivá", "dale").
+7a. Llamá archivar_proyecto con el id real obtenido. Si OK: "✅ Listo, archivé **{titulo}**. Para recuperarlo, andá a [Proyectos](/proyectos) y filtrá por archivados."
+
+CASO B — usuario eligió ELIMINAR DEFINITIVAMENTE:
+5b. Mostrale UNA ADVERTENCIA FUERTE: "⚠️ Atención: voy a **eliminar definitivamente** el proyecto **{titulo}** ({estado}, cliente {cliente}). Esto borra: el proyecto, sus tareas, comentarios, archivos e historial. **NO hay forma de recuperar nada**. ¿Estás 100% seguro? Si preferís algo reversible, mejor archivalo."
+6b. Esperá una confirmación REFORZADA. La palabra "sí" sola NO alcanza. Aceptá solamente respuestas como "sí, eliminá definitivamente", "confirmo eliminar", "borralo", "sé lo que hago, eliminá", o equivalentes que demuestren que entendió la irreversibilidad. Si solo dice "sí" o "dale" sin reforzar, volvé a pedir confirmación reforzada.
+7b. Llamá eliminar_proyecto con el id real. Si la tool devuelve error 403 (rol insuficiente), explicale que solo admin/super_admin pueden hacer hard delete y ofrecele archivar en su lugar. Si OK: "🗑️ Eliminé definitivamente el proyecto **{titulo}** y todo lo asociado. La acción no se puede deshacer."
+
+REGLAS COMUNES:
+- NUNCA llames archivar_proyecto ni eliminar_proyecto sin la confirmación correspondiente.
+- NUNCA con un proyecto_id que no haya salido de buscar_proyectos en esta misma conversación.
+- Si el usuario solo dice "eliminá X" sin aclarar archivar vs eliminar definitivo, asumí ARCHIVAR (es lo más seguro) y aclará: "Lo archivé (acción reversible). Si querés borrarlo definitivamente, decímelo y procedemos con la eliminación permanente."
 
 Reglas estrictas:
 1. Respondé SOLO con información presente en la documentación provista en <documentacion>. Si la respuesta no está ahí, decilo con honestidad y sugerí contactar al soporte. NUNCA inventes funcionalidades, botones ni pantallas.
@@ -155,6 +167,22 @@ const TOOLS: Anthropic.Tool[] = [
         },
       },
       required: ["texto"],
+    },
+  },
+  {
+    name: "eliminar_proyecto",
+    description:
+      "ELIMINA DEFINITIVAMENTE un proyecto y todo lo asociado (tareas, comentarios, archivos, historial). ES IRREVERSIBLE — no hay forma de restaurar. Solo disponible para admin y super_admin; si el usuario no tiene rol suficiente, la tool devolverá error. USAR SOLO si el usuario eligió explícitamente eliminar definitivamente (no archivar) y confirmó dos veces. SIEMPRE preferí archivar_proyecto a menos que el usuario insista en eliminación permanente.",
+    input_schema: {
+      type: "object",
+      properties: {
+        proyecto_id: {
+          type: "string",
+          description:
+            "ID del proyecto a eliminar (UUID real, obtenido de buscar_proyectos — NUNCA inventes este valor).",
+        },
+      },
+      required: ["proyecto_id"],
     },
   },
   {
@@ -308,6 +336,29 @@ async function executeTool(
       return {
         ok: true,
         content: JSON.stringify({ encontrados: matches.length, proyectos: matches }),
+      };
+    }
+
+    if (name === "eliminar_proyecto") {
+      const proyectoId = typeof input.proyecto_id === "string" ? input.proyecto_id.trim() : "";
+      if (!proyectoId) {
+        return { ok: false, content: "Falta proyecto_id." };
+      }
+      const r = await internalFetch(`/api/proyectos/${proyectoId}`, { method: "DELETE" });
+      if (!r.ok) {
+        const msg = (r.body as { error?: string } | null)?.error ?? `HTTP ${r.status}`;
+        return { ok: false, content: `No se pudo eliminar el proyecto: ${msg}` };
+      }
+      const deleted = (r.body as { data?: { id?: string; titulo?: string } }).data ?? {};
+      return {
+        ok: true,
+        content: JSON.stringify({
+          id: deleted.id ?? proyectoId,
+          titulo: deleted.titulo ?? null,
+          eliminado: true,
+          mensaje:
+            "El proyecto se eliminó definitivamente junto con todas sus tareas, comentarios, archivos e historial. NO se puede restaurar.",
+        }),
       };
     }
 
