@@ -36,7 +36,20 @@ const DEFAULT_MODEL = "claude-haiku-4-5";
 
 const SYSTEM_PROMPT = `Sos Neurita, la asistente de ayuda del ERP Zentra (también conocido como Neura ERP), un sistema de gestión para pymes paraguayas. Si el usuario te saluda o te pregunta tu nombre, presentate como Neurita.
 
-Tu única función es ayudar a los usuarios a entender y usar el sistema: explicar módulos, pantallas, formularios, flujos de trabajo y mensajes de error.
+Tu función es ayudar a los usuarios a entender y usar el sistema: explicar módulos, pantallas, formularios, flujos de trabajo y mensajes de error. Además, para algunas acciones puntuales (ver sección "Acciones que podés ejecutar"), podés ejecutarlas directamente por el usuario si te pasa los datos necesarios.
+
+Acciones que podés ejecutar (vía herramientas):
+- Crear un proyecto (tool: crear_proyecto). Para conseguir los datos auxiliares usá: listar_tipos_proyecto (obtiene los tipos válidos), buscar_clientes (busca el cliente por nombre).
+
+Workflow cuando el usuario pide cargar/crear algo:
+A. Si la acción no está en la lista de arriba: explicale dónde puede hacerlo en el sistema (con link a la pantalla). NUNCA inventes que podés ejecutarla.
+B. Si la acción sí está en la lista:
+   1. Ofrecele las DOS opciones: "puedo guiarte a la pantalla X para que lo cargues vos, o si preferís pasame los datos y lo cargo yo por vos".
+   2. Si elige cargarlo él mismo: dale el link a la pantalla y cortá.
+   3. Si elige que lo cargues vos: pedile los datos obligatorios primero, después los opcionales clave (uno o dos a la vez para no abrumarlo). Antes de pedir el tipo, llamá listar_tipos_proyecto y mostrale las opciones reales. Si menciona un cliente por nombre, llamá buscar_clientes y confirmá cuál es.
+   4. Cuando tengas todos los datos, mostrale un RESUMEN claro con los valores parseados y preguntale textualmente "¿Confirmás la creación con estos datos?". ESPERÁ su confirmación explícita ("sí", "confirmar", "dale", "ok", "creá"). Si responde con cualquier modificación, ajustá y volvé a pedir confirmación.
+   5. Una vez confirmado, llamá la tool de creación (ej. crear_proyecto). Si responde OK, contale al usuario que se creó y dale el link a la pantalla. Si falla, mostrale el error y sugerí qué corregir.
+   6. NUNCA llames una tool de creación sin haber pedido y recibido la confirmación explícita del paso 4.
 
 Reglas estrictas:
 1. Respondé SOLO con información presente en la documentación provista en <documentacion>. Si la respuesta no está ahí, decilo con honestidad y sugerí contactar al soporte. NUNCA inventes funcionalidades, botones ni pantallas.
@@ -64,6 +77,179 @@ type SearchHit = {
 
 function sseChunk(event: string, data: unknown): string {
   return `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
+}
+
+/** Herramientas que Neurita puede invocar (tool use). Schemas pensados para uso conversacional. */
+const TOOLS: Anthropic.Tool[] = [
+  {
+    name: "listar_tipos_proyecto",
+    description:
+      "Devuelve los tipos de proyecto disponibles para la empresa del usuario. Llamala ANTES de pedirle al usuario el tipo de proyecto, para mostrarle opciones reales (no inventes nombres).",
+    input_schema: { type: "object", properties: {} },
+  },
+  {
+    name: "buscar_clientes",
+    description:
+      "Busca clientes de la empresa por nombre de empresa o contacto. Útil para mapear lo que dice el usuario ('el cliente es Acme') al id real. Devuelve hasta 8 coincidencias.",
+    input_schema: {
+      type: "object",
+      properties: {
+        texto: {
+          type: "string",
+          description: "Texto a buscar (mínimo 2 caracteres). Se compara contra empresa, nombre_contacto y RUC.",
+        },
+      },
+      required: ["texto"],
+    },
+  },
+  {
+    name: "crear_proyecto",
+    description:
+      "Crea un nuevo proyecto. IMPORTANTE: solo invocala DESPUÉS de mostrarle al usuario un resumen con todos los datos y recibir su confirmación explícita ('sí', 'confirmar', 'dale'). NUNCA la llames si no confirmó. Si falta algún dato obligatorio, preguntale primero.",
+    input_schema: {
+      type: "object",
+      properties: {
+        titulo: { type: "string", description: "Título descriptivo del proyecto (obligatorio)." },
+        tipo_id: {
+          type: "string",
+          description: "ID del tipo de proyecto (obtenelo de listar_tipos_proyecto, no lo inventes).",
+        },
+        cliente_id: {
+          type: "string",
+          description: "ID del cliente (opcional, obtenelo de buscar_clientes).",
+        },
+        descripcion: { type: "string", description: "Descripción libre del proyecto (opcional)." },
+        prioridad: {
+          type: "string",
+          enum: ["baja", "normal", "alta", "urgente"],
+          description: "Prioridad del proyecto. Default: normal.",
+        },
+        fecha_prometida: {
+          type: "string",
+          description: "Fecha prometida de entrega en formato YYYY-MM-DD (opcional).",
+        },
+        monto_vendido: {
+          type: "number",
+          description: "Monto vendido en la moneda de la empresa (opcional).",
+        },
+        observaciones_comerciales: {
+          type: "string",
+          description: "Observaciones del área comercial (opcional).",
+        },
+      },
+      required: ["titulo", "tipo_id"],
+    },
+  },
+];
+
+type ToolResult = { ok: boolean; content: string };
+
+/** Ejecuta una tool reenviando las cookies del usuario al endpoint interno, así heredamos
+ *  permisos / validaciones / historial sin duplicar lógica. */
+async function executeTool(
+  name: string,
+  input: Record<string, unknown>,
+  request: Request
+): Promise<ToolResult> {
+  const origin = new URL(request.url).origin;
+  const cookie = request.headers.get("cookie") ?? "";
+
+  async function internalFetch(
+    path: string,
+    init: { method?: string; body?: unknown } = {}
+  ): Promise<{ ok: boolean; status: number; body: unknown }> {
+    const res = await fetch(`${origin}${path}`, {
+      method: init.method ?? "GET",
+      headers: { cookie, "Content-Type": "application/json" },
+      ...(init.body !== undefined ? { body: JSON.stringify(init.body) } : {}),
+    });
+    const text = await res.text();
+    let parsed: unknown = text;
+    try { parsed = JSON.parse(text); } catch { /* dejamos como texto */ }
+    return { ok: res.ok, status: res.status, body: parsed };
+  }
+
+  try {
+    if (name === "listar_tipos_proyecto") {
+      const r = await internalFetch("/api/proyectos/tipos");
+      if (!r.ok) {
+        const msg = (r.body as { error?: string } | null)?.error ?? `HTTP ${r.status}`;
+        return { ok: false, content: `No pude obtener los tipos de proyecto: ${msg}` };
+      }
+      const data = ((r.body as { data?: Array<{ id: string; nombre: string; codigo?: string }> }).data) ?? [];
+      return {
+        ok: true,
+        content: JSON.stringify(
+          data.map((t) => ({ id: t.id, nombre: t.nombre, codigo: t.codigo ?? null }))
+        ),
+      };
+    }
+
+    if (name === "buscar_clientes") {
+      const texto = String(input.texto ?? "").trim().toLowerCase();
+      if (texto.length < 2) {
+        return { ok: false, content: "El texto de búsqueda debe tener al menos 2 caracteres." };
+      }
+      const r = await internalFetch("/api/clientes");
+      if (!r.ok) {
+        const msg = (r.body as { error?: string } | null)?.error ?? `HTTP ${r.status}`;
+        return { ok: false, content: `No pude buscar clientes: ${msg}` };
+      }
+      const all = ((r.body as { data?: Array<Record<string, unknown>> }).data) ?? [];
+      const norm = (v: unknown) => String(v ?? "").toLowerCase();
+      const matches = all
+        .filter((c) =>
+          norm(c.empresa).includes(texto) ||
+          norm(c.nombre_contacto).includes(texto) ||
+          norm(c.ruc).includes(texto)
+        )
+        .slice(0, 8)
+        .map((c) => ({
+          id: c.id as string,
+          empresa: (c.empresa as string) ?? null,
+          nombre_contacto: (c.nombre_contacto as string) ?? null,
+          ruc: (c.ruc as string) ?? null,
+        }));
+      return {
+        ok: true,
+        content: JSON.stringify({ encontrados: matches.length, clientes: matches }),
+      };
+    }
+
+    if (name === "crear_proyecto") {
+      const titulo = typeof input.titulo === "string" ? input.titulo.trim() : "";
+      const tipoId = typeof input.tipo_id === "string" ? input.tipo_id : "";
+      if (!titulo || !tipoId) {
+        return { ok: false, content: "Faltan datos obligatorios: titulo y tipo_id." };
+      }
+      const body: Record<string, unknown> = { titulo, tipo_id: tipoId };
+      if (typeof input.cliente_id === "string" && input.cliente_id) body.cliente_id = input.cliente_id;
+      if (typeof input.descripcion === "string") body.descripcion = input.descripcion;
+      if (typeof input.prioridad === "string") body.prioridad = input.prioridad;
+      if (typeof input.fecha_prometida === "string") body.fecha_prometida = input.fecha_prometida;
+      if (typeof input.monto_vendido === "number") body.monto_vendido = input.monto_vendido;
+      if (typeof input.observaciones_comerciales === "string") body.observaciones_comerciales = input.observaciones_comerciales;
+
+      const r = await internalFetch("/api/proyectos", { method: "POST", body });
+      if (!r.ok) {
+        const msg = (r.body as { error?: string } | null)?.error ?? `HTTP ${r.status}`;
+        return { ok: false, content: `No se pudo crear el proyecto: ${msg}` };
+      }
+      const created = (r.body as { data?: { id?: string; titulo?: string } }).data ?? {};
+      return {
+        ok: true,
+        content: JSON.stringify({
+          id: created.id ?? null,
+          titulo: created.titulo ?? titulo,
+          url: created.id ? `/proyectos/${created.id}` : "/proyectos",
+        }),
+      };
+    }
+
+    return { ok: false, content: `Herramienta desconocida: ${name}` };
+  } catch (e) {
+    return { ok: false, content: `Error ejecutando ${name}: ${e instanceof Error ? e.message : String(e)}` };
+  }
 }
 
 export async function POST(request: Request) {
@@ -244,47 +430,97 @@ export async function POST(request: Request) {
   }));
 
   const encoder = new TextEncoder();
+  const MAX_TOOL_ITERATIONS = 5; // Tope de seguridad para evitar loops infinitos.
+
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
       let fullText = "";
+      const toolCallsLog: Array<{ name: string; input: unknown; ok: boolean }> = [];
+      const usageTotals = { input: 0, output: 0, cacheRead: 0 };
+      let conversationMessages = [...messages];
+
       try {
         controller.enqueue(
           encoder.encode(sseChunk("meta", { conversationId: convId, sources, model }))
         );
 
-        const claudeStream = anthropic.messages.stream({
-          model,
-          max_tokens: 1024,
-          system: [
-            {
-              type: "text",
-              text: SYSTEM_PROMPT,
-              cache_control: { type: "ephemeral" },
-            },
-          ],
-          messages,
-        });
+        for (let iter = 0; iter < MAX_TOOL_ITERATIONS; iter++) {
+          const claudeStream = anthropic.messages.stream({
+            model,
+            max_tokens: 1024,
+            system: [
+              {
+                type: "text",
+                text: SYSTEM_PROMPT,
+                cache_control: { type: "ephemeral" },
+              },
+            ],
+            tools: TOOLS,
+            messages: conversationMessages,
+          });
 
-        for await (const event of claudeStream) {
-          if (event.type === "content_block_delta" && event.delta.type === "text_delta") {
-            fullText += event.delta.text;
-            controller.enqueue(encoder.encode(sseChunk("delta", { text: event.delta.text })));
+          for await (const event of claudeStream) {
+            if (event.type === "content_block_delta" && event.delta.type === "text_delta") {
+              fullText += event.delta.text;
+              controller.enqueue(encoder.encode(sseChunk("delta", { text: event.delta.text })));
+            }
+          }
+
+          const final = await claudeStream.finalMessage();
+          usageTotals.input += final.usage.input_tokens;
+          usageTotals.output += final.usage.output_tokens;
+          usageTotals.cacheRead += final.usage.cache_read_input_tokens ?? 0;
+
+          if (final.stop_reason !== "tool_use") {
+            controller.enqueue(
+              encoder.encode(
+                sseChunk("done", { stopReason: final.stop_reason, usage: usageTotals })
+              )
+            );
+            break;
+          }
+
+          // Hay al menos un tool_use: ejecutamos cada uno y armamos los tool_result.
+          conversationMessages.push({ role: "assistant", content: final.content });
+          const toolResults: Anthropic.ToolResultBlockParam[] = [];
+
+          for (const block of final.content) {
+            if (block.type !== "tool_use") continue;
+            controller.enqueue(
+              encoder.encode(sseChunk("tool_use", { name: block.name, input: block.input }))
+            );
+            const result = await executeTool(
+              block.name,
+              (block.input ?? {}) as Record<string, unknown>,
+              request
+            );
+            toolCallsLog.push({ name: block.name, input: block.input, ok: result.ok });
+            controller.enqueue(
+              encoder.encode(sseChunk("tool_result", { name: block.name, ok: result.ok }))
+            );
+            toolResults.push({
+              type: "tool_result",
+              tool_use_id: block.id,
+              content: result.content,
+              is_error: !result.ok,
+            });
+          }
+
+          conversationMessages.push({ role: "user", content: toolResults });
+          fullText += "\n";
+
+          if (iter === MAX_TOOL_ITERATIONS - 1) {
+            // Salvavidas: si el modelo sigue queriendo ejecutar tools, cortamos.
+            controller.enqueue(
+              encoder.encode(
+                sseChunk("error", {
+                  message:
+                    "Se alcanzó el límite de pasos automáticos. Probá reformular tu pedido.",
+                })
+              )
+            );
           }
         }
-
-        const final = await claudeStream.finalMessage();
-        controller.enqueue(
-          encoder.encode(
-            sseChunk("done", {
-              stopReason: final.stop_reason,
-              usage: {
-                input: final.usage.input_tokens,
-                output: final.usage.output_tokens,
-                cacheRead: final.usage.cache_read_input_tokens ?? 0,
-              },
-            })
-          )
-        );
 
         if (convId) {
           await service.from("assistant_messages").insert([
@@ -305,7 +541,8 @@ export async function POST(request: Request) {
               metadata: {
                 model,
                 chunks: hits.map((h) => h.chunk_id),
-                usage: { input: final.usage.input_tokens, output: final.usage.output_tokens },
+                usage: usageTotals,
+                tool_calls: toolCallsLog,
               },
             },
           ]);
