@@ -3,6 +3,65 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import { ImagePlus, Loader2, Send, X } from "lucide-react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+
+/** Renderer compacto para el chat (sin h1/h2 grandes, sin imágenes, listas apretadas). */
+const MD_COMPONENTS = {
+  p: (props: React.HTMLAttributes<HTMLParagraphElement>) => (
+    <p className="mb-1.5 last:mb-0" {...props} />
+  ),
+  strong: (props: React.HTMLAttributes<HTMLElement>) => (
+    <strong className="font-semibold text-slate-900" {...props} />
+  ),
+  em: (props: React.HTMLAttributes<HTMLElement>) => <em className="italic" {...props} />,
+  ul: (props: React.HTMLAttributes<HTMLUListElement>) => (
+    <ul className="mb-1.5 list-disc space-y-0.5 pl-4 last:mb-0" {...props} />
+  ),
+  ol: (props: React.OlHTMLAttributes<HTMLOListElement>) => (
+    <ol className="mb-1.5 list-decimal space-y-0.5 pl-4 last:mb-0" {...props} />
+  ),
+  li: (props: React.LiHTMLAttributes<HTMLLIElement>) => <li className="leading-snug" {...props} />,
+  h1: (props: React.HTMLAttributes<HTMLHeadingElement>) => (
+    <p className="mb-1 mt-1.5 text-[13px] font-semibold text-slate-900 first:mt-0" {...props} />
+  ),
+  h2: (props: React.HTMLAttributes<HTMLHeadingElement>) => (
+    <p className="mb-1 mt-1.5 text-[13px] font-semibold text-slate-900 first:mt-0" {...props} />
+  ),
+  h3: (props: React.HTMLAttributes<HTMLHeadingElement>) => (
+    <p className="mb-1 mt-1.5 text-xs font-semibold text-slate-900 first:mt-0" {...props} />
+  ),
+  hr: () => <hr className="my-2 border-slate-200" />,
+  code: ({ inline, ...props }: { inline?: boolean } & React.HTMLAttributes<HTMLElement>) =>
+    inline ? (
+      <code
+        className="rounded bg-slate-200/70 px-1 py-px font-mono text-[11px] text-slate-800"
+        {...props}
+      />
+    ) : (
+      <code
+        className="block overflow-x-auto rounded-md bg-slate-900/95 p-2 font-mono text-[11px] text-slate-100"
+        {...props}
+      />
+    ),
+  pre: (props: React.HTMLAttributes<HTMLPreElement>) => (
+    <pre className="my-1.5 overflow-x-auto" {...props} />
+  ),
+  a: (props: React.AnchorHTMLAttributes<HTMLAnchorElement>) => (
+    <a
+      {...props}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="text-[#0EA5E9] underline underline-offset-2 hover:text-[#0284C7]"
+    />
+  ),
+  blockquote: (props: React.HTMLAttributes<HTMLQuoteElement>) => (
+    <blockquote
+      className="my-1 border-l-2 border-slate-300 pl-2 text-slate-600"
+      {...props}
+    />
+  ),
+};
 
 /**
  * Asistente de ayuda (Fase 1 MVP) — panel flotante.
@@ -181,15 +240,23 @@ export default function AssistantWidget() {
             )}
             {messages.map((m, i) => (
               <div key={i} className={m.role === "user" ? "flex justify-end" : "flex justify-start"}>
-                <div
-                  className={
-                    m.role === "user"
-                      ? "max-w-[85%] whitespace-pre-wrap rounded-2xl rounded-br-sm bg-[#4FAEB2] px-3 py-2 text-xs text-white"
-                      : "max-w-[85%] whitespace-pre-wrap rounded-2xl rounded-bl-sm bg-slate-100 px-3 py-2 text-xs text-slate-800"
-                  }
-                >
-                  {m.content || (loading && i === messages.length - 1 ? "…" : "")}
-                </div>
+                {m.role === "user" ? (
+                  <div className="max-w-[85%] whitespace-pre-wrap rounded-2xl rounded-br-sm bg-[#4FAEB2] px-3 py-2 text-xs text-white">
+                    {m.content}
+                  </div>
+                ) : (
+                  <div className="max-w-[88%] rounded-2xl rounded-bl-sm bg-slate-100 px-3 py-2 text-xs leading-relaxed text-slate-800">
+                    {m.content ? (
+                      <ReactMarkdown remarkPlugins={[remarkGfm]} components={MD_COMPONENTS}>
+                        {m.content}
+                      </ReactMarkdown>
+                    ) : loading && i === messages.length - 1 ? (
+                      "…"
+                    ) : (
+                      ""
+                    )}
+                  </div>
+                )}
               </div>
             ))}
             {sources.length > 0 && !loading && (
