@@ -42,7 +42,9 @@ REGLA 0 — PRIORIDAD MÁXIMA — Acciones ejecutables
 
 Cuando el usuario te pida CREAR, CARGAR, AGREGAR, REGISTRAR, DAR DE ALTA, NUEVO/NUEVA, o equivalente, sobre uno de estos ítems:
 
-✅ Proyecto (tool: crear_proyecto, junto con listar_tipos_proyecto y buscar_clientes como apoyo)
+✅ Proyecto: crear (crear_proyecto + listar_tipos_proyecto + buscar_clientes), eliminar/archivar (archivar_proyecto + buscar_proyectos).
+
+(En este sistema "eliminar un proyecto" significa archivarlo: deja de aparecer en el listado activo pero los datos se conservan y se puede restaurar. SIEMPRE aclará esto al usuario antes de archivar.)
 
 DEBÉS — antes de cualquier otra cosa, antes de mostrar pasos manuales, antes de citar documentación — responder OFRECIENDO LAS DOS OPCIONES textualmente, así:
 
@@ -71,6 +73,23 @@ Después de ofrecer las dos opciones:
    i) NUNCA llames crear_proyecto con un tipo_id o cliente_id que no haya salido de una tool en esta misma conversación.
 
 Si el usuario pide crear/cargar algo que NO está en la lista ✅ de arriba (ej. una factura, un cliente, una campaña), explicale brevemente dónde hacerlo en el sistema (con link a la pantalla) y aclará que aún no podés ejecutar esa acción directamente — solo ayudás a orientar.
+
+══════════════════════════════════════════════════════
+Flujo cuando el usuario te pide ELIMINAR / ARCHIVAR un proyecto
+══════════════════════════════════════════════════════
+
+1. Ofrecele las dos opciones, igual que con crear:
+   "Tenés dos opciones:
+   1. Puedo guiarte para que lo hagas vos desde la pantalla del proyecto, o
+   2. Pasame el nombre del proyecto y lo archivo yo por vos.
+   ¿Cómo preferís?"
+2. Antes de proceder, aclará textualmente: "En el sistema 'eliminar' un proyecto en realidad es archivarlo: deja de aparecer en el listado activo pero los datos se conservan y se puede restaurar después. ¿Querés que lo archive igual?"
+3. Si confirma, pedile el NOMBRE del proyecto (no el ID — eso lo conseguís vos con buscar_proyectos).
+4. Llamá buscar_proyectos con el texto que dio. Si hay varios resultados parecidos, mostrale la lista (título + cliente + estado) y preguntale cuál.
+5. Cuando tengas el id real, mostrale UN último resumen: "Voy a archivar el proyecto **{titulo}** ({estado}, cliente {cliente}). Esta acción se puede deshacer desde la pantalla del proyecto. ¿Confirmás?"
+6. ESPERÁ confirmación explícita ("sí", "confirmá", "archivá", "eliminá", "dale"). Si responde algo distinto, no archives.
+7. Recién entonces llamá archivar_proyecto con el id real. Si responde OK, decile algo como: "✅ Listo, archivé el proyecto **{titulo}**. Ya no aparece en el listado activo. Si lo necesitás recuperar, podés desarchivarlo desde [Proyectos](/proyectos) filtrando por archivados."
+8. NUNCA llames archivar_proyecto sin confirmación explícita ni con un proyecto_id que no haya salido de buscar_proyectos en esta misma conversación.
 
 Reglas estrictas:
 1. Respondé SOLO con información presente en la documentación provista en <documentacion>. Si la respuesta no está ahí, decilo con honestidad y sugerí contactar al soporte. NUNCA inventes funcionalidades, botones ni pantallas.
@@ -121,6 +140,37 @@ const TOOLS: Anthropic.Tool[] = [
         },
       },
       required: ["texto"],
+    },
+  },
+  {
+    name: "buscar_proyectos",
+    description:
+      "Busca proyectos activos (no archivados) de la empresa por título. Útil cuando el usuario menciona un proyecto por nombre y necesitás encontrar su ID para alguna acción. Devuelve hasta 8 coincidencias con id, título, cliente y estado.",
+    input_schema: {
+      type: "object",
+      properties: {
+        texto: {
+          type: "string",
+          description: "Texto a buscar en el título del proyecto (mínimo 2 caracteres).",
+        },
+      },
+      required: ["texto"],
+    },
+  },
+  {
+    name: "archivar_proyecto",
+    description:
+      "Archiva un proyecto (eliminado lógico: el proyecto deja de aparecer en el listado activo pero los datos se conservan y se puede restaurar después). En este sistema 'eliminar un proyecto' significa archivarlo — NO se borra de la base de datos. SIEMPRE explicale eso al usuario antes de llamar esta tool, y SIEMPRE pedí confirmación explícita ('sí archivá', 'confirmo', 'eliminálo') porque es una acción destructiva visualmente. NUNCA la llames sin confirmación explícita.",
+    input_schema: {
+      type: "object",
+      properties: {
+        proyecto_id: {
+          type: "string",
+          description:
+            "ID del proyecto a archivar (UUID real, obtenido de buscar_proyectos — NUNCA inventes este valor).",
+        },
+      },
+      required: ["proyecto_id"],
     },
   },
   {
@@ -234,6 +284,56 @@ async function executeTool(
       return {
         ok: true,
         content: JSON.stringify({ encontrados: matches.length, clientes: matches }),
+      };
+    }
+
+    if (name === "buscar_proyectos") {
+      const texto = String(input.texto ?? "").trim();
+      if (texto.length < 2) {
+        return { ok: false, content: "El texto de búsqueda debe tener al menos 2 caracteres." };
+      }
+      const r = await internalFetch(`/api/proyectos?q=${encodeURIComponent(texto)}`);
+      if (!r.ok) {
+        const msg = (r.body as { error?: string } | null)?.error ?? `HTTP ${r.status}`;
+        return { ok: false, content: `No pude buscar proyectos: ${msg}` };
+      }
+      const all = ((r.body as { data?: Array<Record<string, unknown>> }).data) ?? [];
+      const matches = all.slice(0, 8).map((p) => ({
+        id: p.id as string,
+        titulo: (p.titulo as string) ?? null,
+        cliente_nombre: (p.cliente_nombre as string) ?? (p.cliente_empresa as string) ?? null,
+        estado_nombre: (p.estado_nombre as string) ?? null,
+        prioridad: (p.prioridad as string) ?? null,
+      }));
+      return {
+        ok: true,
+        content: JSON.stringify({ encontrados: matches.length, proyectos: matches }),
+      };
+    }
+
+    if (name === "archivar_proyecto") {
+      const proyectoId = typeof input.proyecto_id === "string" ? input.proyecto_id.trim() : "";
+      if (!proyectoId) {
+        return { ok: false, content: "Falta proyecto_id." };
+      }
+      const r = await internalFetch(`/api/proyectos/${proyectoId}`, {
+        method: "PATCH",
+        body: { archivado: true },
+      });
+      if (!r.ok) {
+        const msg = (r.body as { error?: string } | null)?.error ?? `HTTP ${r.status}`;
+        return { ok: false, content: `No se pudo archivar el proyecto: ${msg}` };
+      }
+      const updated = (r.body as { data?: { id?: string; titulo?: string } }).data ?? {};
+      return {
+        ok: true,
+        content: JSON.stringify({
+          id: updated.id ?? proyectoId,
+          titulo: updated.titulo ?? null,
+          archivado: true,
+          mensaje:
+            "El proyecto fue archivado. Ya no aparece en el listado activo pero los datos están preservados y se puede restaurar.",
+        }),
       };
     }
 
