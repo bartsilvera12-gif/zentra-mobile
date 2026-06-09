@@ -91,8 +91,8 @@ export default function Header() {
             type="button"
             onClick={() => window.dispatchEvent(new CustomEvent("neura:assistant:toggle"))}
             className="rounded-lg p-2 text-[#475569] transition-colors hover:bg-slate-50 hover:text-[#0EA5E9]"
-            aria-label="Abrir asistente de ayuda"
-            title="Asistente de ayuda"
+            aria-label="Abrir Neurita, asistente de ayuda"
+            title="Neurita — asistente de ayuda"
           >
             <HelpCircle className="h-5 w-5" />
           </button>

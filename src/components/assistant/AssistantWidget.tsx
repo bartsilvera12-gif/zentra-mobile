@@ -152,8 +152,8 @@ export default function AssistantWidget() {
       <div className="fixed right-4 top-[4.5rem] z-50 flex h-[min(34rem,calc(100dvh-6rem))] w-[min(24rem,calc(100vw-2rem))] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
           <div className="flex items-center justify-between border-b border-slate-100 bg-[#4FAEB2] px-4 py-3 text-white">
             <div>
-              <p className="text-sm font-semibold">Asistente de ayuda</p>
-              <p className="text-[11px] text-white/85">Te explico cómo usar el sistema</p>
+              <p className="text-sm font-semibold">Neurita</p>
+              <p className="text-[11px] text-white/85">Tu asistente de ayuda del sistema</p>
             </div>
             <button
               type="button"
@@ -168,13 +168,15 @@ export default function AssistantWidget() {
           <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto px-3 py-3">
             {messages.length === 0 && (
               <div className="rounded-xl bg-slate-50 p-3 text-xs text-slate-600">
-                Preguntame sobre cualquier pantalla o proceso del sistema. Por ejemplo:
-                <ul className="mt-1.5 list-disc pl-4">
+                <p className="text-sm font-medium text-slate-800">¡Hola, soy Neurita! 👋</p>
+                <p className="mt-0.5">¿En qué puedo ayudarte hoy?</p>
+                <p className="mt-2">Algunos ejemplos:</p>
+                <ul className="mt-1 list-disc pl-4">
                   <li>¿Cómo creo una nota de crédito?</li>
                   <li>¿Por qué no puedo agendar una cita?</li>
                   <li>¿Cómo lanzo una campaña de WhatsApp?</li>
                 </ul>
-                También podés adjuntar una captura de un error.
+                <p className="mt-2 text-slate-500">También podés adjuntar una captura de un error.</p>
               </div>
             )}
             {messages.map((m, i) => (
