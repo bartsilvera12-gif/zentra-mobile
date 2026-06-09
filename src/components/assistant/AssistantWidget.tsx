@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
-import { ImagePlus, Loader2, Send, X } from "lucide-react";
+import { ImagePlus, Loader2, RotateCcw, Send, X } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
@@ -47,14 +47,17 @@ const MD_COMPONENTS = {
   pre: (props: React.HTMLAttributes<HTMLPreElement>) => (
     <pre className="my-1.5 overflow-x-auto" {...props} />
   ),
-  a: (props: React.AnchorHTMLAttributes<HTMLAnchorElement>) => (
-    <a
-      {...props}
-      target="_blank"
-      rel="noopener noreferrer"
-      className="text-[#0EA5E9] underline underline-offset-2 hover:text-[#0284C7]"
-    />
-  ),
+  a: ({ href, ...props }: React.AnchorHTMLAttributes<HTMLAnchorElement>) => {
+    const isInternal = typeof href === "string" && href.startsWith("/");
+    return (
+      <a
+        href={href}
+        {...props}
+        {...(isInternal ? {} : { target: "_blank", rel: "noopener noreferrer" })}
+        className="font-medium text-[#0EA5E9] underline underline-offset-2 hover:text-[#0284C7]"
+      />
+    );
+  },
   blockquote: (props: React.HTMLAttributes<HTMLQuoteElement>) => (
     <blockquote
       className="my-1 border-l-2 border-slate-300 pl-2 text-slate-600"
@@ -73,6 +76,13 @@ type ChatMessage = { role: "user" | "assistant"; content: string };
 type Source = { doc: string; title: string; heading: string | null };
 
 const MAX_IMAGE_BYTES = 4 * 1024 * 1024;
+const STORAGE_KEY = "neura-assistant-chat-v1";
+
+type PersistedChat = {
+  messages: ChatMessage[];
+  sources: Source[];
+  conversationId: string | null;
+};
 
 export default function AssistantWidget() {
   const pathname = usePathname();
@@ -100,6 +110,44 @@ export default function AssistantWidget() {
       window.removeEventListener("neura:assistant:toggle", toggle);
       window.removeEventListener("keydown", onKey);
     };
+  }, []);
+
+  // Hidratar chat persistido al montar.
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(STORAGE_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as PersistedChat;
+      if (Array.isArray(parsed.messages)) setMessages(parsed.messages);
+      if (Array.isArray(parsed.sources)) setSources(parsed.sources);
+      if (typeof parsed.conversationId === "string") setConversationId(parsed.conversationId);
+    } catch {
+      /* storage corrupto: lo ignoramos */
+    }
+  }, []);
+
+  // Persistir cambios del chat. Evita escribir durante el streaming en cada token.
+  useEffect(() => {
+    if (loading) return;
+    try {
+      const payload: PersistedChat = { messages, sources, conversationId };
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+    } catch {
+      /* quota / privacy mode: silenciar */
+    }
+  }, [messages, sources, conversationId, loading]);
+
+  const clearChat = useCallback(() => {
+    setMessages([]);
+    setSources([]);
+    setConversationId(null);
+    setError(null);
+    setPendingImage(null);
+    try {
+      window.localStorage.removeItem(STORAGE_KEY);
+    } catch {
+      /* noop */
+    }
   }, []);
 
   const onPickImage = useCallback(async (file: File | null) => {
@@ -214,14 +262,28 @@ export default function AssistantWidget() {
               <p className="text-sm font-semibold">Neurita</p>
               <p className="text-[11px] text-white/85">Tu asistente de ayuda del sistema</p>
             </div>
-            <button
-              type="button"
-              aria-label="Cerrar asistente"
-              onClick={() => setOpen(false)}
-              className="rounded-md p-1 text-white/85 transition-colors hover:bg-white/15 hover:text-white"
-            >
-              <X className="h-4 w-4" />
-            </button>
+            <div className="flex items-center gap-1">
+              {messages.length > 0 && (
+                <button
+                  type="button"
+                  aria-label="Limpiar chat e iniciar uno nuevo"
+                  title="Nuevo chat"
+                  onClick={clearChat}
+                  disabled={loading}
+                  className="rounded-md p-1 text-white/85 transition-colors hover:bg-white/15 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <RotateCcw className="h-4 w-4" />
+                </button>
+              )}
+              <button
+                type="button"
+                aria-label="Cerrar asistente"
+                onClick={() => setOpen(false)}
+                className="rounded-md p-1 text-white/85 transition-colors hover:bg-white/15 hover:text-white"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
           </div>
 
           <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto px-3 py-3">
