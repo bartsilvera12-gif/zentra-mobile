@@ -58,6 +58,7 @@ type ProyectoCard = Record<string, unknown> & {
   responsable_comercial?: { nombre?: string | null } | null;
   responsable_tecnico?: { nombre?: string | null } | null;
   tiempo_en_estado_segundos?: number | null;
+  estado_actual_desde?: string | null;
   sla_estado_actual?: {
     cuenta_sla: boolean;
     objetivo_horas: number | null;
@@ -66,6 +67,37 @@ type ProyectoCard = Record<string, unknown> & {
     excedido_segundos: number | null;
   };
 };
+
+const ESTADO_ENTREGADO_CODIGO = "publicado";
+const POSTENTREGA_PERIODO_DIAS = 30;
+
+function isEntregado(p: ProyectoCard): boolean {
+  return (p.proyecto_estado?.codigo ?? "").toLowerCase() === ESTADO_ENTREGADO_CODIGO;
+}
+
+type PostentregaInfo = {
+  dia: number;
+  total: number;
+  vencido: boolean;
+  diasRestantes: number;
+};
+
+function getPostentregaInfo(p: ProyectoCard): PostentregaInfo | null {
+  if (!isEntregado(p)) return null;
+  const desde = p.estado_actual_desde;
+  if (!desde) return null;
+  const desdeMs = Date.parse(desde);
+  if (!Number.isFinite(desdeMs)) return null;
+  const diffMs = Date.now() - desdeMs;
+  const diaActual = Math.max(1, Math.floor(diffMs / (1000 * 60 * 60 * 24)) + 1);
+  const vencido = diaActual > POSTENTREGA_PERIODO_DIAS;
+  return {
+    dia: diaActual,
+    total: POSTENTREGA_PERIODO_DIAS,
+    vencido,
+    diasRestantes: Math.max(0, POSTENTREGA_PERIODO_DIAS - diaActual + 1),
+  };
+}
 
 type PrioridadConfig = {
   codigo: string;
@@ -717,6 +749,7 @@ function ProjectCardView({
     "Sin cliente";
   const saasModulesLabel = saasModuleCountLabel(p);
   const priorityStyles = getPriorityCardStyles(p.prioridad);
+  const postentrega = getPostentregaInfo(p);
 
   const style: CSSProperties | undefined = transform
     ? { transform: `translate3d(${transform.x}px, ${transform.y}px, 0)` }
@@ -769,6 +802,26 @@ function ProjectCardView({
           <span className={p.sla_estado_actual?.vencido ? `${baseBadgeClass} border-rose-200 bg-rose-50 text-rose-700` : neutralBadgeClass}>
             {slaEstadoLabel(p)}
           </span>
+          {postentrega ? (
+            <span
+              className={`${baseBadgeClass} font-semibold ${
+                postentrega.vencido
+                  ? "border-rose-200 bg-rose-50 text-rose-700"
+                  : postentrega.dia >= 25
+                    ? "border-amber-200 bg-amber-50 text-amber-700"
+                    : "border-[#4FAEB2]/30 bg-[#4FAEB2]/10 text-[#3F8E91]"
+              }`}
+              title={
+                postentrega.vencido
+                  ? `Período de cambios cerrado (día ${postentrega.dia})`
+                  : `Día ${postentrega.dia} de ${postentrega.total} para cambios gratis`
+              }
+            >
+              {postentrega.vencido
+                ? `Día ${postentrega.dia} / ${postentrega.total} · vencido`
+                : `Día ${postentrega.dia} / ${postentrega.total}`}
+            </span>
+          ) : null}
           {p.bloqueado ? (
             <span className={`${baseBadgeClass} border-rose-200 bg-rose-50 text-rose-800`}>
               Bloqueado

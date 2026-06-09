@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getChatServiceClientForEmpresa } from "@/app/api/chat/_chat-service-client";
 import { errorResponse, successResponse } from "@/lib/api/response";
 import { mergeBriefDataPatch } from "@/lib/proyectos/brief-data";
+import { listProyectoCambios } from "@/lib/proyectos/cambios-config";
 import { enrichProyectosRows } from "@/lib/proyectos/enrich-proyectos";
 import { enrichProyectoHistorialRows } from "@/lib/proyectos/historial-enrich";
 import { computeSlaTotales, type HistorialRow } from "@/lib/proyectos/sla-from-historial";
@@ -36,7 +37,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     if (e1) return NextResponse.json(errorResponse(e1.message), { status: 400 });
     if (!proyecto) return NextResponse.json(errorResponse("No encontrado"), { status: 404 });
 
-    const [enrichedArr, hist, tareas, comentarios, archivos] = await Promise.all([
+    const [enrichedArr, hist, tareas, comentarios, archivos, cambios] = await Promise.all([
       enrichProyectosRows(sb, empresaId, [proyecto as Record<string, unknown>]),
       sb
         .from("proyecto_estado_historial")
@@ -64,6 +65,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
         .eq("empresa_id", empresaId)
         .eq("proyecto_id", pid)
         .order("created_at", { ascending: false }),
+      listProyectoCambios(sb, empresaId, pid).catch(() => []),
     ]);
 
     const histRows = (hist.data ?? []) as HistorialRow[];
@@ -134,6 +136,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
         tareas: tareasRich,
         comentarios: comentariosRich,
         archivos: archivosRich,
+        cambios,
         avance_pct: avance,
         current_user_id: auth.usuarioCatalogId,
       })

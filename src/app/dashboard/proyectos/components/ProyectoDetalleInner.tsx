@@ -23,6 +23,16 @@ import {
   type ProyectoSaasBriefForm,
 } from "@/lib/proyectos/brief-data";
 
+export type ProyectoCambioCliente = {
+  id: string;
+  nro: 1 | 2 | 3;
+  realizado: boolean;
+  comentario: string | null;
+  realizado_at: string | null;
+  realizado_por: string | null;
+  realizado_por_nombre: string | null;
+};
+
 export type DetalleResp = {
   proyecto: Record<string, unknown> & {
     id: string;
@@ -31,19 +41,34 @@ export type DetalleResp = {
     tipo_id?: string;
     estado_id?: string;
     proyecto_tipo?: { codigo?: string };
+    proyecto_estado?: { codigo?: string };
+    estado_actual_desde?: string | null;
   };
   historial: Record<string, unknown>[];
   sla: Record<string, unknown>;
   tareas: Record<string, unknown>[];
   comentarios: Record<string, unknown>[];
   archivos: Record<string, unknown>[];
+  cambios?: ProyectoCambioCliente[];
   avance_pct: number | null;
   current_user_id?: string | null;
 };
 
+const ESTADO_ENTREGADO_CODIGO = "publicado";
+const POSTENTREGA_PERIODO_DIAS = 30;
+const CAMBIOS_SLOTS = [1, 2, 3] as const;
+
 type UsuarioActivo = { id: string; nombre?: string | null; email?: string | null };
 
-const TAB_IDS = ["resumen", "datos", "tareas", "comentarios", "archivos", "historial"] as const;
+const TAB_IDS = [
+  "resumen",
+  "datos",
+  "tareas",
+  "comentarios",
+  "archivos",
+  "cambios",
+  "historial",
+] as const;
 export type TabId = (typeof TAB_IDS)[number];
 
 const TAB_LABELS: Record<TabId, string> = {
@@ -52,6 +77,7 @@ const TAB_LABELS: Record<TabId, string> = {
   tareas: "Tareas",
   comentarios: "Comentarios",
   archivos: "Archivos",
+  cambios: "Cambios",
   historial: "Historial",
 };
 
@@ -403,6 +429,9 @@ export default function ProyectoDetalleInner({
   const [tareaEditFechaLimite, setTareaEditFechaLimite] = useState("");
   const [tareaActionId, setTareaActionId] = useState<string | null>(null);
 
+  const [cambiosDraft, setCambiosDraft] = useState<Record<number, { realizado: boolean; comentario: string }>>({});
+  const [cambioSavingNro, setCambioSavingNro] = useState<number | null>(null);
+
   const [archivoUploading, setArchivoUploading] = useState(false);
   const [archivoActionId, setArchivoActionId] = useState<string | null>(null);
   const [archivoDragActive, setArchivoDragActive] = useState(false);
@@ -453,6 +482,14 @@ export default function ProyectoDetalleInner({
       responsable_tecnico_id: typeof p.responsable_tecnico_id === "string" ? p.responsable_tecnico_id : "",
       obs: typeof p.observaciones_comerciales === "string" ? p.observaciones_comerciales : "",
     }));
+    const draft: Record<number, { realizado: boolean; comentario: string }> = {};
+    for (const c of j.data.cambios ?? []) {
+      draft[c.nro] = { realizado: c.realizado, comentario: c.comentario ?? "" };
+    }
+    for (const nro of CAMBIOS_SLOTS) {
+      if (!draft[nro]) draft[nro] = { realizado: false, comentario: "" };
+    }
+    setCambiosDraft(draft);
     setLoading(false);
   }, [projectId]);
 
@@ -593,6 +630,41 @@ export default function ProyectoDetalleInner({
     setComTexto("");
     await load();
     onProjectUpdated?.();
+  }
+
+  async function guardarCambio(nro: number) {
+    if (cambioSavingNro != null) return;
+    const draft = cambiosDraft[nro];
+    if (!draft) return;
+    const comentarioTrim = draft.comentario.trim();
+    if (draft.realizado && comentarioTrim.length === 0) {
+      setErr("Agregá un comentario para el cambio realizado.");
+      return;
+    }
+    setCambioSavingNro(nro);
+    try {
+      const res = await fetchWithSupabaseSession(
+        `/api/proyectos/${projectId}/cambios/${nro}`,
+        {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            realizado: draft.realizado,
+            comentario: comentarioTrim.length > 0 ? comentarioTrim : null,
+          }),
+        }
+      );
+      const j = (await res.json()) as { success?: boolean; error?: string };
+      if (!res.ok || !j.success) {
+        setErr(j.error ?? "No se pudo guardar el cambio");
+        return;
+      }
+      setErr(null);
+      await load();
+      onProjectUpdated?.();
+    } finally {
+      setCambioSavingNro(null);
+    }
   }
 
   function iniciarEdicionComentario(cid: string, texto: string) {
@@ -1999,6 +2071,141 @@ export default function ProyectoDetalleInner({
             </ul>
           </div>
         ) : null}
+
+        {tab === "cambios" ? (() => {
+          const estadoCodigo = String(
+            (proyecto as { proyecto_estado?: { codigo?: string } }).proyecto_estado?.codigo ?? ""
+          ).toLowerCase();
+          const estaEntregado = estadoCodigo === ESTADO_ENTREGADO_CODIGO;
+          const desde = (proyecto as { estado_actual_desde?: string | null }).estado_actual_desde;
+          const desdeMs = typeof desde === "string" ? Date.parse(desde) : Number.NaN;
+          const diaActual = Number.isFinite(desdeMs)
+            ? Math.max(1, Math.floor((Date.now() - desdeMs) / (1000 * 60 * 60 * 24)) + 1)
+            : null;
+          const vencido =
+            diaActual != null && diaActual > POSTENTREGA_PERIODO_DIAS;
+          const cambiosFromData = data.cambios ?? [];
+          const cambiosByNro = new Map<number, ProyectoCambioCliente>();
+          for (const c of cambiosFromData) cambiosByNro.set(c.nro, c);
+
+          return (
+            <div className={`space-y-4 ${panelCls}`}>
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="h-5 w-1 rounded-full bg-[#4FAEB2]" />
+                    <h2 className="text-sm font-semibold text-slate-900">Cambios post-entrega</h2>
+                  </div>
+                  <p className="mt-1.5 text-xs text-slate-500">
+                    Hasta 3 cambios gratis dentro de los {POSTENTREGA_PERIODO_DIAS} días desde la
+                    entrega.
+                  </p>
+                </div>
+                {estaEntregado && diaActual != null ? (
+                  <span
+                    className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-semibold ${
+                      vencido
+                        ? "border-rose-200 bg-rose-50 text-rose-700"
+                        : diaActual >= 25
+                          ? "border-amber-200 bg-amber-50 text-amber-700"
+                          : "border-[#4FAEB2]/30 bg-[#4FAEB2]/10 text-[#3F8E91]"
+                    }`}
+                  >
+                    {vencido
+                      ? `Período cerrado · día ${diaActual}`
+                      : `Día ${diaActual} de ${POSTENTREGA_PERIODO_DIAS}`}
+                  </span>
+                ) : null}
+              </div>
+
+              {!estaEntregado ? (
+                <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                  La edición se habilita cuando el proyecto está en estado{" "}
+                  <span className="font-semibold">Entregado</span>. Mientras tanto podés consultar
+                  los cambios ya registrados.
+                </p>
+              ) : null}
+
+              <ul className="space-y-3">
+                {CAMBIOS_SLOTS.map((nro) => {
+                  const existing = cambiosByNro.get(nro);
+                  const draft =
+                    cambiosDraft[nro] ?? { realizado: false, comentario: "" };
+                  const enAccion = cambioSavingNro === nro;
+                  const editable = estaEntregado && !enAccion;
+                  const tienePersistido =
+                    existing != null && existing.realizado_at != null;
+                  const sinCambios =
+                    draft.realizado === (existing?.realizado ?? false) &&
+                    (draft.comentario ?? "") === (existing?.comentario ?? "");
+
+                  return (
+                    <li
+                      key={nro}
+                      className="rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm"
+                    >
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <label className="inline-flex cursor-pointer items-center gap-2 text-sm font-semibold text-slate-900">
+                          <input
+                            type="checkbox"
+                            className="h-4 w-4 rounded border-slate-300 text-[#4FAEB2] focus:ring-[#4FAEB2]"
+                            checked={draft.realizado}
+                            disabled={!editable}
+                            onChange={(e) =>
+                              setCambiosDraft((prev) => ({
+                                ...prev,
+                                [nro]: {
+                                  realizado: e.target.checked,
+                                  comentario: prev[nro]?.comentario ?? "",
+                                },
+                              }))
+                            }
+                          />
+                          Cambio {nro} realizado
+                        </label>
+                        {tienePersistido ? (
+                          <span className="text-[11px] text-slate-500">
+                            Registrado por{" "}
+                            <span className="font-medium text-[#4FAEB2]">
+                              {existing?.realizado_por_nombre ?? "—"}
+                            </span>{" "}
+                            · {formatFechaPyFull(String(existing?.realizado_at ?? ""))}
+                          </span>
+                        ) : null}
+                      </div>
+                      <textarea
+                        className={`${inputCls} mt-2 min-h-[80px]`}
+                        rows={3}
+                        placeholder={`Detalle del cambio ${nro}…`}
+                        value={draft.comentario}
+                        disabled={!editable}
+                        onChange={(e) =>
+                          setCambiosDraft((prev) => ({
+                            ...prev,
+                            [nro]: {
+                              realizado: prev[nro]?.realizado ?? false,
+                              comentario: e.target.value,
+                            },
+                          }))
+                        }
+                      />
+                      <div className="mt-2 flex items-center justify-end gap-2">
+                        <button
+                          type="button"
+                          disabled={!editable || sinCambios}
+                          onClick={() => void guardarCambio(nro)}
+                          className="rounded-xl bg-[#4FAEB2] px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-[#3F8E91] disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400 disabled:shadow-none"
+                        >
+                          {enAccion ? "Guardando…" : "Guardar"}
+                        </button>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          );
+        })() : null}
 
         {tab === "historial" ? (
           <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
