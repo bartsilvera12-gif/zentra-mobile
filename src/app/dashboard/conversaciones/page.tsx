@@ -4,10 +4,17 @@ import { getChatDataSchemaForCurrentUser } from "@/lib/chat/empresa-chat-schema-
 import { getConversacionesInboxBootstrap, type InboxCabeceraInsignia } from "@/lib/chat/chat-ops-actions";
 import { ConversacionesClient, type ConversacionesInitialOperationalPresence } from "./ConversacionesClient";
 import { SUPABASE_APP_SCHEMA } from "@/lib/supabase/schema";
-import DeviceRouter from "@/shared/device/DeviceRouter";
+import { getDeviceTypeFromRequest } from "@/shared/device/server";
 import ConversacionesMobile from "@/mobile/pages/ConversacionesMobile";
 
 export default async function ConversacionesInboxPage() {
+  // Mobile renderiza un placeholder; no necesita el bootstrap pesado del inbox.
+  // Detectamos device antes que cualquier await pesado para no bloquear al usuario mobile.
+  const device = await getDeviceTypeFromRequest();
+  if (device === "mobile") {
+    return <ConversacionesMobile />;
+  }
+
   let chatDataSchema = SUPABASE_APP_SCHEMA;
   try {
     chatDataSchema = await getChatDataSchemaForCurrentUser();
@@ -37,20 +44,15 @@ export default async function ConversacionesInboxPage() {
   }
 
   return (
-    <DeviceRouter
-      desktop={
-        <Suspense fallback={<div className="p-6 text-slate-400 text-sm animate-pulse">Cargando conversaciones…</div>}>
-          <ConversacionesClient
-            mode="inbox"
-            chatDataSchema={chatDataSchema}
-            agentDisplayName={agentDisplayName}
-            initialOperationalPresence={initialOperationalPresence}
-            initialCabeceraInsignia={initialCabeceraInsignia}
-            initialOmnicanalRole={bootstrap?.omnicanal_role ?? null}
-          />
-        </Suspense>
-      }
-      mobile={<ConversacionesMobile />}
-    />
+    <Suspense fallback={<div className="p-6 text-slate-400 text-sm animate-pulse">Cargando conversaciones…</div>}>
+      <ConversacionesClient
+        mode="inbox"
+        chatDataSchema={chatDataSchema}
+        agentDisplayName={agentDisplayName}
+        initialOperationalPresence={initialOperationalPresence}
+        initialCabeceraInsignia={initialCabeceraInsignia}
+        initialOmnicanalRole={bootstrap?.omnicanal_role ?? null}
+      />
+    </Suspense>
   );
 }

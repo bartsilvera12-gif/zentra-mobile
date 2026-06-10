@@ -1,6 +1,6 @@
 import SorteosListClient from "./SorteosListClient";
 import { getSorteosVentasKpis } from "@/lib/sorteos/ventas-kpis";
-import DeviceRouter from "@/shared/device/DeviceRouter";
+import { getDeviceTypeFromRequest } from "@/shared/device/server";
 import SorteosMobile from "@/mobile/pages/SorteosMobile";
 
 /** KPIs dependen de sesión y ventana calendario Paraguay; evitar cache estático de respuestas en 0. */
@@ -8,6 +8,12 @@ export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 export default async function SorteosPage() {
+  // Mobile no usa los KPIs server-rendered del desktop — corta antes del fetch.
+  const device = await getDeviceTypeFromRequest();
+  if (device === "mobile") {
+    return <SorteosMobile />;
+  }
+
   let ventasKpis = {
     boletosHoy: 0,
     boletosMes: 0,
@@ -19,10 +25,5 @@ export default async function SorteosPage() {
   } catch {
     /* sin sesión o error de red: KPIs en cero */
   }
-  return (
-    <DeviceRouter
-      desktop={<SorteosListClient ventasKpis={ventasKpis} />}
-      mobile={<SorteosMobile />}
-    />
-  );
+  return <SorteosListClient ventasKpis={ventasKpis} />;
 }

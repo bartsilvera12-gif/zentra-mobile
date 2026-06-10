@@ -14,7 +14,7 @@ export function useGerenciaComercial(period?: string) {
       if (!res.ok) throw new Error(`Error ${res.status}`);
       return res.json();
     },
-    { revalidateOnFocus: true, dedupingInterval: 30_000, keepPreviousData: true }
+    { revalidateOnFocus: false, revalidateIfStale: false, dedupingInterval: 5 * 60_000, keepPreviousData: true }
   );
   return {
     report: swr.data,

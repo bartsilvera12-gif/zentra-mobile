@@ -67,7 +67,7 @@ export function useComisionesPreview(mes?: string) {
       if (!res.ok || j.success !== true || !j.data) throw new Error(j.error ?? `Error ${res.status}`);
       return j.data;
     },
-    { revalidateOnFocus: true, dedupingInterval: 30_000, keepPreviousData: true }
+    { revalidateOnFocus: false, dedupingInterval: 2 * 60_000, keepPreviousData: true }
   );
 
   return {

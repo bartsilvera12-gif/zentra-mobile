@@ -24,7 +24,7 @@ export function useUsuarios() {
       if (Array.isArray(j)) return j;
       return j.data ?? [];
     },
-    { revalidateOnFocus: true, dedupingInterval: 30_000, keepPreviousData: true }
+    { revalidateOnFocus: false, dedupingInterval: 2 * 60_000, keepPreviousData: true }
   );
   return {
     usuarios: swr.data ?? [],

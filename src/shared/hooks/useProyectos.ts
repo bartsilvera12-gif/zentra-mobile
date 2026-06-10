@@ -50,7 +50,7 @@ export function useProyectos(opts?: { archivado?: boolean }) {
       const j = (await res.json()) as { success?: boolean; data?: ProyectoCard[] };
       return j.data ?? [];
     },
-    { revalidateOnFocus: true, dedupingInterval: 30_000, keepPreviousData: true }
+    { revalidateOnFocus: false, dedupingInterval: 2 * 60_000, keepPreviousData: true }
   );
   return {
     proyectos: swr.data ?? [],

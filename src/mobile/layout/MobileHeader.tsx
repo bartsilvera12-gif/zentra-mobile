@@ -1,8 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import { Bell, Menu } from "lucide-react";
-import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
+import { useUsuarioActual } from "@/shared/hooks/useUsuarioActual";
 
 /**
  * Header mobile: 48px de alto, sticky top. Contenido:
@@ -10,32 +9,12 @@ import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session"
  *  - Marca "Zentra" (centro, lectura rápida).
  *  - Notificaciones (derecha) — placeholder por ahora.
  *
- * Sin padding excesivo: la pantalla mobile premia el espacio vertical.
+ * Usa el hook compartido useUsuarioActual (SWR con dedupe largo) para no
+ * disparar una request por cada navegación entre pantallas mobile.
  */
 
-type HeaderUsuario = { nombre: string | null; rol: string | null; email: string | null };
-
 export default function MobileHeader({ onOpenMenu }: { onOpenMenu: () => void }) {
-  const [usuario, setUsuario] = useState<HeaderUsuario | null>(null);
-
-  useEffect(() => {
-    let alive = true;
-    async function load() {
-      try {
-        const res = await fetchWithSupabaseSession("/api/usuarios/me", { cache: "no-store" });
-        if (!res.ok) return;
-        const j = (await res.json()) as { usuario?: HeaderUsuario };
-        if (alive) setUsuario(j.usuario ?? null);
-      } catch {
-        /* silencioso */
-      }
-    }
-    void load();
-    return () => {
-      alive = false;
-    };
-  }, []);
-
+  const { usuario } = useUsuarioActual();
   const avatarInitial = (usuario?.nombre ?? usuario?.email ?? "U").trim().charAt(0).toUpperCase();
 
   return (

@@ -16,9 +16,12 @@ import { getDashboardData, type DashboardData } from "@/lib/dashboard/data";
  * a pegarle al endpoint más de una vez por 30s.
  */
 export function useDashboardData() {
+  // Endpoint pesado (tenant-tables): cacheamos 5min y NO revalidamos al focus.
+  // El usuario puede tirar de pull-to-refresh manualmente si quisiera (TODO).
   const swr = useSWR<DashboardData>("dashboard:data", () => getDashboardData(), {
-    revalidateOnFocus: true,
-    dedupingInterval: 30_000,
+    revalidateOnFocus: false,
+    revalidateIfStale: false,
+    dedupingInterval: 5 * 60_000,
     keepPreviousData: true,
   });
 

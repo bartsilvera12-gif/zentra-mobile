@@ -27,7 +27,7 @@ export function useAgenda(opts: {
       if (!res.ok || !j?.success) throw new Error(j?.error ?? `Error ${res.status}`);
       return j.data as AgendaCitaEnriquecida[];
     },
-    { revalidateOnFocus: true, dedupingInterval: 30_000, keepPreviousData: true }
+    { revalidateOnFocus: false, dedupingInterval: 2 * 60_000, keepPreviousData: true }
   );
   return {
     citas: swr.data ?? [],
