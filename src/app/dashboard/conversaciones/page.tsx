@@ -4,6 +4,8 @@ import { getChatDataSchemaForCurrentUser } from "@/lib/chat/empresa-chat-schema-
 import { getConversacionesInboxBootstrap, type InboxCabeceraInsignia } from "@/lib/chat/chat-ops-actions";
 import { ConversacionesClient, type ConversacionesInitialOperationalPresence } from "./ConversacionesClient";
 import { SUPABASE_APP_SCHEMA } from "@/lib/supabase/schema";
+import DeviceRouter from "@/shared/device/DeviceRouter";
+import ConversacionesMobile from "@/mobile/pages/ConversacionesMobile";
 
 export default async function ConversacionesInboxPage() {
   let chatDataSchema = SUPABASE_APP_SCHEMA;
@@ -35,15 +37,20 @@ export default async function ConversacionesInboxPage() {
   }
 
   return (
-    <Suspense fallback={<div className="p-6 text-slate-400 text-sm animate-pulse">Cargando conversaciones…</div>}>
-      <ConversacionesClient
-        mode="inbox"
-        chatDataSchema={chatDataSchema}
-        agentDisplayName={agentDisplayName}
-        initialOperationalPresence={initialOperationalPresence}
-        initialCabeceraInsignia={initialCabeceraInsignia}
-        initialOmnicanalRole={bootstrap?.omnicanal_role ?? null}
-      />
-    </Suspense>
+    <DeviceRouter
+      desktop={
+        <Suspense fallback={<div className="p-6 text-slate-400 text-sm animate-pulse">Cargando conversaciones…</div>}>
+          <ConversacionesClient
+            mode="inbox"
+            chatDataSchema={chatDataSchema}
+            agentDisplayName={agentDisplayName}
+            initialOperationalPresence={initialOperationalPresence}
+            initialCabeceraInsignia={initialCabeceraInsignia}
+            initialOmnicanalRole={bootstrap?.omnicanal_role ?? null}
+          />
+        </Suspense>
+      }
+      mobile={<ConversacionesMobile />}
+    />
   );
 }
