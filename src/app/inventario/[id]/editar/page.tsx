@@ -315,7 +315,7 @@ export default function EditarProductoPage() {
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
             <div>
               <label className={labelClass}>SKU</label>
               <input
@@ -465,7 +465,7 @@ export default function EditarProductoPage() {
 
           <div>
             <p className="text-xs text-gray-400 mb-3 uppercase tracking-wide font-semibold">Precios</p>
-            <div className="grid grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
               <div>
                 <label className={labelClass}>Costo promedio (Gs.)</label>
                 <MontoInput
@@ -499,7 +499,7 @@ export default function EditarProductoPage() {
               </div>
             </div>
             {tieneAmbos && markupCalc !== null && margenVentaCalc !== null && (
-              <div className="mt-4 grid grid-cols-2 gap-4">
+              <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className={`border rounded-lg px-4 py-3 ${esPerdida ? "bg-red-50 border-red-200" : "bg-blue-50 border-blue-100"}`}>
                   <p className={`text-xs font-medium mb-1 ${esPerdida ? "text-red-500" : "text-blue-500"}`}>Markup</p>
                   <p className={`text-lg font-bold tabular-nums ${esPerdida ? "text-red-700" : "text-blue-700"}`}>
@@ -516,7 +516,7 @@ export default function EditarProductoPage() {
             )}
           </div>
 
-          <div className="grid grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
             <div>
               <label className={labelClass}>Stock actual</label>
               <input

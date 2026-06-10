@@ -1561,7 +1561,7 @@ export default function ClienteDetalleClient({
                   </div>
                 )}
 
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <label className={labelClass}>{form.tipo_cliente === "empresa" ? "Persona de contacto" : "Nombre completo"}</label>
                     <input type="text" name="nombre_contacto" value={form.nombre_contacto} onChange={handleChange} className={`${inputClass} uppercase`} required />
@@ -1581,7 +1581,7 @@ export default function ClienteDetalleClient({
               <section className="space-y-4">
                 <SectionTitle>Contacto</SectionTitle>
 
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <label className={labelClass}>Teléfono principal</label>
                     <input type="text" name="telefono" value={form.telefono} onChange={handleChange} className={inputClass} />
@@ -1592,7 +1592,7 @@ export default function ClienteDetalleClient({
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <label className={labelClass}>Email principal</label>
                     <input type="email" name="email" value={form.email} onChange={handleChange} className={inputClass} />
@@ -1608,7 +1608,7 @@ export default function ClienteDetalleClient({
                   <input type="text" name="direccion" value={form.direccion} onChange={handleChange} className={inputClass} />
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <label className={labelClass}>Ciudad</label>
                     <input type="text" name="ciudad" value={form.ciudad} onChange={handleChange} className={`${inputClass} uppercase`} />
@@ -1690,7 +1690,7 @@ export default function ClienteDetalleClient({
               {/* Digital */}
               <section className="space-y-4">
                 <SectionTitle>Presencia digital</SectionTitle>
-                <div className="grid grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                   <div>
                     <label className={labelClass}>Sitio web</label>
                     <input type="text" name="sitio_web" value={form.sitio_web} onChange={handleChange} placeholder="https://" className={inputClass} />
@@ -1730,7 +1730,7 @@ export default function ClienteDetalleClient({
                   </div>
                 )}
 
-                <div className="grid grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                   <div>
                     <label className={labelClass}>Condición de pago</label>
                     <select
@@ -1766,7 +1766,7 @@ export default function ClienteDetalleClient({
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <label className={labelClass}>Vendedor responsable (usuario ERP)</label>
                     <select
@@ -1794,7 +1794,7 @@ export default function ClienteDetalleClient({
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <label className={labelClass}>Estado</label>
                     <select
@@ -1897,7 +1897,7 @@ export default function ClienteDetalleClient({
                             min={1}
                           />
                         </div>
-                        <div className="grid grid-cols-2 gap-4">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                           <div>
                             <label className={labelClass}>Día facturación (1–28)</label>
                             <input
@@ -2414,7 +2414,7 @@ export default function ClienteDetalleClient({
                 <label className={labelClass}>Fecha inicio</label>
                 <input type="date" value={formSusc.fecha_inicio} onChange={(e) => setFormSusc((p) => ({ ...p, fecha_inicio: e.target.value }))} className={inputClass} required />
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className={labelClass}>Duración (meses)</label>
                   <input type="number" value={formSusc.duracion_meses} onChange={(e) => setFormSusc((p) => ({ ...p, duracion_meses: e.target.value }))} className={inputClass} min={1} />

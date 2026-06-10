@@ -373,7 +373,7 @@ export default function NuevoProductoPage() {
           </div>
 
           {/* SKU + Unidad de medida */}
-          <div className="grid grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
             <div>
               <label className={labelClass}>SKU</label>
               <input
@@ -486,7 +486,7 @@ export default function NuevoProductoPage() {
             <p className="text-xs text-gray-400 mb-3 uppercase tracking-wide font-semibold">
               Precios — los tres campos son reactivos entre sí
             </p>
-            <div className="grid grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
 
               <div>
                 <label className={labelClass}>Costo promedio (Gs.)</label>
@@ -547,7 +547,7 @@ export default function NuevoProductoPage() {
                   </div>
                 )}
 
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   {/* Markup */}
                   <div className={`border rounded-lg px-4 py-3 ${esPerdida ? "bg-red-50 border-red-200" : "bg-blue-50 border-blue-100"}`}>
                     <p className={`text-xs font-medium mb-1 ${esPerdida ? "text-red-500" : "text-blue-500"}`}>
@@ -662,7 +662,7 @@ export default function NuevoProductoPage() {
 
           {/* Stock actual + Stock mínimo */}
           <div>
-            <div className="grid grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
               <div>
                 <label className={labelClass}>Stock actual</label>
                 <input

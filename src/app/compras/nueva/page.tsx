@@ -419,7 +419,7 @@ export default function NuevaCompraPage() {
                 <InlineFormBox titulo="Nuevo proveedor" onCancel={handleCancelarProveedor} onSave={handleAgregarProveedor}
                   saveDisabled={!formProveedor.nombre.trim() || !formProveedor.ruc.trim()}
                 >
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                       <label className={labelSmClass}>Nombre / Razón social <span className="text-red-500">*</span></label>
                       <input type="text" name="nombre" value={formProveedor.nombre}
@@ -445,7 +445,7 @@ export default function NuevaCompraPage() {
                         onChange={handleProveedorInputChange} placeholder="Ej: ventas@empresa.com"
                         className={inputSmClass} />
                     </div>
-                    <div className="col-span-2">
+                    <div className="sm:col-span-2">
                       <label className={labelSmClass}>Persona de contacto</label>
                       <input type="text" name="contacto" value={formProveedor.contacto}
                         onChange={handleProveedorInputChange} placeholder="Ej: CARLOS MENDOZA"
@@ -504,7 +504,7 @@ export default function NuevaCompraPage() {
                 <InlineFormBox titulo="Nuevo producto" onCancel={handleCancelarProducto} onSave={handleAgregarProducto}
                   saveDisabled={!formProducto.nombre.trim() || !formProducto.sku.trim()}
                 >
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                       <label className={labelSmClass}>Nombre <span className="text-red-500">*</span></label>
                       <input type="text" name="nombre" value={formProducto.nombre}
@@ -536,7 +536,7 @@ export default function NuevaCompraPage() {
                         onChange={handleProductoInputChange} placeholder="Ej: 5" min={0}
                         className={inputSmClass} />
                     </div>
-                    <div className="col-span-2">
+                    <div className="sm:col-span-2">
                       <label className={labelSmClass}>Método de valuación</label>
                       <SegmentedControl<MetodoValuacion>
                         small
@@ -551,7 +551,7 @@ export default function NuevaCompraPage() {
                         }
                       />
                     </div>
-                    <div className="col-span-2">
+                    <div className="sm:col-span-2">
                       <label className={labelSmClass}>Precio de venta sugerido (Gs.)</label>
                       <MontoInput
                         value={formProducto.precio_venta_sugerido}
@@ -641,7 +641,7 @@ export default function NuevaCompraPage() {
               </div>
             )}
 
-            <div className="grid grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
               <div>
                 <label className={labelClass}>
                   Cantidad <span className="text-red-500">*</span>
@@ -687,7 +687,7 @@ export default function NuevaCompraPage() {
             />
 
             {subtotal > 0 && (
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                 <div className="bg-gray-50 border border-gray-200 rounded-lg px-3 py-3 text-center">
                   <p className="text-xs text-gray-400 mb-1">Subtotal</p>
                   <p className="text-sm font-semibold tabular-nums text-gray-700">{formatGs(subtotal)}</p>

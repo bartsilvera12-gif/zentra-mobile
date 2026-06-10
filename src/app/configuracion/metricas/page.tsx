@@ -41,7 +41,7 @@ export default function ConfiguracionMetricasPage() {
             Define los objetivos mensuales del equipo. Estos valores se usarán como referencia en el Dashboard para
             mostrar el progreso hacia cada meta.
           </p>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className={F_LABEL}>Meta de ventas mensuales (Gs.)</label>
               <MontoInput
@@ -70,7 +70,7 @@ export default function ConfiguracionMetricasPage() {
 
         <ConfigFormCard>
           <ConfigSectionTitle>Metas financieras</ConfigSectionTitle>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className={F_LABEL}>Meta de facturación mensual (Gs.)</label>
               <MontoInput

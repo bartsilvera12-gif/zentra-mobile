@@ -724,7 +724,7 @@ export function FlowRecontactAutomationsPanel(props: {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label className="block text-xs text-slate-500 mb-1">Inactividad (min)</label>
                 <input
@@ -745,7 +745,7 @@ export function FlowRecontactAutomationsPanel(props: {
                   onChange={(e) => setDraft((d) => ({ ...d, max_attempts: Math.max(1, Number(e.target.value) || 1) }))}
                 />
               </div>
-              <div className="col-span-2">
+              <div className="sm:col-span-2">
                 <label className="block text-xs text-slate-500 mb-1">Esperar antes del siguiente intento (min)</label>
                 <input
                   type="number"
@@ -762,7 +762,7 @@ export function FlowRecontactAutomationsPanel(props: {
 
             <div className="border-t border-slate-100 pt-3 space-y-2">
               <p className="text-xs font-semibold text-slate-700">Ventana horaria (opcional)</p>
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 <div>
                   <label className="text-xs text-slate-500">Desde (HH:mm)</label>
                   <input

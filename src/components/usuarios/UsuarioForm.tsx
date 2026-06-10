@@ -178,7 +178,7 @@ export function UsuarioFormFields({
               required
             />
           </div>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className={fLabel}>Email *</label>
               <input
@@ -203,7 +203,7 @@ export function UsuarioFormFields({
               />
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className={fLabel}>Fecha de nacimiento</label>
               <input type="date" name="fecha_nacimiento" value={form.fecha_nacimiento} onChange={onChange} className={fInput} />
@@ -214,7 +214,7 @@ export function UsuarioFormFields({
 
       <SectionCard title="Datos laborales" icon="💼">
         <div className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className={fLabel}>Fecha de ingreso</label>
               <input type="date" name="fecha_ingreso" value={form.fecha_ingreso} onChange={onChange} className={fInput} />
@@ -230,7 +230,7 @@ export function UsuarioFormFields({
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {showSalario && (
               <div>
                 <label className={fLabel}>Salario base (Gs.)</label>
@@ -279,7 +279,7 @@ export function UsuarioFormFields({
       </SectionCard>
 
       <SectionCard title="Accesos del sistema" icon="🔐">
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label className={fLabel}>Nivel de acceso</label>
             <FancySelect
@@ -324,7 +324,7 @@ export function UsuarioFormFields({
 
       {variant === "create" ? (
         <SectionCard title="Seguridad" icon="🔑">
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className={fLabel}>Contraseña *</label>
               <div className="relative">

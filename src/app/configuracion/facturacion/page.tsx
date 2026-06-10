@@ -191,7 +191,7 @@ export default function ConfiguracionFacturacionPage() {
             </div>
             <div className="min-w-0 flex-1">
               <ConfigSectionTitle>Numeración de documentos</ConfigSectionTitle>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className={F_LABEL}>Prefijo de factura</label>
                   <input
@@ -241,7 +241,7 @@ export default function ConfiguracionFacturacionPage() {
             </div>
             <div className="min-w-0 flex-1">
               <ConfigSectionTitle>Condiciones de pago</ConfigSectionTitle>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className={F_LABEL}>Días de vencimiento por defecto</label>
                   <div className="relative">

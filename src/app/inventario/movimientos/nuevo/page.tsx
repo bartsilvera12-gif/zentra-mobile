@@ -111,7 +111,7 @@ export default function NuevoMovimientoPage() {
           </div>
 
           {/* Tipo + Origen */}
-          <div className="grid grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
             <div>
               <label className={labelClass}>Tipo de movimiento</label>
               <select
@@ -142,7 +142,7 @@ export default function NuevoMovimientoPage() {
           </div>
 
           {/* Cantidad + Costo unitario */}
-          <div className="grid grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
             <div>
               <label className={labelClass}>
                 Cantidad

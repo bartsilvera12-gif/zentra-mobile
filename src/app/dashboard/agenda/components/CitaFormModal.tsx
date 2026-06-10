@@ -284,7 +284,7 @@ export default function CitaFormModal({
                 <label className={labelCls}>Título *</label>
                 <input className={inputCls} value={titulo} onChange={(e) => setTitulo(e.target.value)} placeholder="Ej: Demo con cliente" />
               </div>
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                 <div className="col-span-1">
                   <label className={labelCls}>Responsable *</label>
                   <select className={inputCls} value={responsableId} onChange={(e) => setResponsableId(e.target.value)}>
@@ -320,7 +320,7 @@ export default function CitaFormModal({
           {/* FECHA Y HORA */}
           <section className="space-y-3">
             <SectionHead>Fecha y hora</SectionHead>
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
               <div>
                 <label className={labelCls}>Fecha *</label>
                 <input type="date" className={inputCls} value={fecha} onChange={(e) => setFecha(e.target.value)} />
@@ -391,7 +391,7 @@ export default function CitaFormModal({
                 </select>
               ) : (
                 <div className="space-y-3 rounded-2xl border border-[#4FAEB2]/20 bg-[#4FAEB2]/5 p-4">
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
                       <label className={labelCls}>Nombre</label>
                       <input className={inputCls} value={contactoNombre} onChange={(e) => setContactoNombre(e.target.value)} />
@@ -401,7 +401,7 @@ export default function CitaFormModal({
                       <input className={inputCls} value={contactoTelefono} onChange={(e) => setContactoTelefono(e.target.value)} />
                     </div>
                   </div>
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
                       <label className={labelCls}>Email</label>
                       <input className={inputCls} value={contactoEmail} onChange={(e) => setContactoEmail(e.target.value)} />

@@ -176,7 +176,7 @@ export default function PlanNuevoForm({
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className={fLabelClass}>Estado</label>
                 <FancySelect
@@ -194,7 +194,7 @@ export default function PlanNuevoForm({
         </SectionCard>
 
         <SectionCard title="Precio y periodicidad" icon="💲">
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             <div>
               <label className={fLabelClass}>Precio *</label>
               <MontoInput
@@ -240,7 +240,7 @@ export default function PlanNuevoForm({
           <p className="mb-4 text-xs text-slate-500">
             Dejar en blanco para indicar que el límite es <strong>ilimitado</strong>.
           </p>
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             <div>
               <label className={fLabelClass}>Límite de usuarios</label>
               <input

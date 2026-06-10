@@ -285,7 +285,7 @@ function SummaryCard({ title, tone, children }: { title: string; tone: Tone; chi
         <span className={`h-2.5 w-2.5 rounded-full ${t.dot}`} />
         <h2 className="text-sm font-semibold text-slate-700">{title}</h2>
       </div>
-      <div className="grid grid-cols-2 gap-x-4 gap-y-3">{children}</div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-3">{children}</div>
     </div>
   );
 }

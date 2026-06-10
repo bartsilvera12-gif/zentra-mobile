@@ -42,7 +42,7 @@ export default function ConfiguracionPreferenciasPage() {
       <div className="space-y-5">
         <ConfigFormCard>
           <ConfigSectionTitle>Moneda y región</ConfigSectionTitle>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className={F_LABEL}>Moneda base del sistema</label>
               <select name="moneda_base" value={form.moneda_base} onChange={handleChange} className={F_SELECT}>
@@ -67,7 +67,7 @@ export default function ConfiguracionPreferenciasPage() {
 
         <ConfigFormCard>
           <ConfigSectionTitle>Localización</ConfigSectionTitle>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className={F_LABEL}>Zona horaria</label>
               <select name="timezone" value={form.timezone} onChange={handleChange} className={F_SELECT}>

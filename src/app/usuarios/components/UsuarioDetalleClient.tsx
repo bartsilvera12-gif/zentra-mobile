@@ -553,7 +553,7 @@ export default function UsuarioDetalleClient({
       {!editing && (
         <div className="space-y-6">
           <SectionCard title="Datos personales" icon="👤">
-            <div className="grid grid-cols-2 gap-x-8 gap-y-4 text-sm">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-4 text-sm">
               {[
                 { label: "Nombre", value: usuario.nombre ?? "—" },
                 { label: "Email", value: usuario.email },
@@ -569,7 +569,7 @@ export default function UsuarioDetalleClient({
           </SectionCard>
 
           <SectionCard title="Datos laborales" icon="💼">
-            <div className="grid grid-cols-2 gap-x-8 gap-y-4 text-sm">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-4 text-sm">
               {[
                 { label: "Fecha de ingreso", value: formatFecha(usuario.fecha_ingreso) },
                 { label: "Tipo de contrato", value: labelTipoContrato(usuario.tipo_contrato) },
@@ -590,7 +590,7 @@ export default function UsuarioDetalleClient({
           </SectionCard>
 
           <SectionCard title="Accesos del sistema" icon="🔐">
-            <div className="grid grid-cols-2 gap-x-8 gap-y-4 text-sm">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-4 text-sm">
               {[
                 { label: "Nivel", value: labelNivelDisplay(usuario.rol) },
                 { label: "Área", value: labelArea(usuario.area) },
@@ -613,7 +613,7 @@ export default function UsuarioDetalleClient({
               <p className="mb-3 text-xs text-slate-500">
                 Colas y asignación: requiere habilitación explícita (independiente del rol ERP).
               </p>
-              <div className="grid grid-cols-2 gap-x-8 gap-y-4 text-sm">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-4 text-sm">
                 <div>
                   <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400">Habilitado como agente</p>
                   <p className="mt-0.5 font-medium text-slate-800">{usuario.omnicanal.agent_enabled ? "Sí" : "No"}</p>
@@ -757,7 +757,7 @@ export default function UsuarioDetalleClient({
                       </div>
                     )}
                     <div className="space-y-4">
-                      <div className="grid grid-cols-2 gap-4">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div>
                           <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">
                             Nueva contraseña

@@ -36,7 +36,7 @@ export default function ConfiguracionPoliticasPage() {
       <div className="space-y-5">
         <ConfigFormCard>
           <ConfigSectionTitle>Control comercial</ConfigSectionTitle>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className={F_LABEL}>Descuento máximo permitido</label>
               <div className="relative">
@@ -87,7 +87,7 @@ export default function ConfiguracionPoliticasPage() {
             Define el máximo de registros permitidos por empresa dentro de la plataforma. Ingresa{" "}
             <strong>0</strong> para indicar que el límite es <strong>ilimitado</strong>.
           </p>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className={F_LABEL}>Máximo de clientes por empresa</label>
               <input

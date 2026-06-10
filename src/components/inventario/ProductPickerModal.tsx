@@ -280,7 +280,7 @@ export default function ProductPickerModal({
                 )}
 
                 <div className="space-y-2 bg-white p-3 rounded-xl border border-slate-200">
-                  <div className="grid grid-cols-2 gap-2">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                     <div>
                       <label className="block text-[11px] uppercase text-slate-400 mb-1">Cantidad</label>
                       <input

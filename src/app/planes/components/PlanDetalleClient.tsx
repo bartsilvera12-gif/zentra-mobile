@@ -383,7 +383,7 @@ export default function PlanDetalleClient({
       {/* Resumen de límites (vista) */}
       {!editing && (
         <SectionCard title="Límites del plan" icon="📦">
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             {[
               { label: "Usuarios", value: limiteLabel(plan.limite_usuarios) },
               { label: "Clientes", value: limiteLabel(plan.limite_clientes) },
@@ -464,7 +464,7 @@ export default function PlanDetalleClient({
           </SectionCard>
 
           <SectionCard title="Precio y periodicidad" icon="💲">
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               <div>
                 <label className={fLabelClass}>Precio *</label>
                 <MontoInput
@@ -693,7 +693,7 @@ export default function PlanDetalleClient({
             <p className="mb-4 text-xs text-slate-500">
               Dejar en blanco para indicar que el límite es <strong>ilimitado</strong>.
             </p>
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               <div>
                 <label className={fLabelClass}>Usuarios</label>
                 <input
