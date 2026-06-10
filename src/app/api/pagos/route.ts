@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getTenantSupabaseFromAuth } from "@/lib/supabase/tenant-api";
+import { getFacturasSupabaseFromAuth } from "@/lib/facturacion/facturas-service-client";
+import { createServiceRoleClient } from "@/lib/supabase/service-admin";
 import { successResponse, errorResponse } from "@/lib/api/response";
 import { API_ERRORS } from "@/lib/api/errors";
 import { emitEvent, EVENT_TYPES } from "@/lib/integrations/events";
@@ -9,7 +11,11 @@ import { etiquetaVisibleTipoServicio } from "@/lib/clientes/tipo-servicio-catalo
 
 export async function GET(request: NextRequest) {
   try {
-    const ctx = await getTenantSupabaseFromAuth(request);
+    // Mismo acceso multi-schema que /api/facturas y /api/clientes: tenants `erp_*`
+    // (no expuestos en PostgREST) se resuelven vía shim Postgres directo; legado
+    // `zentra_erp` sigue por PostgREST. Antes esta ruta usaba PostgREST plano +
+    // embed `facturas(...)`, que en tenants `erp_*` rompía el enriquecido de cliente.
+    const ctx = await getFacturasSupabaseFromAuth(request);
     if (!ctx) {
       return NextResponse.json(errorResponse(API_ERRORS.UNAUTHORIZED), { status: 401 });
     }
@@ -20,7 +26,7 @@ export async function GET(request: NextRequest) {
 
     let query = supabase
       .from("pagos")
-      .select("*, facturas(numero_factura, cliente_id)")
+      .select("*")
       .eq("empresa_id", auth.empresa_id)
       .order("fecha_pago", { ascending: false });
 
@@ -35,45 +41,75 @@ export async function GET(request: NextRequest) {
     }
 
     const pagos = (data ?? []) as Array<Record<string, unknown> & { usuario_id?: string; factura_id?: string }>;
-    const clienteIds = [...new Set(pagos.map((p) => {
-      const f = p.facturas as { cliente_id?: string } | null;
-      return f?.cliente_id;
-    }).filter(Boolean))] as string[];
 
+    // 1) Resolver facturas por id (sin embed: el shim PG no soporta embeds PostgREST).
+    type RowFacturaPago = { id: string; numero_factura?: string; cliente_id?: string | null };
+    const facturaIds = [...new Set(pagos.map((p) => p.factura_id).filter(Boolean))] as string[];
+    const facturaMap: Record<string, RowFacturaPago> = {};
+    if (facturaIds.length > 0) {
+      const { data: facturasData, error: facturasErr } = await supabase
+        .from("facturas")
+        .select("id, numero_factura, cliente_id")
+        .in("id", facturaIds);
+      if (facturasErr) {
+        console.error("[api/pagos] lookup facturas:", facturasErr.message);
+      }
+      for (const f of (facturasData as RowFacturaPago[] | null | undefined) ?? []) {
+        if (f?.id) facturaMap[f.id] = f;
+      }
+    }
+
+    // 2) Resolver clientes por id. `select("*")` es tolerante a drift de columnas
+    //    entre schemas tenant (p. ej. `tipo_servicio_cliente` ausente): así nombre y
+    //    tipo no se pierden juntos si una columna opcional no existe en el tenant.
     type RowClientePago = {
       id: string;
-      empresa?: string;
-      nombre_contacto?: string;
+      empresa?: string | null;
+      nombre_contacto?: string | null;
       tipo_servicio_cliente?: string | null;
     };
-    let clienteMap: Record<string, RowClientePago> = {};
+    const clienteIds = [
+      ...new Set(Object.values(facturaMap).map((f) => f.cliente_id).filter(Boolean)),
+    ] as string[];
+    const clienteMap: Record<string, RowClientePago> = {};
     const catalogMap: Record<string, string> = {};
     if (clienteIds.length > 0) {
-      const { data: clientesData } = await supabase
+      const { data: clientesData, error: clientesErr } = await supabase
         .from("clientes")
-        .select("id, empresa, nombre_contacto, tipo_servicio_cliente")
+        .select("*")
         .in("id", clienteIds);
-      const rowsC = (clientesData as RowClientePago[] | null | undefined) ?? [];
-      clienteMap = Object.fromEntries(
-        rowsC.filter((c): c is RowClientePago => Boolean(c?.id)).map((c) => [c.id, c] as [string, RowClientePago])
-      );
-      const { data: catRows } = await supabase
+      if (clientesErr) {
+        console.error("[api/pagos] lookup clientes:", clientesErr.message);
+      }
+      for (const c of (clientesData as RowClientePago[] | null | undefined) ?? []) {
+        if (c?.id) clienteMap[c.id] = c;
+      }
+      const { data: catRows, error: catErr } = await supabase
         .from("cliente_tipos_servicio_catalogo")
         .select("slug, nombre")
         .eq("empresa_id", auth.empresa_id);
+      if (catErr) {
+        console.error("[api/pagos] lookup catálogo tipos:", catErr.message);
+      }
       const cr = (catRows as { slug: string; nombre: string }[] | null | undefined) ?? [];
       for (const r of cr) {
         if (r?.slug && r.nombre) catalogMap[String(r.slug).toLowerCase()] = r.nombre;
       }
     }
+
+    // 3) Email del usuario que registró el pago. El shim PG no expone `.auth`;
+    //    el schema `auth` es global, accesible con el service role estándar.
     const usuarioIds = [...new Set(pagos.map((p) => p.usuario_id).filter(Boolean))] as string[];
     const usuarioMap: Record<string, string> = {};
-    for (const uid of usuarioIds) {
-      try {
-        const { data: u } = await supabase.auth.admin.getUserById(uid);
-        usuarioMap[uid] = u?.user?.email ?? uid.slice(0, 8);
-      } catch {
-        usuarioMap[uid] = "—";
+    if (usuarioIds.length > 0) {
+      const admin = createServiceRoleClient();
+      for (const uid of usuarioIds) {
+        try {
+          const { data: u } = await admin.auth.admin.getUserById(uid);
+          usuarioMap[uid] = u?.user?.email ?? uid.slice(0, 8);
+        } catch {
+          usuarioMap[uid] = "—";
+        }
       }
     }
 
@@ -91,7 +127,7 @@ export async function GET(request: NextRequest) {
     };
 
     const enriched = pagos.map((p) => {
-      const factura = p.facturas as { numero_factura?: string; cliente_id?: string } | null;
+      const factura = p.factura_id ? facturaMap[p.factura_id] ?? null : null;
       const clienteId = factura?.cliente_id;
       const cliente = clienteId ? clienteMap[clienteId] : null;
       return {
