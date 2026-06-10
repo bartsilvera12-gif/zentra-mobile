@@ -2,35 +2,33 @@
 
 import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
-import Sidebar from "@/components/layout/Sidebar";
 import BottomNav from "./BottomNav";
 import MobileHeader from "./MobileHeader";
+import MobileMenu from "./MobileMenu";
 
 const STANDALONE_ROUTES = ["/login"];
 
 /**
- * Shell mobile del ERP. Estructura:
+ * Shell mobile del ERP. Liviano — sin framer-motion.
  *
  *  ┌──────────────────────────────┐
- *  │  MobileHeader (sticky top)   │  ← logo + título de pantalla + acciones
+ *  │  MobileHeader (sticky top)   │
  *  ├──────────────────────────────┤
- *  │                              │
- *  │      Contenido (main)        │  ← scroll vertical, padding-bottom 56px
- *  │                              │
+ *  │      Contenido (main)        │
  *  ├──────────────────────────────┤
- *  │  BottomNav (fixed bottom)    │  ← 5 ítems, safe-area-inset-bottom
+ *  │  BottomNav (fixed bottom)    │
  *  └──────────────────────────────┘
  *
- *  El botón "Más" del BottomNav abre el Sidebar existente como sheet desde la izquierda
- *  (reutilizamos su modo mobileOpen). Esto es transicional — el menú "Más" dedicado de
- *  mobile se construye más adelante.
+ *  Menú lateral: MobileMenu (CSS-only) que se desliza desde la izquierda al tocar
+ *  el ícono de menú del header o "Más" del bottom nav. NO usa el Sidebar desktop
+ *  (que carga framer-motion + favoritos + búsqueda compleja).
  */
 export default function MobileAppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const isStandalone = pathname && STANDALONE_ROUTES.includes(pathname);
   const [menuOpen, setMenuOpen] = useState(false);
 
-  // Cerrar el menú lateral al navegar.
+  // Cerrar el menú al cambiar de ruta.
   useEffect(() => {
     setMenuOpen(false);
   }, [pathname]);
@@ -41,18 +39,7 @@ export default function MobileAppShell({ children }: { children: React.ReactNode
 
   return (
     <div className="flex h-svh min-h-0 flex-col overflow-hidden bg-[#F8FAFC]">
-      {/* Backdrop del sheet del menú */}
-      <button
-        type="button"
-        aria-label="Cerrar menú"
-        aria-hidden={!menuOpen}
-        tabIndex={menuOpen ? 0 : -1}
-        onClick={() => setMenuOpen(false)}
-        className={`fixed inset-0 z-40 bg-slate-900/55 backdrop-blur-sm transition-opacity duration-200 ${
-          menuOpen ? "opacity-100" : "pointer-events-none opacity-0"
-        }`}
-      />
-      <Sidebar mobileOpen={menuOpen} onCloseMobile={() => setMenuOpen(false)} />
+      <MobileMenu open={menuOpen} onClose={() => setMenuOpen(false)} />
 
       <MobileHeader onOpenMenu={() => setMenuOpen(true)} />
 

@@ -4,7 +4,6 @@ import Link from "next/link";
 import { useMemo } from "react";
 import {
   ArrowRight,
-  ArrowUpRight,
   ChevronRight,
   ClipboardList,
   Plus,
@@ -13,44 +12,19 @@ import {
   UserPlus,
   Wallet,
 } from "lucide-react";
-import { useDashboardData } from "@/shared/hooks/useDashboard";
+import { useDashboardMobileSummary } from "@/shared/hooks/useDashboardMobileSummary";
 import { useUsuarioActual } from "@/shared/hooks/useUsuarioActual";
-import {
-  buildMontoNcAprobadaPorFacturaId,
-  esFacturaAnulada,
-  esFacturaCorregidaNc,
-  montoFacturaNetoValorComercial,
-  type FacturaRaw,
-  type NotaCreditoDashRow,
-} from "@/lib/dashboard/data";
-import { enMesCalendarioActual } from "@/lib/fechas/calendario";
 
 /**
- * Dashboard mobile — vista compacta diseñada desde cero para pantalla angosta.
+ * Dashboard mobile — versión LIVIANA.
  *
- * No replica el dashboard desktop (2847 líneas, 12 secciones). Muestra solo lo
- * que el usuario quiere ver de un vistazo en el celular:
- *   1. Saludo con nombre + fecha.
- *   2. 4 KPIs principales en grid 2x2 (ventas mes, por cobrar, clientes, stock crítico).
- *   3. Acciones rápidas (chips horizontales) para crear venta/cliente/pago/gasto.
- *   4. Actividad reciente — últimas 5 facturas emitidas.
- *
- * Toda la lógica numérica (totales, recortes por anulaciones/NC) consume las
- * mismas funciones de @/lib/dashboard/data que usa el desktop — cero duplicación.
+ * Consume el endpoint /api/dashboard/mobile-summary (5 queries agregadas) en vez
+ * del tenant-tables completo. KPIs principales + facturas recientes. Ideal para
+ * un vistazo rápido en el celular.
  */
 export default function DashboardMobile() {
-  const { data, isLoading, error } = useDashboardData();
+  const { data, isLoading, error } = useDashboardMobileSummary();
   const { usuario } = useUsuarioActual();
-
-  const ncPorFactura = useMemo(
-    () => buildMontoNcAprobadaPorFacturaId((data?.notas_credito ?? []) as NotaCreditoDashRow[]),
-    [data?.notas_credito]
-  );
-  const kpis = useMemo(() => calcularKpisMes(data), [data]);
-  const facturasRecientes = useMemo(
-    () => obtenerFacturasRecientes(data?.facturas ?? [], ncPorFactura),
-    [data?.facturas, ncPorFactura]
-  );
 
   const greeting = useMemo(() => buildGreeting(usuario?.nombre), [usuario?.nombre]);
   const fechaHoy = useMemo(() => formatFechaLargo(new Date()), []);
@@ -59,7 +33,7 @@ export default function DashboardMobile() {
     return (
       <div className="mx-auto max-w-md p-4">
         <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
-          No se pudieron cargar los datos del dashboard. Intentá refrescar.
+          No se pudieron cargar los datos. Refrescá para reintentar.
         </div>
       </div>
     );
@@ -78,7 +52,7 @@ export default function DashboardMobile() {
         <div className="grid grid-cols-2 gap-3">
           <KpiCard
             label="Ventas del mes"
-            value={formatGs(kpis.ventasMes)}
+            value={formatGs(data?.ventasMes ?? 0)}
             icon={ShoppingCart}
             tone="primary"
             isLoading={isLoading}
@@ -86,8 +60,8 @@ export default function DashboardMobile() {
           />
           <KpiCard
             label="Por cobrar"
-            value={formatGs(kpis.porCobrar)}
-            sub={kpis.facturasPendientes > 0 ? `${kpis.facturasPendientes} facturas` : "Sin pendientes"}
+            value={formatGs(data?.porCobrar ?? 0)}
+            sub={data && data.facturasPendientes > 0 ? `${data.facturasPendientes} facturas` : "Sin pendientes"}
             icon={ReceiptText}
             tone="warn"
             isLoading={isLoading}
@@ -95,7 +69,7 @@ export default function DashboardMobile() {
           />
           <KpiCard
             label="Clientes activos"
-            value={kpis.clientesActivos.toLocaleString("es-PY")}
+            value={(data?.clientesActivos ?? 0).toLocaleString("es-PY")}
             icon={UserPlus}
             tone="info"
             isLoading={isLoading}
@@ -103,10 +77,10 @@ export default function DashboardMobile() {
           />
           <KpiCard
             label="Stock crítico"
-            value={kpis.stockCritico.toLocaleString("es-PY")}
-            sub={kpis.stockCritico > 0 ? "productos bajo mínimo" : "todo en stock"}
+            value={(data?.stockCritico ?? 0).toLocaleString("es-PY")}
+            sub={data && data.stockCritico > 0 ? "productos bajo mínimo" : "todo en stock"}
             icon={ClipboardList}
-            tone={kpis.stockCritico > 0 ? "danger" : "muted"}
+            tone={data && data.stockCritico > 0 ? "danger" : "muted"}
             isLoading={isLoading}
             href="/inventario"
           />
@@ -141,13 +115,13 @@ export default function DashboardMobile() {
         </div>
         {isLoading ? (
           <SkeletonList count={3} />
-        ) : facturasRecientes.length === 0 ? (
+        ) : !data || data.facturasRecientes.length === 0 ? (
           <p className="rounded-xl bg-slate-50 px-3 py-4 text-center text-xs text-slate-500">
             Sin facturas emitidas este mes.
           </p>
         ) : (
           <ul className="space-y-2">
-            {facturasRecientes.map((f) => (
+            {data.facturasRecientes.map((f) => (
               <li key={String(f.id)}>
                 <div className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2.5 shadow-[0_1px_2px_rgba(15,23,42,0.03)]">
                   <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#0EA5E9]/10 text-[#0EA5E9]">
@@ -155,13 +129,15 @@ export default function DashboardMobile() {
                   </div>
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-medium text-slate-900">
-                      Factura {f.numero_factura}
+                      {f.cliente_nombre ?? `Factura ${f.numero_factura}`}
                     </p>
-                    <p className="text-[11px] text-slate-500">{formatFechaCorto(f.fecha)}</p>
+                    <p className="text-[11px] text-slate-500">
+                      {f.numero_factura} · {formatFechaCorto(f.fecha)}
+                    </p>
                   </div>
                   <div className="shrink-0 text-right">
                     <p className="text-sm font-semibold tabular-nums text-slate-900">
-                      {formatGs(f.montoNeto)}
+                      {formatGs(f.monto)}
                     </p>
                     <p className="text-[11px] capitalize text-slate-500">{f.estado}</p>
                   </div>
@@ -171,16 +147,6 @@ export default function DashboardMobile() {
           </ul>
         )}
       </section>
-
-      {/* Link a vista completa (desktop) */}
-      <div className="pt-2 pb-4">
-        <Link
-          href="/?tab=resumen"
-          className="flex items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white py-3 text-sm font-medium text-slate-700 hover:bg-slate-50"
-        >
-          Ver dashboard completo <ArrowUpRight className="h-3.5 w-3.5" />
-        </Link>
-      </div>
     </div>
   );
 }
@@ -276,60 +242,6 @@ function SkeletonList({ count }: { count: number }) {
   );
 }
 
-// ── Cálculos ────────────────────────────────────────────────────────────────
-
-type Kpis = {
-  ventasMes: number;
-  porCobrar: number;
-  facturasPendientes: number;
-  clientesActivos: number;
-  stockCritico: number;
-};
-
-function calcularKpisMes(data: Awaited<ReturnType<typeof import("@/lib/dashboard/data").getDashboardData>> | undefined): Kpis {
-  if (!data) {
-    return { ventasMes: 0, porCobrar: 0, facturasPendientes: 0, clientesActivos: 0, stockCritico: 0 };
-  }
-
-  const ncPorFactura = buildMontoNcAprobadaPorFacturaId((data.notas_credito ?? []) as NotaCreditoDashRow[]);
-
-  const facturasEmitidas = (data.facturas ?? []).filter(
-    (f) => !esFacturaAnulada(f.estado) && !esFacturaCorregidaNc(f.estado)
-  );
-
-  const ventasMes = facturasEmitidas
-    .filter((f) => enMesCalendarioActual(f.fecha))
-    .reduce((acc, f) => acc + montoFacturaNetoValorComercial(f, ncPorFactura), 0);
-
-  const facturasPorCobrar = facturasEmitidas.filter((f) => Number(f.saldo ?? 0) > 0);
-  const porCobrar = facturasPorCobrar.reduce((acc, f) => acc + Number(f.saldo ?? 0), 0);
-
-  const clientesActivos = (data.clientes ?? []).length;
-  const stockCritico = (data.productos ?? []).filter(
-    (p) => Number(p.stock_actual ?? 0) <= Number(p.stock_minimo ?? 0)
-  ).length;
-
-  return {
-    ventasMes,
-    porCobrar,
-    facturasPendientes: facturasPorCobrar.length,
-    clientesActivos,
-    stockCritico,
-  };
-}
-
-function obtenerFacturasRecientes(
-  facturas: FacturaRaw[],
-  ncPorFactura: Map<string, number>
-): Array<FacturaRaw & { montoNeto: number }> {
-  return facturas
-    .filter((f) => !esFacturaAnulada(f.estado))
-    .slice()
-    .sort((a, b) => (b.fecha ?? "").localeCompare(a.fecha ?? ""))
-    .slice(0, 5)
-    .map((f) => ({ ...f, montoNeto: montoFacturaNetoValorComercial(f, ncPorFactura) }));
-}
-
 // ── Formatters ──────────────────────────────────────────────────────────────
 
 function formatGs(n: number): string {
@@ -355,4 +267,3 @@ function buildGreeting(nombre: string | null | undefined): string {
   const primer = nombre.trim().split(/\s+/)[0];
   return `${saludo}, ${primer}`;
 }
-
