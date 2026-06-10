@@ -203,6 +203,41 @@ const MENU_STRUCTURE: MenuItem[] = [
   },
 ];
 
+/**
+ * Agrupamiento VISUAL del menú por familias. Solo reordena el render: no cambia
+ * slugs, rutas, permisos ni `MENU_STRUCTURE`. Cada entrada referencia `MenuItem.key`
+ * de ítems que YA existen en esta instancia. Cualquier ítem accesible no listado
+ * acá cae automáticamente en la familia "Otros" (red de seguridad: nada se oculta).
+ */
+const MENU_FAMILIES: { id: string; title: string; itemKeys: string[] }[] = [
+  { id: "inicio", title: "Inicio", itemKeys: ["dashboard", "gerencia"] },
+  {
+    id: "comercial",
+    title: "Comercial",
+    itemKeys: ["clientes", "crm", "gestion-clientes", "ventas", "comisiones", "planes", "agenda"],
+  },
+  { id: "finanzas", title: "Finanzas", itemKeys: ["pagos", "gastos", "notas_credito", "reportes"] },
+  { id: "operaciones", title: "Operaciones", itemKeys: ["inventario", "compras", "proyectos"] },
+  {
+    id: "omnicanal",
+    title: "Omnicanal",
+    itemKeys: [
+      "conversaciones",
+      "conversaciones-finalizadas",
+      "monitoreo",
+      "historial-omnicanal",
+      "campanas",
+      "etiquetas",
+    ],
+  },
+  {
+    id: "marketing",
+    title: "Marketing y Automatización",
+    itemKeys: ["marketing", "marketing_ops", "sorteos"],
+  },
+  { id: "administracion", title: "Administración", itemKeys: ["usuarios", "configuracion"] },
+];
+
 function modulosSyntheticFromMenu(): ModuloEmpresa[] {
   return MENU_STRUCTURE.map((item) => ({
     id: item.slug,
@@ -393,6 +428,8 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }: SidebarPr
     sorteos: true,
     compras: true,
   });
+  /** Familias colapsadas (solo visual). Ausente = expandida. */
+  const [collapsedFamilies, setCollapsedFamilies] = useState<Record<string, boolean>>({});
   const [cargando, setCargando] = useState(true);
   const [esSuperAdmin, setEsSuperAdmin] = useState(false);
   /** Filtro visual del menú (no altera permisos ni rutas). */
@@ -560,6 +597,25 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }: SidebarPr
     );
   }, [favoritos, menuSearchQuery, modulos, esSuperAdmin]);
 
+  /** Agrupa `mainItemsFiltered` por familia (preservando acceso/búsqueda/favoritos ya aplicados). */
+  const familiesToRender = useMemo(() => {
+    const byKey = new Map(mainItemsFiltered.map((it) => [it.key, it]));
+    const assigned = new Set<string>();
+    const fams = MENU_FAMILIES.map((fam) => {
+      const items = fam.itemKeys
+        .map((k) => byKey.get(k))
+        .filter((x): x is MenuItem => Boolean(x));
+      items.forEach((it) => assigned.add(it.key));
+      return { id: fam.id, title: fam.title, items };
+    });
+    const otros = mainItemsFiltered.filter((it) => !assigned.has(it.key));
+    if (otros.length > 0) fams.push({ id: "otros", title: "Otros", items: otros });
+    return fams.filter((f) => f.items.length > 0);
+  }, [mainItemsFiltered]);
+
+  const toggleFamily = (id: string) =>
+    setCollapsedFamilies((prev) => ({ ...prev, [id]: !prev[id] }));
+
   const anyMenuVisible =
     favoritosItemsFiltered.length > 0 ||
     mainItemsFiltered.length > 0 ||
@@ -697,25 +753,17 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }: SidebarPr
           </div>
         )}
 
-        {/* Menú principal */}
-        <div className="space-y-0.5">
-          {!collapsed && mainItemsFiltered.length > 0 && (
-            <div className="mb-2 flex items-center gap-2 px-3">
-              <span className="h-1 w-1 rounded-full bg-[#7DCFD2]" />
-              <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
-                General
-              </p>
-              <span className="h-px flex-1 bg-gradient-to-r from-white/[0.08] to-transparent" />
-            </div>
-          )}
-          {cargando ? (
-            <div className="space-y-1 px-3 py-2">
-              <div className="h-8 animate-pulse rounded-lg bg-white/[0.04]" />
-              <div className="h-8 animate-pulse rounded-lg bg-white/[0.04]" />
-              <div className="h-8 animate-pulse rounded-lg bg-white/[0.04]" />
-            </div>
-          ) : (
-            mainItemsFiltered.map((item) => (
+        {/* Menú principal por familias (solo agrupamiento visual) */}
+        {cargando ? (
+          <div className="space-y-1 px-3 py-2">
+            <div className="h-8 animate-pulse rounded-lg bg-white/[0.04]" />
+            <div className="h-8 animate-pulse rounded-lg bg-white/[0.04]" />
+            <div className="h-8 animate-pulse rounded-lg bg-white/[0.04]" />
+          </div>
+        ) : collapsed ? (
+          /* Modo icono (80px): lista plana, sin encabezados de familia. */
+          <div className="space-y-0.5">
+            {mainItemsFiltered.map((item) => (
               <NavItem
                 key={item.key}
                 item={item}
@@ -728,9 +776,53 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }: SidebarPr
                 expanded={expandedItems[item.key] ?? false}
                 onToggleExpand={() => toggleExpand(item.key)}
               />
-            ))
-          )}
-        </div>
+            ))}
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {familiesToRender.map((fam) => {
+              const searching = normalizeMenuSearch(menuSearchQuery).length > 0;
+              const open = searching || !collapsedFamilies[fam.id];
+              return (
+                <div key={fam.id} className="space-y-0.5">
+                  <button
+                    type="button"
+                    onClick={() => toggleFamily(fam.id)}
+                    className="group/fam mb-1 flex w-full items-center gap-2 px-3 py-0.5"
+                    aria-expanded={open}
+                  >
+                    <span className="h-1 w-1 shrink-0 rounded-full bg-[#7DCFD2]" />
+                    <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500 transition-colors group-hover/fam:text-slate-300">
+                      {fam.title}
+                    </span>
+                    <span className="h-px flex-1 bg-gradient-to-r from-white/[0.08] to-transparent" />
+                    <ChevronDown
+                      className={`h-3 w-3 shrink-0 text-slate-500 transition-transform ${open ? "" : "-rotate-90"}`}
+                    />
+                  </button>
+                  {open && (
+                    <div className="space-y-0.5">
+                      {fam.items.map((item) => (
+                        <NavItem
+                          key={item.key}
+                          item={item}
+                          itemId={slugToId(item.slug)}
+                          isActive={isActive(item.slug, item.href)}
+                          isFavorito={favoritos.includes(slugToId(item.slug))}
+                          onToggleFavorito={handleToggleFavorito}
+                          hasAccess={hasAccess(item.slug)}
+                          collapsed={collapsed}
+                          expanded={expandedItems[item.key] ?? false}
+                          onToggleExpand={() => toggleExpand(item.key)}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
 
         {/* Admin */}
         {esSuperAdmin && adminEmpresasMatchesQuery(menuSearchQuery) && (
