@@ -376,7 +376,14 @@ function NavItem({
   );
 }
 
-export default function Sidebar() {
+type SidebarProps = {
+  /** En mobile (<md) el sidebar está oculto por defecto y se abre como sheet desde la izquierda.
+   *  En desktop (>=md) este prop se ignora — el sidebar siempre está visible en el flujo normal. */
+  mobileOpen?: boolean;
+  onCloseMobile?: () => void;
+};
+
+export default function Sidebar({ mobileOpen = false, onCloseMobile }: SidebarProps = {}) {
   const pathname = usePathname();
   const [modulos, setModulos] = useState<ModuloEmpresa[]>([]);
   const [favoritos, setFavoritos] = useState<string[]>([]);
@@ -582,7 +589,13 @@ export default function Sidebar() {
       initial={false}
       animate={{ width: collapsed ? 80 : 260 }}
       transition={{ duration: 0.2 }}
-      className="flex h-svh min-h-0 shrink-0 flex-col border-r border-[color:var(--zentra-sidebar-border)] bg-[color:var(--zentra-sidebar)]"
+      data-mobile-open={mobileOpen ? "true" : "false"}
+      className={`
+        flex h-svh min-h-0 shrink-0 flex-col border-r border-[color:var(--zentra-sidebar-border)] bg-[color:var(--zentra-sidebar)]
+        max-md:fixed max-md:inset-y-0 max-md:left-0 max-md:z-50 max-md:!w-[280px]
+        max-md:shadow-2xl max-md:transition-transform max-md:duration-200 max-md:ease-out
+        ${mobileOpen ? "max-md:translate-x-0" : "max-md:-translate-x-full"}
+      `}
     >
       {/* Logo oficial ZENTRA (blanco sobre azul marca) */}
       <div className="flex h-[7.25rem] shrink-0 items-center justify-between gap-2 border-b border-[color:var(--zentra-sidebar-border)] bg-[color:var(--zentra-sidebar-elevated)]/35 px-3 py-2.5">
@@ -601,13 +614,27 @@ export default function Sidebar() {
             />
           </div>
         </Link>
+        {/* Toggle colapsar (solo desktop): en mobile el sidebar es un sheet que se cierra
+            con el backdrop o cambio de ruta, no tiene estado intermedio. */}
         <button
           type="button"
           onClick={() => setCollapsed(!collapsed)}
-          className="rounded-lg p-2 text-slate-400 transition-colors hover:bg-[color:var(--zentra-sidebar-hover)] hover:text-white"
+          className="hidden rounded-lg p-2 text-slate-400 transition-colors hover:bg-[color:var(--zentra-sidebar-hover)] hover:text-white md:inline-flex"
           aria-label={collapsed ? "Expandir sidebar" : "Colapsar sidebar"}
         >
           {collapsed ? <PanelLeft className="h-5 w-5" /> : <PanelLeftClose className="h-5 w-5" />}
+        </button>
+        {/* En mobile, botón de cerrar el sheet. */}
+        <button
+          type="button"
+          onClick={() => onCloseMobile?.()}
+          className="flex h-10 w-10 items-center justify-center rounded-lg text-slate-300 transition-colors hover:bg-[color:var(--zentra-sidebar-hover)] hover:text-white md:hidden"
+          aria-label="Cerrar menú"
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5">
+            <path d="M18 6 6 18" />
+            <path d="m6 6 12 12" />
+          </svg>
         </button>
       </div>
 
@@ -628,7 +655,7 @@ export default function Sidebar() {
               placeholder="Buscar en el menú…"
               value={menuSearchQuery}
               onChange={(e) => setMenuSearchQuery(e.target.value)}
-              className="w-full rounded-xl border border-white/[0.08] bg-white/[0.04] py-2 pl-9 pr-3 text-xs text-white outline-none transition-[border-color,background-color,box-shadow] placeholder:text-slate-500 hover:border-white/[0.14] hover:bg-white/[0.06] focus:border-[#7DCFD2]/50 focus:bg-white/[0.06] focus:ring-2 focus:ring-[#7DCFD2]/30"
+              className="w-full rounded-xl border border-white/[0.08] bg-white/[0.04] py-2 pl-9 pr-3 text-base text-white outline-none transition-[border-color,background-color,box-shadow] placeholder:text-slate-500 hover:border-white/[0.14] hover:bg-white/[0.06] focus:border-[#7DCFD2]/50 focus:bg-white/[0.06] focus:ring-2 focus:ring-[#7DCFD2]/30 md:text-xs"
             />
           </div>
         </div>
