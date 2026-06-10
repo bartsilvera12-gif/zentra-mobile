@@ -8,11 +8,8 @@ import Header from "./layout/Header";
 
 const STANDALONE_ROUTES = ["/login"];
 
-/** Asistente de ayuda (Fase 1): apagado temporalmente por performance.
- *  Para reactivarlo: poner ASSISTANT_KILL_SWITCH = false (y NEXT_PUBLIC_ASSISTANT_ENABLED=1 en Vercel). */
-const ASSISTANT_KILL_SWITCH = true;
-const ASSISTANT_ENABLED =
-  !ASSISTANT_KILL_SWITCH && process.env.NEXT_PUBLIC_ASSISTANT_ENABLED === "1";
+/** Asistente de ayuda (Neurita). Gobernado por NEXT_PUBLIC_ASSISTANT_ENABLED en Vercel. */
+const ASSISTANT_ENABLED = process.env.NEXT_PUBLIC_ASSISTANT_ENABLED === "1";
 
 /** Carga diferida del widget: react-markdown + lógica del chat NO entran en el bundle principal,
  *  se descargan en un chunk aparte después de que la pantalla actual ya esté interactiva. */
