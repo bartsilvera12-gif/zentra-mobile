@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { Plus_Jakarta_Sans, Geist_Mono } from "next/font/google";
 import AppShell from "../components/AppShell";
+import MobileAppShell from "../mobile/layout/MobileAppShell";
+import DeviceRouter from "../shared/device/DeviceRouter";
 import { ThemeProvider } from "../components/ThemeProvider";
 import AuthGuard from "../components/AuthGuard";
 import "./globals.css";
@@ -31,7 +33,10 @@ export default function RootLayout({
       <body className={`${plusJakarta.variable} ${geistMono.variable} antialiased`}>
         <ThemeProvider>
           <AuthGuard>
-            <AppShell>{children}</AppShell>
+            <DeviceRouter
+              desktop={<AppShell>{children}</AppShell>}
+              mobile={<MobileAppShell>{children}</MobileAppShell>}
+            />
           </AuthGuard>
         </ThemeProvider>
       </body>

@@ -1,12 +1,29 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import { DEVICE_COOKIE_NAME, isMobileUserAgent } from "@/shared/device/detect";
 
 /**
- * Refresca la sesión Supabase en cookies antes de Route Handlers / RSC.
- * Solo NEXT_PUBLIC_SUPABASE_URL + NEXT_PUBLIC_SUPABASE_ANON_KEY (sin db.schema en getUser).
+ * Middleware combinado: (a) refresca la sesión Supabase en cookies antes de Route
+ * Handlers / RSC; (b) setea la cookie `neura-device` a partir del User-Agent si todavía
+ * no fue seteada. La cookie permite que el server-side render del DeviceRouter decida
+ * mobile vs desktop sin esperar al cliente (evita flash en el primer paint).
  */
 export async function middleware(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request });
+
+  // Seteo de cookie de device: solo si no existe todavía, para no pisar la corrección
+  // que el cliente pueda haber escrito (caso iPad-as-Mac).
+  if (!request.cookies.get(DEVICE_COOKIE_NAME)) {
+    const ua = request.headers.get("user-agent");
+    const device = isMobileUserAgent(ua) ? "mobile" : "desktop";
+    request.cookies.set(DEVICE_COOKIE_NAME, device);
+    supabaseResponse = NextResponse.next({ request });
+    supabaseResponse.cookies.set(DEVICE_COOKIE_NAME, device, {
+      path: "/",
+      maxAge: 60 * 60 * 24 * 365,
+      sameSite: "lax",
+    });
+  }
 
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
