@@ -59,55 +59,70 @@ type Section = {
   items: Item[];
 };
 
+/**
+ * Mismas familias que el sidebar desktop (Sidebar.tsx · MENU_FAMILIES), para que
+ * la navegación sea coherente en ambos dispositivos. Solo agrupamiento visual:
+ * mismas rutas/labels, sin inventar módulos ni cambiar permisos.
+ */
 const SECTIONS: Section[] = [
   {
-    title: "Operación",
+    title: "Inicio",
     items: [
       { href: "/", label: "Dashboard", icon: LayoutDashboard },
       { href: "/dashboard/gerencia", label: "Gerencia", icon: TrendingUp },
-      { href: "/reportes", label: "Reportes", icon: BarChart3 },
-      { href: "/dashboard/conversaciones", label: "Conversaciones", icon: MessageCircle },
-      { href: "/dashboard/conversaciones-finalizadas", label: "Finalizadas", icon: ListChecks },
-      { href: "/dashboard/monitoreo", label: "Monitoreo", icon: Sparkles },
-      { href: "/dashboard/agenda", label: "Agenda", icon: CalendarDays },
     ],
   },
   {
     title: "Comercial",
     items: [
-      { href: "/ventas", label: "Ventas", icon: ShoppingCart },
       { href: "/clientes", label: "Clientes", icon: Users },
       { href: "/crm", label: "CRM Funnel", icon: Sparkles },
       { href: "/gestion-clientes", label: "Gestión Clientes", icon: Users },
-      { href: "/pagos", label: "Pagos", icon: Banknote },
+      { href: "/ventas", label: "Ventas", icon: ShoppingCart },
       { href: "/comisiones", label: "Comisiones", icon: Percent },
-      { href: "/notas-credito", label: "Notas de crédito", icon: ScrollText },
+      { href: "/planes", label: "Planes", icon: FileText },
+      { href: "/dashboard/agenda", label: "Agenda", icon: CalendarDays },
     ],
   },
   {
-    title: "Stock y Compras",
+    title: "Finanzas",
+    items: [
+      { href: "/pagos", label: "Pagos", icon: Banknote },
+      { href: "/gastos", label: "Gastos", icon: Receipt },
+      { href: "/notas-credito", label: "Notas de crédito", icon: ScrollText },
+      { href: "/reportes", label: "Reportes", icon: BarChart3 },
+    ],
+  },
+  {
+    title: "Operaciones",
     items: [
       { href: "/inventario", label: "Inventario", icon: Package },
       { href: "/compras", label: "Compras", icon: Package },
       { href: "/proveedores", label: "Proveedores", icon: Building2 },
-      { href: "/gastos", label: "Gastos", icon: Receipt },
+      { href: "/dashboard/proyectos", label: "Proyectos", icon: FolderKanban },
     ],
   },
   {
-    title: "Marketing y Proyectos",
+    title: "Omnicanal",
     items: [
-      { href: "/dashboard/proyectos", label: "Proyectos", icon: FolderKanban },
+      { href: "/dashboard/conversaciones", label: "Conversaciones", icon: MessageCircle },
+      { href: "/dashboard/conversaciones-finalizadas", label: "Finalizadas", icon: ListChecks },
+      { href: "/dashboard/monitoreo", label: "Monitoreo", icon: Sparkles },
       { href: "/dashboard/campanas", label: "Campañas", icon: SendHorizontal },
+      { href: "/dashboard/etiquetas", label: "Etiquetas", icon: Tags },
+    ],
+  },
+  {
+    title: "Marketing y Automatización",
+    items: [
       { href: "/dashboard/marketing-ops", label: "Marketing Ops", icon: Megaphone },
       { href: "/sorteos", label: "Sorteos", icon: Ticket },
-      { href: "/dashboard/etiquetas", label: "Etiquetas", icon: Tags },
     ],
   },
   {
     title: "Administración",
     items: [
       { href: "/usuarios", label: "Usuarios", icon: UserCog },
-      { href: "/planes", label: "Planes", icon: FileText },
       { href: "/configuracion", label: "Configuración", icon: Settings },
     ],
   },
