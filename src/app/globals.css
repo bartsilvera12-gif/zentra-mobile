@@ -115,6 +115,24 @@ body {
   }
 }
 
+/**
+ * Mobile fix — zoom involuntario en iOS Safari.
+ * iOS Safari hace zoom automático cuando el usuario toca un input/textarea/select
+ * con font-size < 16px. Forzamos un mínimo de 16px SOLO en mobile (<768px), sin
+ * tocar la tipografía desktop. Las clases text-xs / text-sm de Tailwind en los
+ * formularios siguen aplicando arriba de 768px (paneles densos del ERP intactos).
+ *
+ * Excluyo type=button/submit/reset/checkbox/radio porque no disparan zoom y a
+ * veces se ajustan tamaño chico a propósito (chips, toggles).
+ */
+@media (max-width: 767px) {
+  input:not([type="button"]):not([type="submit"]):not([type="reset"]):not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]),
+  textarea,
+  select {
+    font-size: 16px !important;
+  }
+}
+
 /* Fondo pantalla login (solo layout visual) */
 .zentra-login-bg {
   background:
