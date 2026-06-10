@@ -22,6 +22,36 @@ function maskEmail(email: string | undefined | null): string {
   return `${e.slice(0, 2)}…${e.slice(at)}`;
 }
 
+/**
+ * `.in(col, ids)` batcheado. PostgREST va detrás de Cloudflare (api.neura.com.py):
+ * un `.in()` con muchos UUID arma una URL enorme que CF rechaza con 502 → la query
+ * caía entera y devolvía 0 filas (Cliente/Tipo en "—"). Batchear mantiene URLs
+ * cortas y evita el corte del gateway.
+ */
+async function selectInBatches<T = Record<string, unknown>>(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  supabase: any,
+  table: string,
+  columns: string,
+  col: string,
+  ids: string[],
+  batchSize = 25
+): Promise<{ rows: T[]; error: string | null }> {
+  const rows: T[] = [];
+  let error: string | null = null;
+  for (let i = 0; i < ids.length; i += batchSize) {
+    const slice = ids.slice(i, i + batchSize);
+    const { data, error: err } = await supabase.from(table).select(columns).in(col, slice);
+    if (err) {
+      error = err.message;
+      console.error(`[api/pagos] lookup ${table} (batch ${i / batchSize}):`, err.message);
+      continue;
+    }
+    for (const r of (data as T[] | null | undefined) ?? []) rows.push(r);
+  }
+  return { rows, error };
+}
+
 export async function GET(request: NextRequest) {
   try {
     const ctx = await getTenantSupabaseFromAuth(request);
@@ -74,15 +104,15 @@ export async function GET(request: NextRequest) {
     let facturasFallbackErr: string | null = null;
     const faltanUnicos = [...new Set(faltanFacturaIds)];
     if (faltanUnicos.length > 0) {
-      const { data: fData, error: fErr } = await supabase
-        .from("facturas")
-        .select("id, numero_factura, cliente_id")
-        .in("id", faltanUnicos);
-      if (fErr) {
-        facturasFallbackErr = fErr.message;
-        console.error("[api/pagos] fallback facturas:", fErr.message);
-      }
-      for (const f of (fData as RowFacturaPago[] | null | undefined) ?? []) {
+      const { rows: fData, error: fErr } = await selectInBatches<RowFacturaPago>(
+        supabase,
+        "facturas",
+        "id, numero_factura, cliente_id",
+        "id",
+        faltanUnicos
+      );
+      facturasFallbackErr = fErr;
+      for (const f of fData) {
         if (f?.id) facturaPorFacturaId[String(f.id)] = f;
       }
     }
@@ -99,15 +129,15 @@ export async function GET(request: NextRequest) {
     const catalogMap: Record<string, string> = {};
     let clientesErrMsg: string | null = null;
     if (clienteIds.length > 0) {
-      const { data: clientesData, error: clientesErr } = await supabase
-        .from("clientes")
-        .select("*")
-        .in("id", clienteIds);
-      if (clientesErr) {
-        clientesErrMsg = clientesErr.message;
-        console.error("[api/pagos] lookup clientes:", clientesErr.message);
-      }
-      for (const c of (clientesData as RowClientePago[] | null | undefined) ?? []) {
+      const { rows: clientesData, error: clientesErr } = await selectInBatches<RowClientePago>(
+        supabase,
+        "clientes",
+        "*",
+        "id",
+        clienteIds
+      );
+      clientesErrMsg = clientesErr;
+      for (const c of clientesData) {
         if (c?.id) clienteMap[String(c.id)] = c;
       }
       const { data: catRows, error: catErr } = await supabase
