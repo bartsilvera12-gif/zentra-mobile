@@ -7,6 +7,14 @@ import { DEVICE_COOKIE_NAME, isMobileUserAgent } from "@/shared/device/detect";
  * Handlers / RSC; (b) setea la cookie `neura-device` a partir del User-Agent si todavía
  * no fue seteada. La cookie permite que el server-side render del DeviceRouter decida
  * mobile vs desktop sin esperar al cliente (evita flash en el primer paint).
+ *
+ * Optimización clave: saltamos el `supabase.auth.getUser()` (que es una llamada remota
+ * al servicio de auth de Supabase, ~100-300ms) para requests que son SOLO prefetches
+ * RSC de Next.js. Estos requests:
+ *   - los dispara `next/link` automáticamente para cada link visible en el viewport,
+ *   - reusan las cookies del browser que ya están vigentes,
+ *   - no necesitan refrescar tokens — la próxima navegación real los refresca.
+ * Sin este skip, una pantalla con 10 links visibles disparaba 10 auth-refresh ocultos.
  */
 export async function middleware(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request });
@@ -23,6 +31,17 @@ export async function middleware(request: NextRequest) {
       maxAge: 60 * 60 * 24 * 365,
       sameSite: "lax",
     });
+  }
+
+  // Detectamos PREFETCH (no toda navegación RSC). Estos son disparados automáticamente
+  // por next/link en background para cada link visible. Las cookies ya están vigentes;
+  // no hace falta refrescar el token para una nav que el usuario quizás ni haga.
+  const isPrefetch =
+    request.headers.get("next-router-prefetch") === "1" ||
+    request.headers.get("purpose") === "prefetch";
+
+  if (isPrefetch) {
+    return supabaseResponse;
   }
 
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;

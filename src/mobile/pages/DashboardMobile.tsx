@@ -12,7 +12,10 @@ import {
   UserPlus,
   Wallet,
 } from "lucide-react";
-import { useDashboardMobileSummary } from "@/shared/hooks/useDashboardMobileSummary";
+import {
+  useDashboardMobileSummary,
+  type DashboardMobileSummary,
+} from "@/shared/hooks/useDashboardMobileSummary";
 import { useUsuarioActual } from "@/shared/hooks/useUsuarioActual";
 
 /**
@@ -22,8 +25,10 @@ import { useUsuarioActual } from "@/shared/hooks/useUsuarioActual";
  * del tenant-tables completo. KPIs principales + facturas recientes. Ideal para
  * un vistazo rápido en el celular.
  */
-export default function DashboardMobile() {
-  const { data, isLoading, error } = useDashboardMobileSummary();
+export default function DashboardMobile({
+  initialData,
+}: { initialData?: DashboardMobileSummary } = {}) {
+  const { data, isLoading, error } = useDashboardMobileSummary(initialData);
   const { usuario } = useUsuarioActual();
 
   const greeting = useMemo(() => buildGreeting(usuario?.nombre), [usuario?.nombre]);

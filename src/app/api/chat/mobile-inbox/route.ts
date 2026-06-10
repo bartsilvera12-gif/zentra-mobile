@@ -110,7 +110,12 @@ export async function GET(request: NextRequest) {
       };
     });
 
-    return NextResponse.json(successResponse({ conversations }));
+    return NextResponse.json(successResponse({ conversations }), {
+      headers: {
+        // El cliente revalida con polling de 30s; permitimos servir cached con SWR.
+        "Cache-Control": "private, max-age=0, stale-while-revalidate=15",
+      },
+    });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Error";
     return NextResponse.json(errorResponse(msg), { status: 500 });

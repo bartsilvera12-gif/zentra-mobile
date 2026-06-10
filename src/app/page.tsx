@@ -1,23 +1,22 @@
-import DeviceRouter from "@/shared/device/DeviceRouter";
+import { getDeviceTypeFromRequest } from "@/shared/device/server";
+import { fetchDashboardMobileSummary } from "@/lib/dashboard/mobile-summary";
 import DashboardDesktop from "@/desktop/pages/DashboardDesktop";
 import DashboardMobile from "@/mobile/pages/DashboardMobile";
 
 /**
- * Home / Dashboard del ERP.
+ * Home / Dashboard.
  *
- * Server component thin wrapper que delega al `DeviceRouter`:
- *  - Desktop (>=1024px o UA desktop): renderiza `DashboardDesktop` (la vista original
- *    de 2847 líneas, sin cambios visuales).
- *  - Mobile (<1024px o UA mobile): renderiza `DashboardMobile`, una vista compacta
- *    diseñada desde cero para pantalla angosta.
- *
- * Ambas vistas consumen los mismos datos via `useDashboardData()` de `src/shared/hooks/`.
+ * Optimización: para mobile, pre-fetchamos los KPIs server-side y los pasamos como
+ * `initialData` al cliente. SWR los muestra ANTES de hidratar — sin skeleton flash.
+ * Desktop sigue intacto, monta su componente client como antes.
  */
-export default function Page() {
-  return (
-    <DeviceRouter
-      desktop={<DashboardDesktop />}
-      mobile={<DashboardMobile />}
-    />
-  );
+export default async function Page() {
+  const device = await getDeviceTypeFromRequest();
+  if (device === "mobile") {
+    // Pre-warm: server fetch antes del primer paint. Si falla, el cliente se cae
+    // al fetch normal (SWR muestra skeleton). Sin bloquear el render por errores.
+    const initialData = await fetchDashboardMobileSummary(null).catch(() => null);
+    return <DashboardMobile initialData={initialData ?? undefined} />;
+  }
+  return <DashboardDesktop />;
 }

@@ -22,11 +22,11 @@ export type DashboardMobileSummary = {
 /**
  * Hook MOBILE-ONLY para el dashboard.
  *
- * Llama al endpoint liviano /api/dashboard/mobile-summary (5 queries agregadas en SQL)
- * en vez de getDashboardData() que descargaba toda la operación del tenant. Diferencia
- * de tiempo: ~5s → <500ms en tenants medianos.
+ * Acepta `initialData` opcional (pre-fetched server-side por page.tsx) — cuando se
+ * provee, SWR usa eso como fallback inmediato sin esperar al fetch del cliente.
+ * Resultado: el usuario ve los KPIs en el primer paint, no skeletons.
  */
-export function useDashboardMobileSummary() {
+export function useDashboardMobileSummary(initialData?: DashboardMobileSummary) {
   const swr = useSWR<DashboardMobileSummary>(
     "dashboard:mobile-summary",
     async () => {
@@ -37,6 +37,7 @@ export function useDashboardMobileSummary() {
       return j.data;
     },
     {
+      fallbackData: initialData,
       revalidateOnFocus: false,
       revalidateIfStale: false,
       dedupingInterval: 5 * 60_000,
