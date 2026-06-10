@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { AlertTriangle, X } from "lucide-react";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
 import { createBrowserClientForSchema } from "@/lib/supabase";
 import {
@@ -616,30 +617,35 @@ export default function ProyectoDetalleInner({
   }
 
   const [deleting, setDeleting] = useState(false);
-  async function eliminarProyecto() {
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [deleteConfirmText, setDeleteConfirmText] = useState("");
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  function abrirModalEliminar() {
+    setDeleteConfirmText("");
+    setDeleteError(null);
+    setDeleteModalOpen(true);
+  }
+
+  async function confirmarEliminacion() {
     if (deleting) return;
     const proyectoActual = data?.proyecto;
     if (!proyectoActual) return;
-    const titulo = String(proyectoActual.titulo ?? "este proyecto");
-    const confirmacion = window.prompt(
-      `Vas a ELIMINAR DEFINITIVAMENTE el proyecto "${titulo}".\n\n` +
-        `Esto borra el proyecto y CASCADE-borra todas sus tareas, comentarios, archivos e historial. ` +
-        `La acción NO se puede deshacer.\n\n` +
-        `Para confirmar, escribí el título del proyecto:`
-    );
-    if (confirmacion === null) return; // canceló
-    if (confirmacion.trim() !== titulo.trim()) {
-      setErr("El título no coincide. Eliminación cancelada.");
+    const titulo = String(proyectoActual.titulo ?? "").trim();
+    if (deleteConfirmText.trim() !== titulo) {
+      setDeleteError("El título no coincide. Verificá la escritura exacta.");
       return;
     }
     setDeleting(true);
+    setDeleteError(null);
     try {
       const res = await fetchWithSupabaseSession(`/api/proyectos/${projectId}`, { method: "DELETE" });
       const j = (await res.json().catch(() => null)) as { success?: boolean; error?: string } | null;
       if (!res.ok || !j?.success) {
-        setErr(j?.error ?? "No se pudo eliminar el proyecto.");
+        setDeleteError(j?.error ?? "No se pudo eliminar el proyecto.");
         return;
       }
+      setDeleteModalOpen(false);
       onProjectUpdated?.();
       if (variant === "modal") {
         onClose?.();
@@ -650,6 +656,20 @@ export default function ProyectoDetalleInner({
       setDeleting(false);
     }
   }
+
+  useEffect(() => {
+    if (!deleteModalOpen) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape" && !deleting) setDeleteModalOpen(false);
+    }
+    window.addEventListener("keydown", onKey);
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      document.body.style.overflow = prev;
+    };
+  }, [deleteModalOpen, deleting]);
 
   async function agregarComentario(e: React.FormEvent) {
     e.preventDefault();
@@ -1125,12 +1145,11 @@ export default function ProyectoDetalleInner({
             return (
               <button
                 type="button"
-                onClick={() => void eliminarProyecto()}
-                disabled={deleting}
-                className="rounded-xl border border-red-200 bg-white px-3.5 py-2.5 text-sm font-medium text-red-600 shadow-sm transition-colors hover:border-red-400 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
+                onClick={abrirModalEliminar}
+                className="rounded-xl border border-red-200 bg-white px-3.5 py-2.5 text-sm font-medium text-red-600 shadow-sm transition-colors hover:border-red-400 hover:bg-red-50"
                 title="Eliminar definitivamente el proyecto (irreversible)"
               >
-                {deleting ? "Eliminando…" : "Eliminar"}
+                Eliminar
               </button>
             );
           })()}
@@ -2322,6 +2341,92 @@ export default function ProyectoDetalleInner({
           </div>
         ) : null}
       </div>
+
+      {deleteModalOpen ? (
+        <div className="fixed inset-0 z-[110] flex items-center justify-center p-4">
+          <button
+            type="button"
+            aria-label="Cerrar"
+            className="absolute inset-0 bg-slate-900/55 backdrop-blur-sm"
+            onClick={() => { if (!deleting) setDeleteModalOpen(false); }}
+          />
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="proyecto-eliminar-titulo"
+            className="relative w-full max-w-md overflow-hidden rounded-2xl border border-red-200 bg-white shadow-2xl"
+          >
+            <span aria-hidden="true" className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-red-500 via-red-500/80 to-red-400/40" />
+            <div className="flex items-start gap-3 border-b border-slate-100 px-5 pb-4 pt-5">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-red-50 text-red-600 ring-1 ring-red-200">
+                <AlertTriangle className="h-5 w-5" aria-hidden="true" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <h2 id="proyecto-eliminar-titulo" className="text-base font-semibold text-slate-900">
+                  Eliminar proyecto definitivamente
+                </h2>
+                <p className="mt-1 text-xs text-slate-500">Esta acción no se puede deshacer.</p>
+              </div>
+              <button
+                type="button"
+                aria-label="Cerrar"
+                onClick={() => { if (!deleting) setDeleteModalOpen(false); }}
+                className="rounded-md p-1 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700 disabled:opacity-50"
+                disabled={deleting}
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="space-y-3 px-5 py-4 text-sm text-slate-700">
+              <p>
+                Vas a eliminar el proyecto{" "}
+                <strong className="font-semibold text-slate-900">
+                  {String(data?.proyecto?.titulo ?? "")}
+                </strong>
+                . Esto borra el proyecto y en cascada todas sus tareas, comentarios, archivos e historial.
+              </p>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-slate-600">
+                  Para confirmar, escribí el título exacto:
+                </label>
+                <input
+                  type="text"
+                  autoFocus
+                  value={deleteConfirmText}
+                  onChange={(e) => { setDeleteConfirmText(e.target.value); if (deleteError) setDeleteError(null); }}
+                  onKeyDown={(e) => { if (e.key === "Enter") void confirmarEliminacion(); }}
+                  placeholder={String(data?.proyecto?.titulo ?? "")}
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:border-red-400 focus:outline-none focus:ring-2 focus:ring-red-200"
+                  disabled={deleting}
+                />
+                {deleteError ? (
+                  <p className="mt-1.5 text-xs text-red-600">{deleteError}</p>
+                ) : null}
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 border-t border-slate-100 bg-slate-50 px-5 py-3">
+              <button
+                type="button"
+                onClick={() => setDeleteModalOpen(false)}
+                disabled={deleting}
+                className="rounded-lg border border-slate-200 bg-white px-3.5 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={() => void confirmarEliminacion()}
+                disabled={deleting || deleteConfirmText.trim() !== String(data?.proyecto?.titulo ?? "").trim()}
+                className="rounded-lg bg-red-600 px-3.5 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-red-700 disabled:cursor-not-allowed disabled:bg-red-300"
+              >
+                {deleting ? "Eliminando…" : "Eliminar definitivamente"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
