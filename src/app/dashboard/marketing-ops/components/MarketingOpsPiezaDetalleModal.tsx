@@ -68,7 +68,7 @@ export default function MarketingOpsPiezaDetalleModal({
   if (!open || !piezaId) return null;
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-6">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-0 sm:p-4 md:p-6">
       <button
         type="button"
         aria-label="Cerrar modal"
@@ -79,7 +79,7 @@ export default function MarketingOpsPiezaDetalleModal({
         role="dialog"
         aria-modal="true"
         aria-labelledby="pieza-detalle-titulo"
-        className="relative flex h-[90vh] max-h-[960px] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl shadow-[#4FAEB2]/10 ring-1 ring-[#4FAEB2]/15"
+        className="relative flex h-[100dvh] max-h-[100dvh] w-full max-w-5xl flex-col overflow-hidden rounded-none border-0 border-slate-200 bg-white shadow-2xl shadow-[#4FAEB2]/10 ring-1 ring-[#4FAEB2]/15 sm:h-[90dvh] sm:max-h-[960px] sm:rounded-2xl sm:border"
       >
         <span
           aria-hidden="true"

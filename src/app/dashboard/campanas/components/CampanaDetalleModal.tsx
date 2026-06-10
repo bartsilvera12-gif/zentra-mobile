@@ -40,7 +40,7 @@ export default function CampanaDetalleModal({
   if (!open || !id) return null;
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-6">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-0 sm:p-4 md:p-6">
       <button
         type="button"
         aria-label="Cerrar modal"
@@ -51,7 +51,7 @@ export default function CampanaDetalleModal({
         role="dialog"
         aria-modal="true"
         aria-labelledby="campana-detalle-titulo"
-        className="relative flex h-[94vh] max-h-[1100px] w-full max-w-7xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl shadow-[#4FAEB2]/10 ring-1 ring-[#4FAEB2]/15"
+        className="relative flex h-[100dvh] max-h-[100dvh] w-full max-w-7xl flex-col overflow-hidden rounded-none border-0 border-slate-200 bg-white shadow-2xl shadow-[#4FAEB2]/10 ring-1 ring-[#4FAEB2]/15 sm:h-[94dvh] sm:max-h-[1100px] sm:rounded-2xl sm:border"
       >
         <span
           aria-hidden="true"

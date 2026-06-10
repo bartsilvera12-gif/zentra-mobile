@@ -98,9 +98,9 @@ export function ModalCambioPlanGestion({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-0 sm:p-4" onClick={onClose}>
       <div
-        className="flex max-h-[90vh] w-full max-w-lg flex-col overflow-hidden rounded-xl bg-white shadow-xl"
+        className="flex h-[100dvh] max-h-[100dvh] w-full max-w-lg flex-col overflow-hidden rounded-none bg-white shadow-xl sm:h-auto sm:max-h-[90dvh] sm:rounded-xl"
         onClick={(ev) => ev.stopPropagation()}
       >
         <div className="shrink-0 border-b border-slate-200 px-5 py-4">
