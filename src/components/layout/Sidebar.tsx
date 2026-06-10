@@ -36,6 +36,7 @@ import {
   Percent,
   Tags,
   CalendarDays,
+  BarChart3,
 } from "lucide-react";
 import type { Session } from "@supabase/supabase-js";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
@@ -89,6 +90,7 @@ function adminEmpresasMatchesQuery(queryRaw: string): boolean {
 const MENU_STRUCTURE: MenuItem[] = [
   { key: "dashboard", slug: "dashboard", label: "Dashboard", href: "/", icon: LayoutDashboard },
   { key: "gerencia", slug: "gerencia", label: "Gerencia", href: "/dashboard/gerencia", icon: TrendingUp },
+  { key: "reportes", slug: "reportes", label: "Reportes", href: "/reportes", icon: BarChart3 },
   {
     key: "conversaciones",
     slug: "conversaciones",
