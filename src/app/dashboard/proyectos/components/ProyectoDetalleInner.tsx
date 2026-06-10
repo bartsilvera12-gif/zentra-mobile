@@ -52,6 +52,7 @@ export type DetalleResp = {
   cambios?: ProyectoCambioCliente[];
   avance_pct: number | null;
   current_user_id?: string | null;
+  current_user_rol?: string | null;
 };
 
 const ESTADO_ENTREGADO_CODIGO = "publicado";
@@ -614,6 +615,42 @@ export default function ProyectoDetalleInner({
     onProjectUpdated?.();
   }
 
+  const [deleting, setDeleting] = useState(false);
+  async function eliminarProyecto() {
+    if (deleting) return;
+    const proyectoActual = data?.proyecto;
+    if (!proyectoActual) return;
+    const titulo = String(proyectoActual.titulo ?? "este proyecto");
+    const confirmacion = window.prompt(
+      `Vas a ELIMINAR DEFINITIVAMENTE el proyecto "${titulo}".\n\n` +
+        `Esto borra el proyecto y CASCADE-borra todas sus tareas, comentarios, archivos e historial. ` +
+        `La acción NO se puede deshacer.\n\n` +
+        `Para confirmar, escribí el título del proyecto:`
+    );
+    if (confirmacion === null) return; // canceló
+    if (confirmacion.trim() !== titulo.trim()) {
+      setErr("El título no coincide. Eliminación cancelada.");
+      return;
+    }
+    setDeleting(true);
+    try {
+      const res = await fetchWithSupabaseSession(`/api/proyectos/${projectId}`, { method: "DELETE" });
+      const j = (await res.json().catch(() => null)) as { success?: boolean; error?: string } | null;
+      if (!res.ok || !j?.success) {
+        setErr(j?.error ?? "No se pudo eliminar el proyecto.");
+        return;
+      }
+      onProjectUpdated?.();
+      if (variant === "modal") {
+        onClose?.();
+      } else {
+        router.push("/dashboard/proyectos");
+      }
+    } finally {
+      setDeleting(false);
+    }
+  }
+
   async function agregarComentario(e: React.FormEvent) {
     e.preventDefault();
     if (!comTexto.trim()) return;
@@ -1081,6 +1118,22 @@ export default function ProyectoDetalleInner({
             onChange={(v) => void cambiarEstado(v)}
             options={estados.map((e) => ({ value: e.id, label: e.nombre }))}
           />
+          {(() => {
+            const rol = (data.current_user_rol ?? "").trim().toLowerCase();
+            const puedeEliminar = rol === "super_admin" || rol === "admin" || rol === "administrador";
+            if (!puedeEliminar) return null;
+            return (
+              <button
+                type="button"
+                onClick={() => void eliminarProyecto()}
+                disabled={deleting}
+                className="rounded-xl border border-red-200 bg-white px-3.5 py-2.5 text-sm font-medium text-red-600 shadow-sm transition-colors hover:border-red-400 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
+                title="Eliminar definitivamente el proyecto (irreversible)"
+              >
+                {deleting ? "Eliminando…" : "Eliminar"}
+              </button>
+            );
+          })()}
           {variant === "modal" ? (
             <button
               type="button"

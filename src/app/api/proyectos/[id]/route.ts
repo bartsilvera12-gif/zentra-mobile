@@ -139,6 +139,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
         cambios,
         avance_pct: avance,
         current_user_id: auth.usuarioCatalogId,
+        current_user_rol: auth.rol ?? null,
       })
     );
   } catch (e) {
