@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { Bell, ChevronDown, HelpCircle, LogOut, Menu } from "lucide-react";
+import { Bell, ChevronDown, LogOut, Menu } from "lucide-react";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
 import { signOut } from "@/lib/auth";
 
@@ -101,18 +101,7 @@ export default function Header({ onOpenMobileSidebar }: HeaderProps = {}) {
       <span className="hidden md:block" />
 
       <div className="flex items-center gap-2">
-        {/* Asistente de ayuda (Neurita) — abre el chat. Gated por NEXT_PUBLIC_ASSISTANT_ENABLED. */}
-        {process.env.NEXT_PUBLIC_ASSISTANT_ENABLED === "1" && (
-          <button
-            type="button"
-            onClick={() => window.dispatchEvent(new CustomEvent("neura:assistant:toggle"))}
-            className="rounded-lg p-2 text-[#475569] transition-colors hover:bg-slate-50 hover:text-[#0EA5E9]"
-            aria-label="Abrir Neurita, asistente de ayuda"
-            title="Neurita — asistente de ayuda"
-          >
-            <HelpCircle className="h-5 w-5" />
-          </button>
-        )}
+        {/* Asistente de ayuda (Neurita) — desactivado temporalmente. */}
 
         {/* Notificaciones */}
         <button
