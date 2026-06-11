@@ -22,7 +22,10 @@ const BootContext = createContext<BootContextValue>({
  * menú; mostramos el loader durante esa recarga también).
  */
 export function BootProvider({ children }: { children: React.ReactNode }) {
-  const [sidebarReady, setSidebarReady] = useState(false);
+  // Default true: NO bloqueamos el primer paint esperando al Sidebar. El sidebar
+  // tiene su propio skeleton interno mientras carga los módulos. En mobile, el
+  // Sidebar ni siquiera se monta — antes el loader quedaba colgado para siempre.
+  const [sidebarReady, setSidebarReady] = useState(true);
 
   return (
     <BootContext.Provider value={{ sidebarReady, setSidebarReady }}>
