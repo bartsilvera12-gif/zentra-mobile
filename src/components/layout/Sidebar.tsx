@@ -792,7 +792,7 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }: SidebarPr
                     aria-expanded={open}
                   >
                     <span className="h-1 w-1 shrink-0 rounded-full bg-[#7DCFD2]" />
-                    <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500 transition-colors group-hover/fam:text-slate-300">
+                    <span className="text-[13px] font-bold uppercase tracking-[0.1em] text-slate-300 transition-colors group-hover/fam:text-white">
                       {fam.title}
                     </span>
                     <span className="h-px flex-1 bg-gradient-to-r from-white/[0.08] to-transparent" />

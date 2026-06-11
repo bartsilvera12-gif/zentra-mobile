@@ -240,7 +240,7 @@ export default function MobileMenu({
           ) : (
             filteredSections.map((section) => (
               <div key={section.title} className="mb-4">
-                <p className="mb-1 px-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                <p className="mb-1 px-3 text-[13px] font-bold uppercase tracking-[0.1em] text-slate-300">
                   {section.title}
                 </p>
                 <ul>
