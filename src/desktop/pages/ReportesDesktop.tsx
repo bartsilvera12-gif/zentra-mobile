@@ -1,6 +1,6 @@
 "use client";
 
-import { Wallet, ShoppingCart, Scale } from "lucide-react";
+import { Wallet, ShoppingCart, Scale, Megaphone } from "lucide-react";
 import { SettingsModuleCard } from "@/components/config/SettingsModuleCard";
 
 type ReporteCard = {
@@ -35,6 +35,14 @@ const REPORTES: ReporteCard[] = [
       "Comparación y control de movimientos entre caja, bancos, transferencias, efectivo y registros del ERP.",
     icon: Scale,
     href: "/reportes/conciliacion",
+  },
+  {
+    title: "Campañas Meta",
+    subtitle: "Marketing",
+    description:
+      "Efectividad de campañas Meta/Facebook/Instagram según mensajes de WhatsApp, leads y tipificaciones de cierre.",
+    icon: Megaphone,
+    href: "/reportes/campanas-meta",
   },
 ];
 

@@ -5,6 +5,7 @@ import {
 import { createFlowEngine } from "@/lib/chat/flow-engine-service";
 import { flowTrace } from "@/lib/chat/flow-trace-log";
 import { persistInboundChatMessageAndBump } from "@/lib/chat/incoming-message-service";
+import { captureFirstMetaAttribution } from "@/lib/chat/meta-attribution-storage";
 import { assignConversation } from "@/lib/chat/assign-conversation-service";
 import { assignConversationPg } from "@/lib/chat/webhooks/assign-conversation-pg";
 import { createTenantPgChatSupabaseShim } from "@/lib/chat/tenant-pg-chat-supabase-shim";
@@ -1214,6 +1215,29 @@ export async function processInboundWebhookValue(
             message_type,
             messageRowId: inboundRowId,
           });
+
+          // Atribución Meta CTWA (best effort, "first wins"). NO debe interrumpir
+          // el webhook si falla: el storage maneja sus propios errores y nunca
+          // lanza. Solo persiste si msg.referral existe y la conversación aún
+          // no tiene atribución (ver chat_conversation_attribution).
+          try {
+            await captureFirstMetaAttribution({
+              supabase,
+              empresaId,
+              conversationId,
+              contactId,
+              channelId,
+              rawPayload: msg as unknown,
+              messageTimestampIso: ts,
+              sourceMessageId: inboundRowId,
+            });
+          } catch (e) {
+            console.warn(logW, "meta_attribution_threw", {
+              conversationId,
+              waMessageId: waMid,
+              error: e instanceof Error ? e.message : "unknown",
+            });
+          }
         }
       }
 
