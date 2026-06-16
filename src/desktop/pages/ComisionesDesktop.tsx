@@ -17,6 +17,13 @@ const MOVIMIENTO_LABEL: Record<string, string> = {
   factura_pagada: "Factura cobrada",
 };
 
+const ORIGEN_LABEL: Record<string, string> = {
+  auto: "Regla automática",
+  factura: "Marca de factura",
+  override_incluir: "Incluido manual",
+  override_excluir: "Excluido manual",
+};
+
 type Linea = {
   tipo: string;
   cliente_label: string;
@@ -29,6 +36,11 @@ type Linea = {
   cobrado_periodo: number;
   saldo_pendiente: number;
   pendiente_por_comisionar: number;
+  comisiona?: boolean;
+  origen?: "auto" | "factura" | "override_incluir" | "override_excluir";
+  override_motivo?: string | null;
+  override_por?: string | null;
+  override_at?: string | null;
 };
 
 type VendedorRow = {
@@ -36,9 +48,12 @@ type VendedorRow = {
   vendedor_nombre: string;
   cantidad_movimientos: number;
   revenue_base: number;
+  revenue_cobrado_total?: number;
   cobrado_periodo_total: number;
   saldo_pendiente_total: number;
   pendiente_por_comisionar_total: number;
+  lineas_excluidas?: number;
+  lineas_incluidas_manual?: number;
   escala_aplicada: string;
   porcentaje_tramo: number;
   premio_fijo_tramo: number;
@@ -80,11 +95,15 @@ type PreviewMeta = {
 
 type PreviewKpis = {
   revenue_base_total: number;
+  revenue_comisionable_total?: number;
+  revenue_cobrado_total?: number;
   comision_estimada_total: number;
   cobrado_periodo_total: number;
   saldo_pendiente_total: number;
   pendiente_por_comisionar_total: number;
   vendedores_con_comision: number;
+  lineas_excluidas?: number;
+  lineas_incluidas_manual?: number;
   fuentes_sin_vendedor: number;
   alertas_sin_vendedor_pagos: number;
   alertas_sin_vendedor_facturas: number;
@@ -374,7 +393,136 @@ function TotalsStrip({ row }: { row: VendedorRow }) {
   );
 }
 
-function MovimientosTable({ row }: { row: VendedorRow }) {
+function ComisionaBadge({ ln }: { ln: Linea }) {
+  const comisiona = ln.comisiona !== false;
+  const origen = ln.origen ?? "auto";
+  return (
+    <span className="inline-flex flex-col items-start gap-0.5">
+      <span
+        className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold ${
+          comisiona
+            ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+            : "border-slate-200 bg-slate-100 text-slate-500"
+        }`}
+      >
+        <span className={`h-1.5 w-1.5 rounded-full ${comisiona ? "bg-emerald-500" : "bg-slate-400"}`} />
+        {comisiona ? "Comisiona" : "No comisiona"}
+      </span>
+      <span
+        className="text-[9px] text-slate-400"
+        title={
+          ln.override_motivo
+            ? `Motivo: ${ln.override_motivo}${ln.override_por ? ` · ${ln.override_por}` : ""}${
+                ln.override_at ? ` · ${formatDate(ln.override_at)}` : ""
+              }`
+            : undefined
+        }
+      >
+        {ORIGEN_LABEL[origen] ?? origen}
+      </span>
+    </span>
+  );
+}
+
+export type OverrideCtx = {
+  canOverride: boolean;
+  busyPagoId: string | null;
+  onOpen: (ln: Linea) => void;
+  onClear: (pagoId: string) => void;
+};
+
+function OverrideActions({ ln, ctx }: { ln: Linea; ctx?: OverrideCtx }) {
+  if (!ctx?.canOverride || ln.tipo !== "pago" || !ln.pago_id) return <span className="text-slate-300">—</span>;
+  const busy = ctx.busyPagoId === ln.pago_id;
+  const esOverride = ln.origen === "override_incluir" || ln.origen === "override_excluir";
+  return (
+    <div className="flex items-center justify-end gap-1.5">
+      {esOverride ? (
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => ctx.onClear(ln.pago_id as string)}
+          className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-[10px] font-semibold text-slate-600 transition-colors hover:border-slate-300 disabled:opacity-50"
+        >
+          Quitar override
+        </button>
+      ) : null}
+      <button
+        type="button"
+        disabled={busy}
+        onClick={() => ctx.onOpen(ln)}
+        className={`rounded-lg border px-2 py-1 text-[10px] font-semibold transition-colors disabled:opacity-50 ${
+          ln.comisiona !== false
+            ? "border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100"
+            : "border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
+        }`}
+      >
+        {ln.comisiona !== false ? "Excluir" : "Incluir"}
+      </button>
+    </div>
+  );
+}
+
+function OverrideModal({
+  target,
+  busy,
+  onCancel,
+  onConfirm,
+}: {
+  target: { ln: Linea; decision: "incluir" | "excluir" } | null;
+  busy: boolean;
+  onCancel: () => void;
+  onConfirm: (motivo: string) => void;
+}) {
+  const [motivo, setMotivo] = useState("");
+  useEffect(() => {
+    setMotivo("");
+  }, [target?.ln.pago_id]);
+  if (!target) return null;
+  const accion = target.decision === "excluir" ? "Excluir de comisión" : "Incluir en comisión";
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4">
+      <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-5 shadow-xl">
+        <h3 className="text-base font-semibold text-slate-900">{accion}</h3>
+        <p className="mt-1 text-xs text-slate-500">
+          {target.ln.cliente_label} · {target.ln.numero_factura ?? "—"} · ₲ {fmtMoney(target.ln.monto_base)}
+        </p>
+        <label className="mt-4 block">
+          <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+            Motivo (obligatorio)
+          </span>
+          <textarea
+            value={motivo}
+            onChange={(e) => setMotivo(e.target.value)}
+            rows={3}
+            placeholder="Ej.: cliente recurrente, no es venta nueva de implementación"
+            className="mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 shadow-sm focus:border-[#4FAEB2] focus:outline-none focus:ring-2 focus:ring-[#4FAEB2]/20"
+          />
+        </label>
+        <div className="mt-4 flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={onCancel}
+            disabled={busy}
+            className="rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+          >
+            Cancelar
+          </button>
+          <button
+            type="button"
+            onClick={() => onConfirm(motivo.trim())}
+            disabled={busy || motivo.trim().length === 0}
+            className="rounded-xl bg-[#3F8E91] px-3.5 py-2 text-xs font-semibold text-white hover:bg-[#357a7d] disabled:opacity-50"
+          >
+            {busy ? "Guardando…" : "Confirmar"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function MovimientosTable({ row, overrideCtx }: { row: VendedorRow; overrideCtx?: OverrideCtx }) {
   const [query, setQuery] = useState("");
   const lineasFiltradas = useMemo(
     () => row.lineas.filter((ln) => lineaMatchesQuery(ln, query)),
@@ -394,24 +542,26 @@ function MovimientosTable({ row }: { row: VendedorRow }) {
       ) : (
         <div className="overflow-hidden rounded-xl border border-slate-200">
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[980px] text-left text-sm">
+            <table className="w-full min-w-[1200px] text-left text-sm">
               <thead className="bg-slate-50/80">
                 <tr>
                   {[
-                    "Cliente",
-                    "Movimiento",
-                    "Comprobante",
-                    "Fecha",
-                    "Base comisionable",
-                    "Comisión estimada",
-                    "Cobrado",
-                    "Pendiente",
-                    "Pendiente por comisionar",
-                  ].map((h, i) => (
+                    { h: "Cliente", right: false },
+                    { h: "Movimiento", right: false },
+                    { h: "Comprobante", right: false },
+                    { h: "Fecha", right: false },
+                    { h: "Comisiona", right: false },
+                    { h: "Base comisionable", right: true },
+                    { h: "Comisión estimada", right: true },
+                    { h: "Cobrado", right: true },
+                    { h: "Pendiente", right: true },
+                    { h: "Pendiente por comisionar", right: true },
+                    { h: "Acciones", right: true },
+                  ].map(({ h, right }) => (
                     <th
                       key={h}
                       className={`px-4 py-2.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-500 whitespace-nowrap ${
-                        i >= 4 ? "text-right" : "text-left"
+                        right ? "text-right" : "text-left"
                       }`}
                     >
                       {h}
@@ -423,7 +573,9 @@ function MovimientosTable({ row }: { row: VendedorRow }) {
                 {lineasFiltradas.map((ln, i) => (
                   <tr
                     key={`${ln.pago_id ?? ""}-${ln.factura_id ?? ""}-${i}`}
-                    className="transition-colors hover:bg-[#4FAEB2]/[0.04]"
+                    className={`transition-colors hover:bg-[#4FAEB2]/[0.04] ${
+                      ln.comisiona === false ? "bg-slate-50/60" : ""
+                    }`}
                   >
                     <td className="px-4 py-3 text-sm font-medium text-slate-800">{ln.cliente_label}</td>
                     <td className="px-4 py-3 text-xs text-slate-600">
@@ -433,6 +585,9 @@ function MovimientosTable({ row }: { row: VendedorRow }) {
                       {ln.numero_factura ?? "—"}
                     </td>
                     <td className="px-4 py-3 text-xs tabular-nums text-slate-600">{formatDate(ln.fecha)}</td>
+                    <td className="px-4 py-3">
+                      <ComisionaBadge ln={ln} />
+                    </td>
                     <td className="px-4 py-3 text-right text-sm font-semibold tabular-nums text-slate-900">
                       {fmtMoney(ln.monto_base)}
                     </td>
@@ -447,6 +602,9 @@ function MovimientosTable({ row }: { row: VendedorRow }) {
                     </td>
                     <td className="px-4 py-3 text-right text-sm tabular-nums text-slate-700">
                       {fmtMoney(ln.pendiente_por_comisionar ?? 0)}
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <OverrideActions ln={ln} ctx={overrideCtx} />
                     </td>
                   </tr>
                 ))}
@@ -687,12 +845,14 @@ function renderAdminView({
   rows,
   baseLabel,
   onReload,
+  overrideCtx,
 }: {
   meta: PreviewMeta | null | undefined;
   kpis: PreviewKpis | null | undefined;
   rows: VendedorRow[];
   baseLabel: string;
   onReload: () => void;
+  overrideCtx?: OverrideCtx;
 }) {
   return (
     <div className="space-y-6 pb-10">
@@ -809,6 +969,24 @@ function renderAdminView({
           </div>
           <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <Kpi label="Vendedores con comisión" value={kpis.vendedores_con_comision} />
+            <Kpi
+              label="Revenue total cobrado"
+              value={`₲ ${fmtMoney(kpis.revenue_cobrado_total ?? kpis.cobrado_periodo_total ?? 0)}`}
+              sub="Incluye cobros no comisionables"
+            />
+            <Kpi
+              label="Líneas excluidas"
+              value={kpis.lineas_excluidas ?? 0}
+              sub="No comisionan este período"
+              accent={(kpis.lineas_excluidas ?? 0) > 0 ? "warning" : "neutral"}
+            />
+            <Kpi
+              label="Líneas incluidas manual"
+              value={kpis.lineas_incluidas_manual ?? 0}
+              sub="Override de inclusión"
+            />
+          </div>
+          <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <Kpi
               label="Movimientos sin vendedor"
               value={kpis.fuentes_sin_vendedor}
@@ -953,7 +1131,7 @@ function renderAdminView({
                   <div className="space-y-4 border-t border-slate-100 px-5 pb-5 pt-4">
                     <ScaleProgress row={r} />
                     <TotalsStrip row={r} />
-                    <MovimientosTable row={r} />
+                    <MovimientosTable row={r} overrideCtx={overrideCtx} />
                   </div>
                 </details>
               );
@@ -972,6 +1150,10 @@ export default function ComisionesPage() {
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<PreviewPayload | null>(null);
   const [sellerMonth, setSellerMonth] = useState("");
+  const [overrideModal, setOverrideModal] = useState<
+    { ln: Linea; decision: "incluir" | "excluir"; periodoYm: string } | null
+  >(null);
+  const [busyPagoId, setBusyPagoId] = useState<string | null>(null);
 
   const load = useCallback(async (opts?: { mes?: string }) => {
     setLoading(true);
@@ -997,6 +1179,57 @@ export default function ComisionesPage() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  const confirmOverride = useCallback(
+    async (motivo: string) => {
+      if (!overrideModal || !overrideModal.ln.pago_id || !overrideModal.periodoYm) return;
+      const ln = overrideModal.ln;
+      setBusyPagoId(ln.pago_id);
+      try {
+        const res = await fetchWithSupabaseSession("/api/comisiones/override", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            periodo_ym: overrideModal.periodoYm,
+            pago_id: ln.pago_id,
+            factura_id: ln.factura_id,
+            decision: overrideModal.decision,
+            motivo,
+          }),
+        });
+        const json = (await res.json()) as { success?: boolean; error?: string };
+        if (!res.ok || json.success !== true) throw new Error(json.error ?? `Error ${res.status}`);
+        setOverrideModal(null);
+        await load({ mes: overrideModal.periodoYm });
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Error al guardar el override");
+      } finally {
+        setBusyPagoId(null);
+      }
+    },
+    [overrideModal, load]
+  );
+
+  const clearOverride = useCallback(
+    async (pagoId: string, periodoYm: string) => {
+      if (!periodoYm) return;
+      setBusyPagoId(pagoId);
+      try {
+        const res = await fetchWithSupabaseSession(
+          `/api/comisiones/override?periodo_ym=${encodeURIComponent(periodoYm)}&pago_id=${encodeURIComponent(pagoId)}`,
+          { method: "DELETE" }
+        );
+        const json = (await res.json()) as { success?: boolean; error?: string };
+        if (!res.ok || json.success !== true) throw new Error(json.error ?? `Error ${res.status}`);
+        await load({ mes: periodoYm });
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Error al quitar el override");
+      } finally {
+        setBusyPagoId(null);
+      }
+    },
+    [load]
+  );
 
   if (loading) {
     return (
@@ -1105,11 +1338,31 @@ export default function ComisionesPage() {
     });
   }
 
-  return renderAdminView({
-    meta,
-    kpis,
-    rows,
-    baseLabel,
-    onReload: () => void load(),
-  });
+  const periodoYm = meta?.periodo_mes ?? "";
+  const overrideCtx: OverrideCtx = {
+    canOverride: !isSellerView,
+    busyPagoId,
+    onOpen: (ln) =>
+      setOverrideModal({ ln, decision: ln.comisiona !== false ? "excluir" : "incluir", periodoYm }),
+    onClear: (pagoId) => void clearOverride(pagoId, periodoYm),
+  };
+
+  return (
+    <>
+      {renderAdminView({
+        meta,
+        kpis,
+        rows,
+        baseLabel,
+        onReload: () => void load({ mes: periodoYm }),
+        overrideCtx,
+      })}
+      <OverrideModal
+        target={overrideModal}
+        busy={busyPagoId != null}
+        onCancel={() => setOverrideModal(null)}
+        onConfirm={(motivo) => void confirmOverride(motivo)}
+      />
+    </>
+  );
 }

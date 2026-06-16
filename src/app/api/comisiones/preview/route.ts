@@ -18,6 +18,11 @@ import {
   type TierResult,
 } from "@/lib/comisiones/comision-preview-calculator";
 import { requireComisionesModuleAccess } from "@/lib/comisiones/comisiones-auth";
+import {
+  resolverComisionable,
+  type OrigenComisionable,
+  type OverrideDecision,
+} from "@/lib/comisiones/comisionabilidad";
 import { esRolAdminEmpresaOGlobal } from "@/lib/auth/rol-empresa";
 import { errorResponse, successResponse } from "@/lib/api/response";
 import { createServiceRoleClient } from "@/lib/supabase/service-admin";
@@ -36,6 +41,21 @@ type LineaPreview = {
   cobrado_periodo: number;
   saldo_pendiente: number;
   pendiente_por_comisionar: number;
+  /** Si esta línea entra en el cálculo de comisión del período. */
+  comisiona: boolean;
+  /** Origen de la decisión de comisionabilidad. */
+  origen: OrigenComisionable;
+  /** Auditoría del override (solo si origen es override_*). */
+  override_motivo?: string | null;
+  override_por?: string | null;
+  override_at?: string | null;
+};
+
+type OverrideRow = {
+  decision: OverrideDecision;
+  motivo: string | null;
+  decidido_por_email: string | null;
+  decidido_at: string | null;
 };
 
 const PAGE = 800;
@@ -288,6 +308,30 @@ export async function GET(request: Request) {
     const period = computePreviewPeriod(periodAnchor, tz, modoPeriodo);
     const desdeYmd = period.fechaInicioLocal;
     const hastaYmd = period.fechaFinLocal;
+    const periodoYm = desdeYmd.slice(0, 7);
+
+    // Overrides manuales del período (por pago). Precedencia máxima en comisionabilidad.
+    const overridePorPago = new Map<string, OverrideRow>();
+    {
+      const { data: ovRows } = await sb
+        .from("comision_overrides")
+        .select("pago_id, decision, motivo, decidido_por_email, decidido_at")
+        .eq("empresa_id", empresaId)
+        .eq("periodo_ym", periodoYm)
+        .eq("ambito", "pago");
+      for (const r of (ovRows ?? []) as Record<string, unknown>[]) {
+        const pid = String(r.pago_id ?? "");
+        if (!pid) continue;
+        const decision = String(r.decision ?? "");
+        if (decision !== "incluir" && decision !== "excluir") continue;
+        overridePorPago.set(pid, {
+          decision: decision as OverrideDecision,
+          motivo: r.motivo == null ? null : String(r.motivo),
+          decidido_por_email: r.decidido_por_email == null ? null : String(r.decidido_por_email),
+          decidido_at: r.decidido_at == null ? null : String(r.decidido_at),
+        });
+      }
+    }
 
     const clientesRows: Record<string, unknown>[] = [];
     for (let from = 0; ; from += PAGE) {
@@ -372,6 +416,40 @@ export async function GET(request: Request) {
         }
       }
 
+      // Recurrencia por factura: el cliente tiene OTRA factura válida con fecha de
+      // emisión anterior a la de la factura actual (se resuelve por factura, no por mes).
+      const clienteIdsScope = [
+        ...new Set([...facturasPorId.values()].map((f) => String(f.cliente_id ?? "")).filter(Boolean)),
+      ];
+      const histPorCliente = new Map<string, { fecha: string; valida: boolean }[]>();
+      for (let i = 0; i < clienteIdsScope.length; i += 120) {
+        const slice = clienteIdsScope.slice(i, i + 120);
+        const { data: hist, error } = await sb
+          .from("facturas")
+          .select("cliente_id, fecha, estado")
+          .eq("empresa_id", empresaId)
+          .in("cliente_id", slice);
+        if (error) throw new Error(error.message);
+        for (const h of (hist ?? []) as Record<string, unknown>[]) {
+          const cid = String(h.cliente_id ?? "");
+          if (!cid) continue;
+          const arr = histPorCliente.get(cid) ?? [];
+          arr.push({
+            fecha: h.fecha != null ? String(h.fecha).slice(0, 10) : "",
+            valida: !esFacturaAnuladaPreview(String(h.estado ?? "")) && !esFacturaCorregidaNcPreview(String(h.estado ?? "")),
+          });
+          histPorCliente.set(cid, arr);
+        }
+      }
+      const esRecurrentePorFactura = new Map<string, boolean>();
+      for (const fac of facturasPorId.values()) {
+        const cid = String(fac.cliente_id ?? "");
+        const fechaFac = fac.fecha != null ? String(fac.fecha).slice(0, 10) : "";
+        const hist = histPorCliente.get(cid) ?? [];
+        const recurrente = hist.some((h) => h.valida && h.fecha !== "" && fechaFac !== "" && h.fecha < fechaFac);
+        esRecurrentePorFactura.set(String(fac.id), recurrente);
+      }
+
       for (const p of pagos) {
         const fid = String(p.factura_id ?? "");
         const fac = facturasPorId.get(fid);
@@ -382,6 +460,16 @@ export async function GET(request: Request) {
         const net = netFact(fac);
         const saldoPendiente = saldoPendienteFactura(fac, net);
         const fecha = p.fecha_pago != null ? String(p.fecha_pago) : null;
+        const pagoId = String(p.id ?? "");
+        const override = overridePorPago.get(pagoId) ?? null;
+        const { comisiona, origen } = resolverComisionable({
+          override: override?.decision ?? null,
+          facturaComisionable: fac.comisionable ?? null,
+          tipo: fac.tipo ?? null,
+          tieneSuscripcion: fac.suscripcion_id != null && String(fac.suscripcion_id).trim() !== "",
+          facturaInvalida: false, // ya filtrado arriba (anulada/corregida)
+          clienteEsRecurrente: esRecurrentePorFactura.get(fid) ?? false,
+        });
         pushLine(
           {
             tipo: "pago",
@@ -389,13 +477,18 @@ export async function GET(request: Request) {
             cliente_label: clienteNombre.get(clienteId) ?? clienteId,
             factura_id: fid,
             numero_factura: fac.numero_factura ?? null,
-            pago_id: String(p.id ?? ""),
+            pago_id: pagoId,
             fecha,
             monto_base: monto,
             comision_estimada_linea: 0,
             cobrado_periodo: roundMoney(monto),
             saldo_pendiente: saldoPendiente,
             pendiente_por_comisionar: saldoPendiente,
+            comisiona,
+            origen,
+            override_motivo: override?.motivo ?? null,
+            override_por: override?.decidido_por_email ?? null,
+            override_at: override?.decidido_at ?? null,
           },
           Boolean(vid),
           "pago"
@@ -460,6 +553,8 @@ export async function GET(request: Request) {
             cobrado_periodo: cobradoPeriodo,
             saldo_pendiente: saldoPendiente,
             pendiente_por_comisionar: 0,
+            comisiona: true,
+            origen: "auto",
           },
           Boolean(vid),
           "factura"
@@ -535,6 +630,8 @@ export async function GET(request: Request) {
               cobrado_periodo: roundMoney(sumPagosPeriodoPorFactura.get(fid) ?? 0),
               saldo_pendiente: saldoPendiente,
               pendiente_por_comisionar: 0,
+              comisiona: true,
+              origen: "auto",
             },
             Boolean(vid),
             "factura"
@@ -554,11 +651,15 @@ export async function GET(request: Request) {
 
     type Agg = {
       vendorId: string;
-      revenue: number;
-      cobradoPeriodo: number;
+      /** Base que alimenta la escala: SOLO líneas comisionables. */
+      revenueComisionable: number;
+      /** Total cobrado del período (comisione o no) — informativo. */
+      cobradoTotal: number;
       saldoPendiente: number;
       pendientePorComisionar: number;
       facturasConPendiente: Set<string>;
+      lineasExcluidas: number;
+      lineasIncluidasManual: number;
       lines: LineaPreview[];
     };
     const porVendor = new Map<string, Agg>();
@@ -572,22 +673,29 @@ export async function GET(request: Request) {
       if (!agg) {
         agg = {
           vendorId: vid,
-          revenue: 0,
-          cobradoPeriodo: 0,
+          revenueComisionable: 0,
+          cobradoTotal: 0,
           saldoPendiente: 0,
           pendientePorComisionar: 0,
           facturasConPendiente: new Set(),
+          lineasExcluidas: 0,
+          lineasIncluidasManual: 0,
           lines: [],
         };
         porVendor.set(vid, agg);
       }
-      agg.revenue += ln.monto_base;
-      agg.cobradoPeriodo += ln.cobrado_periodo;
-      const facturaKey = ln.factura_id ?? `linea-${agg.lines.length}`;
-      if (!agg.facturasConPendiente.has(facturaKey)) {
-        agg.facturasConPendiente.add(facturaKey);
-        agg.saldoPendiente += ln.saldo_pendiente;
-        agg.pendientePorComisionar += ln.pendiente_por_comisionar;
+      agg.cobradoTotal += ln.cobrado_periodo;
+      if (ln.comisiona) {
+        agg.revenueComisionable += ln.monto_base;
+        const facturaKey = ln.factura_id ?? `linea-${agg.lines.length}`;
+        if (!agg.facturasConPendiente.has(facturaKey)) {
+          agg.facturasConPendiente.add(facturaKey);
+          agg.saldoPendiente += ln.saldo_pendiente;
+          agg.pendientePorComisionar += ln.pendiente_por_comisionar;
+        }
+        if (ln.origen === "override_incluir") agg.lineasIncluidasManual += 1;
+      } else {
+        agg.lineasExcluidas += 1;
       }
       agg.lines.push({ ...ln });
     }
@@ -601,32 +709,48 @@ export async function GET(request: Request) {
     let cobradoTotal = 0;
     let pendienteCobroTotal = 0;
     let pendienteComisionarTotal = 0;
+    let lineasExcluidasTotal = 0;
+    let lineasIncluidasManualTotal = 0;
 
     for (const [, agg] of porVendor) {
-      revenueTotal += agg.revenue;
-      cobradoTotal += agg.cobradoPeriodo;
+      revenueTotal += agg.revenueComisionable;
+      cobradoTotal += agg.cobradoTotal;
       pendienteCobroTotal += agg.saldoPendiente;
       pendienteComisionarTotal += agg.pendientePorComisionar;
-      const tier: TierResult | null = sinEscalas ? null : resolverTramo(agg.revenue, escalas);
-      const comisionVen = sinEscalas ? 0 : comisionPorTramo(agg.revenue, tier);
-      const progresoEscala = calcularProgresoEscala(agg.revenue, escalas);
+      lineasExcluidasTotal += agg.lineasExcluidas;
+      lineasIncluidasManualTotal += agg.lineasIncluidasManual;
+      const tier: TierResult | null = sinEscalas ? null : resolverTramo(agg.revenueComisionable, escalas);
+      const comisionVen = sinEscalas ? 0 : comisionPorTramo(agg.revenueComisionable, tier);
+      const progresoEscala = calcularProgresoEscala(agg.revenueComisionable, escalas);
       comisionTotal += comisionVen;
 
-      const montos = agg.lines.map((l) => l.monto_base);
-      const shares = repartoProporcional(comisionVen, montos);
-      const linesOut = agg.lines.map((l, i) => ({
-        ...l,
-        comision_estimada_linea: shares[i] ?? 0,
-      }));
+      // El reparto proporcional se hace SOLO sobre líneas comisionables.
+      const idxComisionables: number[] = [];
+      const montosComisionables: number[] = [];
+      agg.lines.forEach((l, i) => {
+        if (l.comisiona) {
+          idxComisionables.push(i);
+          montosComisionables.push(l.monto_base);
+        }
+      });
+      const sharesC = repartoProporcional(comisionVen, montosComisionables);
+      const linesOut = agg.lines.map((l) => ({ ...l, comision_estimada_linea: 0 }));
+      idxComisionables.forEach((idx, k) => {
+        const out = linesOut[idx];
+        if (out) out.comision_estimada_linea = sharesC[k] ?? 0;
+      });
 
       porVendedorOut.push({
         vendedor_usuario_id: agg.vendorId,
         vendedor_nombre: nombres.get(agg.vendorId) ?? agg.vendorId.slice(0, 8),
         cantidad_movimientos: agg.lines.length,
-        revenue_base: Math.round(agg.revenue * 100) / 100,
-        cobrado_periodo_total: roundMoney(agg.cobradoPeriodo),
+        revenue_base: Math.round(agg.revenueComisionable * 100) / 100,
+        revenue_cobrado_total: roundMoney(agg.cobradoTotal),
+        cobrado_periodo_total: roundMoney(agg.cobradoTotal),
         saldo_pendiente_total: roundMoney(agg.saldoPendiente),
         pendiente_por_comisionar_total: roundMoney(agg.pendientePorComisionar),
+        lineas_excluidas: agg.lineasExcluidas,
+        lineas_incluidas_manual: agg.lineasIncluidasManual,
         escala_aplicada: tier?.etiqueta ?? (sinEscalas ? "Sin escalas configuradas" : "—"),
         porcentaje_tramo: tier?.porcentaje ?? 0,
         premio_fijo_tramo: tier?.premioFijo ?? 0,
@@ -644,11 +768,15 @@ export async function GET(request: Request) {
 
     const kpis = {
       revenue_base_total: Math.round(revenueTotal * 100) / 100,
+      revenue_comisionable_total: Math.round(revenueTotal * 100) / 100,
+      revenue_cobrado_total: roundMoney(cobradoTotal),
       comision_estimada_total: Math.round(comisionTotal * 100) / 100,
       cobrado_periodo_total: roundMoney(cobradoTotal),
       saldo_pendiente_total: roundMoney(pendienteCobroTotal),
       pendiente_por_comisionar_total: roundMoney(pendienteComisionarTotal),
       vendedores_con_comision: porVendedorOut.length,
+      lineas_excluidas: lineasExcluidasTotal,
+      lineas_incluidas_manual: lineasIncluidasManualTotal,
       fuentes_sin_vendedor: fuentesSinVendedorKpi,
       alertas_sin_vendedor_pagos: soloVendedor ? 0 : alertasSinVendedorPagos,
       alertas_sin_vendedor_facturas: soloVendedor ? 0 : alertasSinVendedorFacturas,

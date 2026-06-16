@@ -68,7 +68,15 @@ export default function ComisionesMobile() {
             {formatGs(data.kpis.comision_estimada_total)}
           </p>
           <p className="mt-0.5 text-xs text-slate-600">
-            Sobre {formatGs(data.kpis.revenue_base_total)} de base · {data.kpis.vendedores_con_comision} vendedor(es)
+            Sobre {formatGs(data.kpis.revenue_comisionable_total ?? data.kpis.revenue_base_total)} comisionable ·{" "}
+            {data.kpis.vendedores_con_comision} vendedor(es)
+          </p>
+          <p className="mt-0.5 text-[11px] text-slate-500">
+            Cobrado total {formatGs(data.kpis.revenue_cobrado_total ?? data.kpis.cobrado_periodo_total)} ·{" "}
+            {data.kpis.lineas_excluidas ?? 0} excluida(s)
+            {(data.kpis.lineas_incluidas_manual ?? 0) > 0
+              ? ` · ${data.kpis.lineas_incluidas_manual} incluida(s) manual`
+              : ""}
           </p>
         </div>
       ) : null}
@@ -93,6 +101,9 @@ export default function ComisionesMobile() {
         >
           Ver detalle por línea <ArrowUpRight className="h-3.5 w-3.5" />
         </Link>
+        <p className="mt-2 text-center text-[11px] text-slate-400">
+          Las inclusiones/exclusiones de comisión se gestionan desde el detalle (escritorio).
+        </p>
       </div>
     </div>
   );
@@ -112,6 +123,7 @@ function VendedorCard({ v }: { v: ComisionVendedorRow }) {
             </div>
             <p className="mt-0.5 text-[11px] text-slate-500">
               {v.cantidad_movimientos} movimientos · {formatPct(v.porcentaje_tramo)}
+              {v.lineas_excluidas ? ` · ${v.lineas_excluidas} excluida(s)` : ""}
             </p>
           </div>
           <div className="shrink-0 text-right">

@@ -11,6 +11,14 @@ export interface FacturaPreviewRow {
   monto: number;
   saldo: number;
   estado: string;
+  /** Flag durable de comisionabilidad: true | false | null (null = regla automática). */
+  comisionable?: boolean | null;
+  /** Categoría comercial opcional (implementacion_nueva, recurrente, …). */
+  categoria_comision?: string | null;
+  /** Tipo de factura (p. ej. 'contado' | 'suscripcion'). */
+  tipo?: string | null;
+  /** FK a suscripción si la factura es recurrente. */
+  suscripcion_id?: string | null;
 }
 
 export interface NotaCreditoPreviewRow {

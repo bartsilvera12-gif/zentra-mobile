@@ -15,6 +15,11 @@ export type ComisionLinea = {
   cobrado_periodo: number;
   saldo_pendiente: number;
   pendiente_por_comisionar: number;
+  comisiona?: boolean;
+  origen?: "auto" | "factura" | "override_incluir" | "override_excluir";
+  override_motivo?: string | null;
+  override_por?: string | null;
+  override_at?: string | null;
 };
 
 export type ComisionVendedorRow = {
@@ -25,6 +30,9 @@ export type ComisionVendedorRow = {
   cobrado_periodo_total: number;
   saldo_pendiente_total: number;
   pendiente_por_comisionar_total: number;
+  revenue_cobrado_total?: number;
+  lineas_excluidas?: number;
+  lineas_incluidas_manual?: number;
   escala_aplicada: string;
   porcentaje_tramo: number;
   premio_fijo_tramo: number;
@@ -36,10 +44,14 @@ export type ComisionVendedorRow = {
 
 export type ComisionKpis = {
   revenue_base_total: number;
+  revenue_comisionable_total?: number;
+  revenue_cobrado_total?: number;
   comision_estimada_total: number;
   cobrado_periodo_total: number;
   saldo_pendiente_total: number;
   vendedores_con_comision: number;
+  lineas_excluidas?: number;
+  lineas_incluidas_manual?: number;
 };
 
 export type ComisionPreviewPayload = {
