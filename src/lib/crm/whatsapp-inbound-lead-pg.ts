@@ -32,6 +32,9 @@ export async function ensureWhatsappInboundCrmLeadPg(input: {
   const conv = quoteSchemaTable(schema, "chat_conversations");
   const ch = quoteSchemaTable(schema, "chat_channels");
   const ag = quoteSchemaTable(schema, "chat_agents");
+  // `usuarios` vive en cada schema tenant (no en public): el ERP self-hosted
+  // de Neura tiene su catálogo en `neura`, otros tenants en su schema propio.
+  const us = quoteSchemaTable(schema, "usuarios");
 
   const client = await input.pool.connect();
   try {
@@ -151,7 +154,7 @@ export async function ensureWhatsappInboundCrmLeadPg(input: {
               u.email::text AS email
        FROM ${conv} c
        LEFT JOIN ${ag} a ON a.id = c.assigned_agent_id AND a.empresa_id = c.empresa_id
-       LEFT JOIN public.usuarios u ON u.id = a.usuario_id
+       LEFT JOIN ${us} u ON u.id = a.usuario_id
        WHERE c.id = $1::uuid AND c.empresa_id = $2::uuid
        LIMIT 1`,
       [input.conversation_id, input.empresa_id]
