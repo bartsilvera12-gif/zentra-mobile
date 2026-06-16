@@ -22,11 +22,9 @@ BEGIN
     JOIN pg_namespace n ON n.oid = c.relnamespace
     WHERE c.relname = 'crm_prospectos'
       AND c.relkind = 'r'
-      AND (
-        n.nspname IN ('public', 'zentra_erp', 'neura')
-        OR n.nspname ~ '^er_[0-9a-f]{32}$'
-        OR n.nspname LIKE 'erp\_%' ESCAPE '\'
-      )
+      -- Alcance inicial: solo `neura`. Para habilitar en otros tenants,
+      -- extender este IN con su nspname (mariacuevas, ncgconstructora, etc.).
+      AND n.nspname IN ('neura')
   LOOP
     EXECUTE format(
       'ALTER TABLE %I.crm_prospectos

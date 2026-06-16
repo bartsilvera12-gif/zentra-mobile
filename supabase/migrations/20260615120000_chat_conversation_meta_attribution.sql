@@ -29,11 +29,9 @@ BEGIN
     JOIN pg_namespace n ON n.oid = c.relnamespace
     WHERE c.relname = 'chat_conversations'
       AND c.relkind = 'r'
-      AND (
-        n.nspname IN ('public', 'zentra_erp', 'neura')
-        OR n.nspname ~ '^er_[0-9a-f]{32}$'
-        OR n.nspname LIKE 'erp\_%' ESCAPE '\'
-      )
+      -- Alcance inicial: solo `neura`. Para habilitar en otros tenants,
+      -- extender este IN con su nspname (mariacuevas, ncgconstructora, etc.).
+      AND n.nspname IN ('neura')
   LOOP
     -- Crear tabla si no existe
     IF to_regclass(format('%I.chat_conversation_attribution', r.sch)) IS NULL THEN
@@ -121,8 +119,8 @@ BEGIN
       CREATE POLICY chat_conversation_attribution_select
         ON %I.chat_conversation_attribution
         FOR SELECT
-        USING (public.puede_acceder_empresa(empresa_id))
-    $p$, r.sch, r.sch);
+        USING (%I.puede_acceder_empresa(empresa_id))
+    $p$, r.sch, r.sch, r.sch);
 
     EXECUTE format($p$
       DROP POLICY IF EXISTS chat_conversation_attribution_insert
@@ -130,8 +128,8 @@ BEGIN
       CREATE POLICY chat_conversation_attribution_insert
         ON %I.chat_conversation_attribution
         FOR INSERT
-        WITH CHECK (public.puede_acceder_empresa(empresa_id))
-    $p$, r.sch, r.sch);
+        WITH CHECK (%I.puede_acceder_empresa(empresa_id))
+    $p$, r.sch, r.sch, r.sch);
 
     EXECUTE format($p$
       DROP POLICY IF EXISTS chat_conversation_attribution_update
@@ -139,9 +137,9 @@ BEGIN
       CREATE POLICY chat_conversation_attribution_update
         ON %I.chat_conversation_attribution
         FOR UPDATE
-        USING (public.puede_acceder_empresa(empresa_id))
-        WITH CHECK (public.puede_acceder_empresa(empresa_id))
-    $p$, r.sch, r.sch);
+        USING (%I.puede_acceder_empresa(empresa_id))
+        WITH CHECK (%I.puede_acceder_empresa(empresa_id))
+    $p$, r.sch, r.sch, r.sch, r.sch);
 
     -- Comentarios
     EXECUTE format(

@@ -25,11 +25,9 @@ BEGIN
     JOIN pg_namespace n ON n.oid = c.relnamespace
     WHERE c.relname = 'chat_conversations'
       AND c.relkind = 'r'
-      AND (
-        n.nspname IN ('public', 'zentra_erp', 'neura')
-        OR n.nspname ~ '^er_[0-9a-f]{32}$'
-        OR n.nspname LIKE 'erp\_%' ESCAPE '\'
-      )
+      -- Alcance inicial: solo `neura`. Para habilitar en otros tenants,
+      -- extender este IN con su nspname (mariacuevas, ncgconstructora, etc.).
+      AND n.nspname IN ('neura')
   LOOP
     IF to_regclass(format('%I.empresa_outcome_mapping', r.sch)) IS NULL THEN
       EXECUTE format($ct$
@@ -79,8 +77,8 @@ BEGIN
       CREATE POLICY empresa_outcome_mapping_select
         ON %I.empresa_outcome_mapping
         FOR SELECT
-        USING (public.puede_acceder_empresa(empresa_id))
-    $p$, r.sch, r.sch);
+        USING (%I.puede_acceder_empresa(empresa_id))
+    $p$, r.sch, r.sch, r.sch);
 
     EXECUTE format($p$
       DROP POLICY IF EXISTS empresa_outcome_mapping_insert
@@ -88,8 +86,8 @@ BEGIN
       CREATE POLICY empresa_outcome_mapping_insert
         ON %I.empresa_outcome_mapping
         FOR INSERT
-        WITH CHECK (public.puede_acceder_empresa(empresa_id))
-    $p$, r.sch, r.sch);
+        WITH CHECK (%I.puede_acceder_empresa(empresa_id))
+    $p$, r.sch, r.sch, r.sch);
 
     EXECUTE format($p$
       DROP POLICY IF EXISTS empresa_outcome_mapping_update
@@ -97,9 +95,9 @@ BEGIN
       CREATE POLICY empresa_outcome_mapping_update
         ON %I.empresa_outcome_mapping
         FOR UPDATE
-        USING (public.puede_acceder_empresa(empresa_id))
-        WITH CHECK (public.puede_acceder_empresa(empresa_id))
-    $p$, r.sch, r.sch);
+        USING (%I.puede_acceder_empresa(empresa_id))
+        WITH CHECK (%I.puede_acceder_empresa(empresa_id))
+    $p$, r.sch, r.sch, r.sch, r.sch);
 
     EXECUTE format($p$
       DROP POLICY IF EXISTS empresa_outcome_mapping_delete
@@ -107,8 +105,8 @@ BEGIN
       CREATE POLICY empresa_outcome_mapping_delete
         ON %I.empresa_outcome_mapping
         FOR DELETE
-        USING (public.puede_acceder_empresa(empresa_id))
-    $p$, r.sch, r.sch);
+        USING (%I.puede_acceder_empresa(empresa_id))
+    $p$, r.sch, r.sch, r.sch);
 
     EXECUTE format(
       $c$ COMMENT ON TABLE %I.empresa_outcome_mapping IS
