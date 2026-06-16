@@ -49,6 +49,10 @@ type LineaPreview = {
   override_motivo?: string | null;
   override_por?: string | null;
   override_at?: string | null;
+  /** Fecha de alta del cliente (clientes.created_at, YYYY-MM-DD). */
+  cliente_alta?: string | null;
+  /** Monto total de la factura asociada. */
+  factura_monto_total?: number | null;
 };
 
 type OverrideRow = {
@@ -337,7 +341,7 @@ export async function GET(request: Request) {
     for (let from = 0; ; from += PAGE) {
       const { data, error } = await sb
         .from("clientes")
-        .select("id, empresa, nombre_contacto, vendedor_usuario_id")
+        .select("id, empresa, nombre_contacto, vendedor_usuario_id, created_at")
         .eq("empresa_id", empresaId)
         .range(from, from + PAGE - 1);
       if (error) throw new Error(error.message);
@@ -348,12 +352,14 @@ export async function GET(request: Request) {
 
     const clienteNombre = new Map<string, string>();
     const clienteVendedor = new Map<string, string | null>();
+    const clienteAlta = new Map<string, string | null>();
     for (const c of clientesRows) {
       const id = String(c.id ?? "");
       const nom = String(c.nombre_contacto ?? c.empresa ?? "").trim() || id.slice(0, 8);
       clienteNombre.set(id, nom);
       const v = c.vendedor_usuario_id;
       clienteVendedor.set(id, typeof v === "string" && v.trim() ? v.trim() : null);
+      clienteAlta.set(id, c.created_at != null ? String(c.created_at).slice(0, 10) : null);
     }
 
     const { ncMap, alertaNetoSinNc } = await cargarNcAprobadasPorFacturaId(sb, empresaId);
@@ -489,6 +495,8 @@ export async function GET(request: Request) {
             override_motivo: override?.motivo ?? null,
             override_por: override?.decidido_por_email ?? null,
             override_at: override?.decidido_at ?? null,
+            cliente_alta: clienteAlta.get(clienteId) ?? null,
+            factura_monto_total: Number(fac.monto) || 0,
           },
           Boolean(vid),
           "pago"
@@ -555,6 +563,8 @@ export async function GET(request: Request) {
             pendiente_por_comisionar: 0,
             comisiona: true,
             origen: "auto",
+            cliente_alta: clienteAlta.get(clienteId) ?? null,
+            factura_monto_total: Number(fac.monto) || 0,
           },
           Boolean(vid),
           "factura"
@@ -632,6 +642,8 @@ export async function GET(request: Request) {
               pendiente_por_comisionar: 0,
               comisiona: true,
               origen: "auto",
+              cliente_alta: clienteAlta.get(clienteId) ?? null,
+              factura_monto_total: Number(fac.monto) || 0,
             },
             Boolean(vid),
             "factura"

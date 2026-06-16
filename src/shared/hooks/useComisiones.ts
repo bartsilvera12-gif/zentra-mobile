@@ -20,6 +20,8 @@ export type ComisionLinea = {
   override_motivo?: string | null;
   override_por?: string | null;
   override_at?: string | null;
+  cliente_alta?: string | null;
+  factura_monto_total?: number | null;
 };
 
 export type ComisionVendedorRow = {

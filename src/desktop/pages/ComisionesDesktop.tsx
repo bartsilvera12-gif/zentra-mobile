@@ -17,13 +17,6 @@ const MOVIMIENTO_LABEL: Record<string, string> = {
   factura_pagada: "Factura cobrada",
 };
 
-const ORIGEN_LABEL: Record<string, string> = {
-  auto: "Regla automática",
-  factura: "Marca de factura",
-  override_incluir: "Incluido manual",
-  override_excluir: "Excluido manual",
-};
-
 type Linea = {
   tipo: string;
   cliente_label: string;
@@ -41,6 +34,8 @@ type Linea = {
   override_motivo?: string | null;
   override_por?: string | null;
   override_at?: string | null;
+  cliente_alta?: string | null;
+  factura_monto_total?: number | null;
 };
 
 type VendedorRow = {
@@ -393,37 +388,6 @@ function TotalsStrip({ row }: { row: VendedorRow }) {
   );
 }
 
-function ComisionaBadge({ ln }: { ln: Linea }) {
-  const comisiona = ln.comisiona !== false;
-  const origen = ln.origen ?? "auto";
-  return (
-    <span className="inline-flex flex-col items-start gap-0.5">
-      <span
-        className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold ${
-          comisiona
-            ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-            : "border-slate-200 bg-slate-100 text-slate-500"
-        }`}
-      >
-        <span className={`h-1.5 w-1.5 rounded-full ${comisiona ? "bg-emerald-500" : "bg-slate-400"}`} />
-        {comisiona ? "Comisiona" : "No comisiona"}
-      </span>
-      <span
-        className="text-[9px] text-slate-400"
-        title={
-          ln.override_motivo
-            ? `Motivo: ${ln.override_motivo}${ln.override_por ? ` · ${ln.override_por}` : ""}${
-                ln.override_at ? ` · ${formatDate(ln.override_at)}` : ""
-              }`
-            : undefined
-        }
-      >
-        {ORIGEN_LABEL[origen] ?? origen}
-      </span>
-    </span>
-  );
-}
-
 export type OverrideCtx = {
   canOverride: boolean;
   busyPagoId: string | null;
@@ -475,9 +439,6 @@ function OverrideModal({
   onConfirm: (motivo: string) => void;
 }) {
   const [motivo, setMotivo] = useState("");
-  useEffect(() => {
-    setMotivo("");
-  }, [target?.ln.pago_id]);
   if (!target) return null;
   const accion = target.decision === "excluir" ? "Excluir de comisión" : "Incluir en comisión";
   return (
@@ -522,41 +483,128 @@ function OverrideModal({
   );
 }
 
+function motivoExclusionLabel(ln: Linea): string {
+  if (ln.origen === "override_excluir") {
+    return ln.override_motivo?.trim() ? ln.override_motivo : "Excluido manualmente";
+  }
+  if (ln.origen === "factura") return "Factura marcada no comisionable";
+  return "No es venta nueva (cliente recurrente / suscripción)";
+}
+
+function ExcluidosToggle({
+  mostrar,
+  onToggle,
+  countExcluidos,
+}: {
+  mostrar: boolean;
+  onToggle: () => void;
+  countExcluidos: number;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      className={`inline-flex items-center gap-1.5 rounded-xl border px-3 py-2 text-xs font-semibold transition-colors ${
+        mostrar
+          ? "border-[#4FAEB2] bg-[#4FAEB2]/10 text-[#3F8E91]"
+          : "border-slate-200 bg-white text-slate-600 hover:border-[#4FAEB2]/60"
+      }`}
+    >
+      {mostrar ? "Ver comisionables" : `Mostrar excluidos${countExcluidos ? ` (${countExcluidos})` : ""}`}
+    </button>
+  );
+}
+
 function MovimientosTable({ row, overrideCtx }: { row: VendedorRow; overrideCtx?: OverrideCtx }) {
   const [query, setQuery] = useState("");
+  const [mostrarExcluidos, setMostrarExcluidos] = useState(false);
+
+  const comisionables = useMemo(() => row.lineas.filter((l) => l.comisiona !== false), [row.lineas]);
+  const excluidas = useMemo(() => row.lineas.filter((l) => l.comisiona === false), [row.lineas]);
+  const base = mostrarExcluidos ? excluidas : comisionables;
   const lineasFiltradas = useMemo(
-    () => row.lineas.filter((ln) => lineaMatchesQuery(ln, query)),
-    [row.lineas, query]
+    () => base.filter((ln) => lineaMatchesQuery(ln, query)),
+    [base, query]
   );
 
   return (
     <div className="space-y-3">
-      <MovimientosSearch
-        value={query}
-        onChange={setQuery}
-        shown={lineasFiltradas.length}
-        total={row.lineas.length}
-      />
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex-1 min-w-[200px]">
+          <MovimientosSearch value={query} onChange={setQuery} shown={lineasFiltradas.length} total={base.length} />
+        </div>
+        <ExcluidosToggle
+          mostrar={mostrarExcluidos}
+          onToggle={() => setMostrarExcluidos((v) => !v)}
+          countExcluidos={excluidas.length}
+        />
+      </div>
+
       {lineasFiltradas.length === 0 ? (
         <MovimientosEmptyState />
+      ) : mostrarExcluidos ? (
+        // ── Vista de auditoría / excluidos ──
+        <div className="overflow-hidden rounded-xl border border-amber-200">
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[760px] text-left text-sm">
+              <thead className="bg-amber-50/70">
+                <tr>
+                  {[
+                    { h: "Cliente", right: false },
+                    { h: "Factura", right: false },
+                    { h: "Fecha de pago", right: false },
+                    { h: "Monto pagado", right: true },
+                    { h: "Motivo / origen", right: false },
+                    { h: "Acción", right: true },
+                  ].map(({ h, right }) => (
+                    <th
+                      key={h}
+                      className={`px-4 py-2.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-amber-700 whitespace-nowrap ${
+                        right ? "text-right" : "text-left"
+                      }`}
+                    >
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-amber-100/70">
+                {lineasFiltradas.map((ln, i) => (
+                  <tr key={`${ln.pago_id ?? ""}-${ln.factura_id ?? ""}-${i}`} className="hover:bg-amber-50/40">
+                    <td className="px-4 py-3 text-sm font-medium text-slate-800">{ln.cliente_label}</td>
+                    <td className="px-4 py-3 text-xs font-medium text-slate-700">{ln.numero_factura ?? "—"}</td>
+                    <td className="px-4 py-3 text-xs tabular-nums text-slate-600">{formatDate(ln.fecha)}</td>
+                    <td className="px-4 py-3 text-right text-sm font-semibold tabular-nums text-slate-900">
+                      {fmtMoney(ln.monto_base)}
+                    </td>
+                    <td className="px-4 py-3 text-xs text-slate-600">
+                      {motivoExclusionLabel(ln)}
+                      {ln.override_por ? <span className="block text-[10px] text-slate-400">{ln.override_por}</span> : null}
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <OverrideActions ln={ln} ctx={overrideCtx} />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
       ) : (
+        // ── Vista principal (solo comisionables) ──
         <div className="overflow-hidden rounded-xl border border-slate-200">
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[1200px] text-left text-sm">
+            <table className="w-full min-w-[860px] text-left text-sm">
               <thead className="bg-slate-50/80">
                 <tr>
                   {[
                     { h: "Cliente", right: false },
-                    { h: "Movimiento", right: false },
-                    { h: "Comprobante", right: false },
-                    { h: "Fecha", right: false },
-                    { h: "Comisiona", right: false },
-                    { h: "Base comisionable", right: true },
+                    { h: "Fecha alta cliente", right: false },
+                    { h: "Monto total", right: true },
+                    { h: "Monto pagado", right: true },
+                    { h: "Fecha de pago", right: false },
                     { h: "Comisión estimada", right: true },
-                    { h: "Cobrado", right: true },
-                    { h: "Pendiente", right: true },
-                    { h: "Pendiente por comisionar", right: true },
-                    { h: "Acciones", right: true },
+                    { h: "Acción", right: true },
                   ].map(({ h, right }) => (
                     <th
                       key={h}
@@ -573,35 +621,24 @@ function MovimientosTable({ row, overrideCtx }: { row: VendedorRow; overrideCtx?
                 {lineasFiltradas.map((ln, i) => (
                   <tr
                     key={`${ln.pago_id ?? ""}-${ln.factura_id ?? ""}-${i}`}
-                    className={`transition-colors hover:bg-[#4FAEB2]/[0.04] ${
-                      ln.comisiona === false ? "bg-slate-50/60" : ""
-                    }`}
+                    className="transition-colors hover:bg-[#4FAEB2]/[0.04]"
                   >
-                    <td className="px-4 py-3 text-sm font-medium text-slate-800">{ln.cliente_label}</td>
-                    <td className="px-4 py-3 text-xs text-slate-600">
-                      {MOVIMIENTO_LABEL[ln.tipo] ?? "Movimiento"}
-                    </td>
-                    <td className="px-4 py-3 text-xs font-medium text-slate-700">
-                      {ln.numero_factura ?? "—"}
-                    </td>
-                    <td className="px-4 py-3 text-xs tabular-nums text-slate-600">{formatDate(ln.fecha)}</td>
                     <td className="px-4 py-3">
-                      <ComisionaBadge ln={ln} />
+                      <p className="text-sm font-medium text-slate-800">{ln.cliente_label}</p>
+                      {ln.numero_factura ? (
+                        <p className="text-[10px] text-slate-400">{ln.numero_factura}</p>
+                      ) : null}
+                    </td>
+                    <td className="px-4 py-3 text-xs tabular-nums text-slate-600">{formatDate(ln.cliente_alta ?? null)}</td>
+                    <td className="px-4 py-3 text-right text-sm tabular-nums text-slate-700">
+                      {fmtMoney(ln.factura_monto_total ?? 0)}
                     </td>
                     <td className="px-4 py-3 text-right text-sm font-semibold tabular-nums text-slate-900">
                       {fmtMoney(ln.monto_base)}
                     </td>
+                    <td className="px-4 py-3 text-xs tabular-nums text-slate-600">{formatDate(ln.fecha)}</td>
                     <td className="px-4 py-3 text-right text-sm font-semibold tabular-nums text-[#3F8E91]">
                       {fmtMoney(ln.comision_estimada_linea)}
-                    </td>
-                    <td className="px-4 py-3 text-right text-sm tabular-nums text-slate-700">
-                      {fmtMoney(ln.cobrado_periodo ?? 0)}
-                    </td>
-                    <td className="px-4 py-3 text-right text-sm tabular-nums text-slate-700">
-                      {fmtMoney(ln.saldo_pendiente ?? 0)}
-                    </td>
-                    <td className="px-4 py-3 text-right text-sm tabular-nums text-slate-700">
-                      {fmtMoney(ln.pendiente_por_comisionar ?? 0)}
                     </td>
                     <td className="px-4 py-3 text-right">
                       <OverrideActions ln={ln} ctx={overrideCtx} />
@@ -619,62 +656,73 @@ function MovimientosTable({ row, overrideCtx }: { row: VendedorRow; overrideCtx?
 
 function SellerMovimientosList({ row }: { row: VendedorRow }) {
   const [query, setQuery] = useState("");
-  const lineasFiltradas = useMemo(
-    () => row.lineas.filter((ln) => lineaMatchesQuery(ln, query)),
-    [row.lineas, query]
-  );
+  const [mostrarExcluidos, setMostrarExcluidos] = useState(false);
+
+  const comisionables = useMemo(() => row.lineas.filter((l) => l.comisiona !== false), [row.lineas]);
+  const excluidas = useMemo(() => row.lineas.filter((l) => l.comisiona === false), [row.lineas]);
+  const base = mostrarExcluidos ? excluidas : comisionables;
+  const lineasFiltradas = useMemo(() => base.filter((ln) => lineaMatchesQuery(ln, query)), [base, query]);
 
   return (
     <div className="mt-3 space-y-3">
-      <MovimientosSearch
-        value={query}
-        onChange={setQuery}
-        shown={lineasFiltradas.length}
-        total={row.lineas.length}
-      />
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex-1 min-w-[200px]">
+          <MovimientosSearch value={query} onChange={setQuery} shown={lineasFiltradas.length} total={base.length} />
+        </div>
+        <ExcluidosToggle
+          mostrar={mostrarExcluidos}
+          onToggle={() => setMostrarExcluidos((v) => !v)}
+          countExcluidos={excluidas.length}
+        />
+      </div>
       {lineasFiltradas.length === 0 ? (
         <MovimientosEmptyState />
       ) : (
         <div className="grid gap-3">
           {lineasFiltradas.map((ln, i) => (
-        <article
-          key={`${ln.pago_id ?? ""}-${ln.factura_id ?? ""}-${i}`}
-          className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition-shadow hover:shadow-md"
-        >
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div className="min-w-0">
-              <p className="truncate text-sm font-semibold text-slate-900">{ln.cliente_label}</p>
-              <p className="mt-1 text-xs text-slate-500">
-                {MOVIMIENTO_LABEL[ln.tipo] ?? "Movimiento"} · {ln.numero_factura ?? "Sin comprobante"} ·{" "}
-                {formatDate(ln.fecha)}
-              </p>
-            </div>
-            <div className="text-left sm:text-right">
-              <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-500">
-                Comisión estimada
-              </p>
-              <p className="mt-0.5 text-base font-semibold tabular-nums text-[#3F8E91]">
-                ₲ {fmtMoney(ln.comision_estimada_linea)}
-              </p>
-            </div>
-          </div>
-          <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            {[
-              { label: "Base comisionable", value: ln.monto_base },
-              { label: "Cobrado", value: ln.cobrado_periodo ?? 0 },
-              { label: "Pendiente", value: ln.saldo_pendiente ?? 0 },
-              { label: "Pendiente por comisionar", value: ln.pendiente_por_comisionar ?? 0 },
-            ].map((item) => (
-              <div key={item.label}>
-                <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-500">
-                  {item.label}
-                </p>
-                <p className="mt-0.5 text-sm font-semibold tabular-nums text-slate-900">
-                  ₲ {fmtMoney(item.value)}
-                </p>
+            <article
+              key={`${ln.pago_id ?? ""}-${ln.factura_id ?? ""}-${i}`}
+              className={`rounded-2xl border bg-white p-4 shadow-sm transition-shadow hover:shadow-md ${
+                mostrarExcluidos ? "border-amber-200" : "border-slate-200"
+              }`}
+            >
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-semibold text-slate-900">{ln.cliente_label}</p>
+                  <p className="mt-1 text-xs text-slate-500">
+                    {ln.numero_factura ?? "Sin comprobante"} · {formatDate(ln.fecha)}
+                  </p>
+                  {mostrarExcluidos ? (
+                    <p className="mt-1 text-[11px] font-medium text-amber-700">{motivoExclusionLabel(ln)}</p>
+                  ) : null}
+                </div>
+                <div className="text-left sm:text-right">
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-500">
+                    Comisión estimada
+                  </p>
+                  <p className="mt-0.5 text-base font-semibold tabular-nums text-[#3F8E91]">
+                    ₲ {fmtMoney(ln.comision_estimada_linea)}
+                  </p>
+                </div>
               </div>
-            ))}
-          </div>
+              <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                <div>
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-500">Monto total</p>
+                  <p className="mt-0.5 text-sm font-semibold tabular-nums text-slate-900">₲ {fmtMoney(ln.factura_monto_total ?? 0)}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-500">Monto pagado</p>
+                  <p className="mt-0.5 text-sm font-semibold tabular-nums text-slate-900">₲ {fmtMoney(ln.monto_base)}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-500">Fecha de pago</p>
+                  <p className="mt-0.5 text-sm font-medium tabular-nums text-slate-700">{formatDate(ln.fecha)}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-500">Fecha alta cliente</p>
+                  <p className="mt-0.5 text-sm font-medium tabular-nums text-slate-700">{formatDate(ln.cliente_alta ?? null)}</p>
+                </div>
+              </div>
             </article>
           ))}
         </div>
@@ -1357,12 +1405,15 @@ export default function ComisionesPage() {
         onReload: () => void load({ mes: periodoYm }),
         overrideCtx,
       })}
-      <OverrideModal
-        target={overrideModal}
-        busy={busyPagoId != null}
-        onCancel={() => setOverrideModal(null)}
-        onConfirm={(motivo) => void confirmOverride(motivo)}
-      />
+      {overrideModal ? (
+        <OverrideModal
+          key={overrideModal.ln.pago_id ?? "modal"}
+          target={overrideModal}
+          busy={busyPagoId != null}
+          onCancel={() => setOverrideModal(null)}
+          onConfirm={(motivo) => void confirmOverride(motivo)}
+        />
+      ) : null}
     </>
   );
 }
