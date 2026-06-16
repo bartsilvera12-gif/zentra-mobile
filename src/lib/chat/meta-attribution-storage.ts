@@ -32,6 +32,12 @@ export interface CaptureMetaAttributionInput {
   messageTimestampIso?: string | null;
   /** id de chat_messages que originó la captura, si está disponible. */
   sourceMessageId?: string | null;
+  /**
+   * Canal real de entrega del mensaje. La campaña sigue siendo de Meta — este
+   * campo distingue si el lead llegó vía API directa de Meta o vía BSP YCloud.
+   * Default: 'meta' (compatibilidad con el hook viejo del webhook Meta).
+   */
+  provider?: "meta" | "ycloud";
 }
 
 export type CaptureMetaAttributionResult =
@@ -103,7 +109,7 @@ export async function captureFirstMetaAttribution(
     conversation_id: conversationId,
     contact_id: input.contactId ?? null,
     channel_id: input.channelId ?? null,
-    provider: "meta",
+    provider: input.provider ?? "meta",
     meta_ad_id: extracted.meta_ad_id,
     meta_source_type: extracted.meta_source_type,
     meta_source_url: extracted.meta_source_url,

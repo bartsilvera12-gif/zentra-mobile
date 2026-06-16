@@ -33,6 +33,9 @@ import { persistYCloudInboundMessagePg } from "@/lib/chat/webhooks/ycloud-inboun
 import { resolveYCloudChannelForWebhook } from "@/lib/chat/webhooks/ycloud-resolve-channel";
 import { enrichYCloudStoredRawPayloadWithResolvableMediaUrl } from "@/lib/chat/ycloud-inbound-media-enrich";
 import { ensureWhatsappInboundCrmLeadPg } from "@/lib/crm/whatsapp-inbound-lead-pg";
+import { captureFirstMetaAttribution } from "@/lib/chat/meta-attribution-storage";
+import { createServiceRoleClientForEmpresa as createSrForAttribution } from "@/lib/supabase/empresa-data-schema";
+import type { SupabaseAdmin as SupabaseAdminForAttribution } from "@/lib/chat/types";
 import { ensureWhatsappInboundCrmProspecto } from "@/lib/crm/whatsapp-inbound-lead";
 import {
   applyYCloudCampaignMessageUpdated,
@@ -324,6 +327,32 @@ export async function POST(request: NextRequest) {
       }
     } catch (e) {
       console.error(LOG, LOG_IN, "post_inbound_extras", e);
+    }
+  }
+
+  // Atribución Meta CTWA (best-effort, "first wins"). Solo aplica a inbound real
+  // (no a echos SMB). YCloud entrega `referral` dentro de `whatsappInboundMessage`;
+  // el extractor lo detecta automáticamente. NO debe interrumpir el webhook si falla.
+  if (mode === "inbound") {
+    try {
+      const sb = (await createSrForAttribution(resolved.empresa_id)) as unknown as SupabaseAdminForAttribution;
+      await captureFirstMetaAttribution({
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        supabase: sb as any,
+        empresaId: resolved.empresa_id,
+        conversationId,
+        contactId: inboundContactId ?? null,
+        channelId: resolved.channel_id,
+        rawPayload: env as unknown,
+        messageTimestampIso: createdAt,
+        sourceMessageId: messageId,
+        provider: "ycloud",
+      });
+    } catch (e) {
+      console.warn(LOG, LOG_IN, "meta_attribution_threw", {
+        conversation_id: conversationId,
+        error: e instanceof Error ? e.message : "unknown",
+      });
     }
   }
 

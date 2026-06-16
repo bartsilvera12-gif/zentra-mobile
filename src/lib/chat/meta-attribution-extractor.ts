@@ -92,17 +92,50 @@ function utmsFromText(text: string | null): Partial<Record<(typeof UTM_KEYS)[num
 }
 
 /**
- * Extrae atribución Meta de un payload de mensaje crudo (lo que Meta entrega
- * vía webhook y queda en `chat_messages.raw_payload`).
+ * Localiza el objeto `referral` dentro del payload crudo. Soporta dos shapes:
+ *  - Meta directo (webhook Cloud API):       `rawPayload.referral`
+ *  - YCloud (envelope BSP):                  `rawPayload.whatsappInboundMessage.referral`
+ *
+ * Ambos providers entregan el mismo set de campos snake_case dentro de `referral`
+ * (source_id, source_type, source_url, ctwa_clid, headline, body, media_type,
+ * image_url, video_url, thumbnail_url). YCloud agrega `welcome_message` que se
+ * preserva en `first_attribution_payload`.
+ */
+function findReferralNode(rawPayload: unknown): Record<string, unknown> | null {
+  if (!rawPayload || typeof rawPayload !== "object") return null;
+  const root = rawPayload as Record<string, unknown>;
+
+  // Meta directo: referral en root
+  const directRef = root["referral"];
+  if (directRef && typeof directRef === "object" && !Array.isArray(directRef)) {
+    return directRef as Record<string, unknown>;
+  }
+
+  // YCloud envelope: whatsappInboundMessage.referral
+  const wim = root["whatsappInboundMessage"];
+  if (wim && typeof wim === "object" && !Array.isArray(wim)) {
+    const wimRef = (wim as Record<string, unknown>)["referral"];
+    if (wimRef && typeof wimRef === "object" && !Array.isArray(wimRef)) {
+      return wimRef as Record<string, unknown>;
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Extrae atribución Meta de un payload de mensaje crudo (lo que Meta o YCloud
+ * entregan vía webhook y queda en `chat_messages.raw_payload`).
+ *
+ * Agnóstico al provider: detecta el shape automáticamente. El anuncio sigue
+ * siendo de Meta — el provider del CANAL (meta directo vs ycloud) se decide
+ * afuera al persistir en `chat_conversation_attribution`.
  *
  * @returns null si el payload no contiene un referral usable.
  */
 export function extractMetaAttribution(rawPayload: unknown): MetaAttributionExtracted | null {
-  if (!rawPayload || typeof rawPayload !== "object") return null;
-  const root = rawPayload as Record<string, unknown>;
-  const referralRaw = root["referral"];
-  if (!referralRaw || typeof referralRaw !== "object") return null;
-  const ref = referralRaw as Record<string, unknown>;
+  const ref = findReferralNode(rawPayload);
+  if (!ref) return null;
 
   const meta_source_type = normalizeSourceType(ref["source_type"]);
   const meta_ad_id = meta_source_type === "ad" ? asString(ref["source_id"]) : null;
@@ -138,6 +171,9 @@ export function extractMetaAttribution(rawPayload: unknown): MetaAttributionExtr
   maybeSet("image_url", meta_image_url);
   maybeSet("video_url", meta_video_url);
   maybeSet("thumbnail_url", meta_thumbnail_url);
+  // YCloud anexa `welcome_message` (texto auto-respuesta del anuncio); útil
+  // para reconocer el anuncio en analítica sin depender solo del headline.
+  maybeSet("welcome_message", ref["welcome_message"]);
   if (Object.keys(utms).length > 0) snapshot["utms"] = utms;
 
   return {

@@ -113,13 +113,16 @@ export async function GET(request: NextRequest) {
       first_message_at: string;
     };
 
+    // La tabla `chat_conversation_attribution` solo se llena cuando hay referral
+    // CTWA (Meta directo o YCloud BSP). Por diseño cada fila ya implica que la
+    // campaña es Meta; el `provider` solo distingue el canal de entrega. Por eso
+    // NO filtramos por provider — incluímos meta y ycloud.
     let attrQuery = supabase
       .from("chat_conversation_attribution")
       .select(
         "conversation_id, contact_id, channel_id, meta_ad_id, meta_source_type, meta_source_url, meta_headline, meta_body, meta_media_type, meta_image_url, meta_thumbnail_url, meta_campaign_id, meta_campaign_name, meta_ad_name, first_message_at"
       )
       .eq("empresa_id", empresaId)
-      .eq("provider", "meta")
       .gte("first_message_at", `${desde}T00:00:00Z`)
       .lt("first_message_at", `${hastaEx}T00:00:00Z`);
     if (fAdId) attrQuery = attrQuery.eq("meta_ad_id", fAdId);

@@ -3,8 +3,15 @@
 
 Uso:  py ssh-run-file.py /path/to/script.sh
 """
-import sys
+import sys, io
 from pathlib import Path
+
+# Forzar UTF-8 en stdout (PowerShell cp1252 explota con emojis/símbolos)
+try:
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", errors="replace")
+except Exception:
+    pass
 
 ENV = {}
 env_path = Path(__file__).resolve().parents[2] / ".env.local"
