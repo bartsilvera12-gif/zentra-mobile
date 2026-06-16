@@ -132,11 +132,19 @@ export async function GET(request: NextRequest) {
     if (fAdId) attrQuery = attrQuery.eq("meta_ad_id", fAdId);
     if (fChannel) attrQuery = attrQuery.eq("channel_id", fChannel);
 
-    const { rows: attribuciones, err: errAttr } = await safe<AttrRow[]>(() => attrQuery, []);
+    const { rows: attribucionesRaw, err: errAttr } = await safe<AttrRow[]>(() => attrQuery, []);
 
     const tablaPendiente =
       Boolean(errAttr) &&
       String(errAttr).toLowerCase().match(/does not exist|relation|404|not found/);
+
+    // Filtro por red social: aplicado sobre las atribuciones base (red_social no es
+    // columna, se infiere de source_url) para que TODOS los derivados —KPIs,
+    // breakdown y tabla— queden consistentes con el filtro.
+    const attribuciones =
+      fRed && (fRed === "instagram" || fRed === "facebook" || fRed === "no_identificado")
+        ? attribucionesRaw.filter((a) => inferirRedSocial(a.meta_source_url) === fRed)
+        : attribucionesRaw;
 
     const conversationIds = attribuciones.map((a) => a.conversation_id);
 
@@ -399,9 +407,7 @@ export async function GET(request: NextRequest) {
           (c) => (c as unknown as Record<string, number>)[k] > 0
         );
     }
-    if (fRed && (fRed === "instagram" || fRed === "facebook" || fRed === "no_identificado")) {
-      campanasArr = campanasArr.filter((c) => c.red_social === fRed);
-    }
+    // (El filtro red_social ya se aplicó sobre `attribuciones` base — no re-filtrar acá.)
 
     // Orden por conversaciones únicas desc (no por mensajes)
     const campanas = campanasArr
@@ -426,13 +432,14 @@ export async function GET(request: NextRequest) {
     const tasa_conversion_tipificadas = tipificadas > 0 ? conversiones / tipificadas : 0;
     const mejor = campanas[0] ?? null;
 
-    // 8) Breakdown por red social (sobre conversaciones únicas)
+    // 8) Breakdown por red social — siempre sobre el total del período (attribucionesRaw),
+    //    independiente del filtro red_social activo, para mostrar la distribución completa.
     const breakdown_red_social: RedSocialBreakdown = {
       instagram: 0,
       facebook: 0,
       no_identificado: 0,
     };
-    for (const a of attribuciones) {
+    for (const a of attribucionesRaw) {
       const r = inferirRedSocial(a.meta_source_url);
       breakdown_red_social[r] += 1;
     }
