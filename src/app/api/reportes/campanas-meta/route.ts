@@ -3,16 +3,22 @@ import { getTenantSupabaseFromAuth } from "@/lib/supabase/tenant-api";
 import { successResponse, errorResponse } from "@/lib/api/response";
 import { API_ERRORS } from "@/lib/api/errors";
 import { toCalendarDateStr } from "@/lib/fechas/calendario";
+import {
+  inferirRedSocial,
+  type RedSocial,
+  type RedSocialBreakdown,
+} from "@/lib/reportes/red-social";
 
 /**
- * GET /api/reportes/campanas-meta?desde=YYYY-MM-DD&hasta=YYYY-MM-DD&meta_ad_id=&outcome=&channel_id=
+ * GET /api/reportes/campanas-meta?desde=YYYY-MM-DD&hasta=YYYY-MM-DD&meta_ad_id=&outcome=&channel_id=&red_social=
  *
- * Reporte de efectividad de campañas Meta (CTWA) según conversaciones con
- * atribución persistida en `chat_conversation_attribution` y tipificaciones
- * mapeadas vía `empresa_outcome_mapping`.
+ * KPIs y tabla por anuncio CTWA. La métrica principal son CONVERSACIONES ÚNICAS
+ * (no mensajes). La tabla `chat_conversation_attribution` ya es 1:1 con
+ * conversaciones — cada fila = 1 conversación atribuida — por lo que el conteo
+ * es directo.
  *
- * Solo lectura. Cliente tenant estándar (mismo patrón que /api/reportes/estado-cuenta).
- * Solo cuenta conversaciones con atribución Meta — YCloud queda excluido por diseño.
+ * Soporta provider `meta` y `ycloud` (cada fila ya implica que la campaña es
+ * Meta; el `provider` solo distingue el canal de entrega del mensaje).
  */
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -93,8 +99,9 @@ export async function GET(request: NextRequest) {
     const fAdId = (searchParams.get("meta_ad_id") ?? "").trim() || null;
     const fOutcome = (searchParams.get("outcome") ?? "").trim() || null;
     const fChannel = (searchParams.get("channel_id") ?? "").trim() || null;
+    const fRed = (searchParams.get("red_social") ?? "").trim() || null;
 
-    // 1) Atribuciones del período
+    // 1) Atribuciones del período (1 fila = 1 conversación)
     type AttrRow = {
       conversation_id: string;
       contact_id: string | null;
@@ -106,6 +113,7 @@ export async function GET(request: NextRequest) {
       meta_body: string | null;
       meta_media_type: string | null;
       meta_image_url: string | null;
+      meta_video_url: string | null;
       meta_thumbnail_url: string | null;
       meta_campaign_id: string | null;
       meta_campaign_name: string | null;
@@ -113,14 +121,10 @@ export async function GET(request: NextRequest) {
       first_message_at: string;
     };
 
-    // La tabla `chat_conversation_attribution` solo se llena cuando hay referral
-    // CTWA (Meta directo o YCloud BSP). Por diseño cada fila ya implica que la
-    // campaña es Meta; el `provider` solo distingue el canal de entrega. Por eso
-    // NO filtramos por provider — incluímos meta y ycloud.
     let attrQuery = supabase
       .from("chat_conversation_attribution")
       .select(
-        "conversation_id, contact_id, channel_id, meta_ad_id, meta_source_type, meta_source_url, meta_headline, meta_body, meta_media_type, meta_image_url, meta_thumbnail_url, meta_campaign_id, meta_campaign_name, meta_ad_name, first_message_at"
+        "conversation_id, contact_id, channel_id, meta_ad_id, meta_source_type, meta_source_url, meta_headline, meta_body, meta_media_type, meta_image_url, meta_video_url, meta_thumbnail_url, meta_campaign_id, meta_campaign_name, meta_ad_name, first_message_at"
       )
       .eq("empresa_id", empresaId)
       .gte("first_message_at", `${desde}T00:00:00Z`)
@@ -128,37 +132,35 @@ export async function GET(request: NextRequest) {
     if (fAdId) attrQuery = attrQuery.eq("meta_ad_id", fAdId);
     if (fChannel) attrQuery = attrQuery.eq("channel_id", fChannel);
 
-    const { rows: attribuciones, err: errAttr } = await safe<AttrRow[]>(
-      () => attrQuery,
-      []
-    );
+    const { rows: attribuciones, err: errAttr } = await safe<AttrRow[]>(() => attrQuery, []);
 
-    // Si la tabla aún no existe (migración no aplicada), devolvemos respuesta
-    // vacía estructurada en vez de 500, así el reporte muestra el banner.
     const tablaPendiente =
       Boolean(errAttr) &&
       String(errAttr).toLowerCase().match(/does not exist|relation|404|not found/);
 
     const conversationIds = attribuciones.map((a) => a.conversation_id);
 
-    // 2) Mensajes de esas conversaciones en el período (para conteo de mensajes_atribuidos)
+    // 2) Mensajes (solo para mostrar como dato secundario en drill-down — NO es KPI principal)
     let totalMensajes = 0;
     const mensajesPorConv = new Map<string, number>();
+    const lastMsgByConv = new Map<string, string>();
     if (conversationIds.length > 0) {
-      const msgs = await selectInBatches<{ conversation_id: string; id: string }>(
+      const msgs = await selectInBatches<{ conversation_id: string; id: string; created_at: string }>(
         supabase,
         "chat_messages",
-        "id, conversation_id",
+        "id, conversation_id, created_at",
         "conversation_id",
         conversationIds
       );
       for (const m of msgs) {
         totalMensajes++;
         mensajesPorConv.set(m.conversation_id, (mensajesPorConv.get(m.conversation_id) ?? 0) + 1);
+        const prev = lastMsgByConv.get(m.conversation_id);
+        if (!prev || m.created_at > prev) lastMsgByConv.set(m.conversation_id, m.created_at);
       }
     }
 
-    // 3) Cierres por conversación (puede no haber)
+    // 3) Cierres
     type ClosureRow = {
       conversation_id: string;
       closure_state_label: string | null;
@@ -176,7 +178,6 @@ export async function GET(request: NextRequest) {
         conversationIds
       );
     }
-    // Quedarse con el más reciente por conversación
     const cierrePorConv = new Map<string, ClosureRow>();
     for (const c of cierres) {
       const prev = cierrePorConv.get(c.conversation_id);
@@ -185,7 +186,7 @@ export async function GET(request: NextRequest) {
       if (!prev || t > tp) cierrePorConv.set(c.conversation_id, c);
     }
 
-    // 4) Mapeo outcome (empresa)
+    // 4) Mapeo outcome
     const { rows: mapeos } = await safe<
       Array<{
         queue_id: string | null;
@@ -206,7 +207,6 @@ export async function GET(request: NextRequest) {
       if (!c || !c.closure_state_label) return "pending";
       const key = (st: string, sb: string | null, q: string | null) =>
         `${q ?? "_"}|${st}|${sb ?? "_"}`;
-      // 4 niveles de match en orden de especificidad
       const candidatos = [
         key(c.closure_state_label, c.closure_substate_label, c.queue_id),
         key(c.closure_state_label, null, c.queue_id),
@@ -224,14 +224,7 @@ export async function GET(request: NextRequest) {
       return "other";
     }
 
-    // 5) Contactos atribuidos y leads nuevos (crm_prospectos creados en el período cuyo
-    //    first_conversation_id ∈ conversationIds, fallback por contact_id+origen)
-    const contactIds = attribuciones
-      .map((a) => a.contact_id)
-      .filter((x): x is string => Boolean(x));
-    const contactIdsUnicos = [...new Set(contactIds)];
-
-    // a) Por first_conversation_id (preferido, después de migration 3 + nuevo flujo)
+    // 5) Leads únicos: prospecto por first_conversation_id + fallback por teléfono
     const prospFromConv = await selectInBatches<{
       id: string;
       first_conversation_id: string;
@@ -252,16 +245,17 @@ export async function GET(request: NextRequest) {
       if (t >= i && t < f) leadsNuevosSet.add(p.first_conversation_id);
     }
 
-    // b) Fallback: prospectos en el período con origen 'whatsapp' cuyo teléfono coincide
-    //    con contactos atribuidos. Cruzamos por chat_contacts.phone_number.
     type ContactRow = { id: string; phone_number: string | null };
-    const contacts = contactIdsUnicos.length
+    const contactIds = [
+      ...new Set(attribuciones.map((a) => a.contact_id).filter((x): x is string => Boolean(x))),
+    ];
+    const contacts = contactIds.length
       ? await selectInBatches<ContactRow>(
           supabase,
           "chat_contacts",
           "id, phone_number",
           "id",
-          contactIdsUnicos
+          contactIds
         )
       : [];
     const phoneByContact = new Map<string, string>();
@@ -274,7 +268,6 @@ export async function GET(request: NextRequest) {
         .filter((x): x is string => Boolean(x))
     );
     if (phonesAtribuidos.size > 0) {
-      // Prospectos del período con origen whatsapp
       const { rows: prospWhats } = await safe<
         Array<{ id: string; telefono: string | null; fecha_creacion: string }>
       >(
@@ -293,15 +286,13 @@ export async function GET(request: NextRequest) {
         const ph = String(p.telefono ?? "").replace(/\D/g, "");
         if (ph) phonesProsp.add(ph);
       }
-      // Marcamos conversaciones cuyos contactos tienen prospecto en el período
       for (const a of attribuciones) {
         const ph = a.contact_id ? phoneByContact.get(a.contact_id) : null;
         if (ph && phonesProsp.has(ph)) leadsNuevosSet.add(a.conversation_id);
       }
     }
 
-    // 6) Agregado por anuncio (meta_ad_id como clave; fallback por source_url para
-    //    referrals tipo 'post' sin ad_id)
+    // 6) Agregado por anuncio (clave = meta_ad_id, fallback source_url para post tipo)
     type Agg = {
       key: string;
       meta_ad_id: string | null;
@@ -309,10 +300,14 @@ export async function GET(request: NextRequest) {
       meta_campaign_id: string | null;
       meta_campaign_name: string | null;
       headline: string | null;
+      body: string | null;
       source_type: string | null;
       source_url: string | null;
+      media_type: string | null;
       image_url: string | null;
-      mensajes: number;
+      thumbnail_url: string | null;
+      red_social: RedSocial;
+      // Métricas centradas en únicos
       conversaciones: number;
       leads_nuevos: number;
       tipificadas: number;
@@ -321,12 +316,14 @@ export async function GET(request: NextRequest) {
       perdidas: number;
       no_respuesta: number;
       reclamos: number;
+      // Mensajes como dato secundario (no se ordena por esto)
+      mensajes: number;
       ultima_actividad: string | null;
     };
     const aggs = new Map<string, Agg>();
     const outcomesPorConv = new Map<string, string>();
     for (const a of attribuciones) {
-      const key = a.meta_ad_id ?? `url:${a.meta_source_url ?? ""}` ?? "sin_id";
+      const key = a.meta_ad_id ?? `url:${a.meta_source_url ?? ""}`;
       let agg = aggs.get(key);
       if (!agg) {
         agg = {
@@ -336,10 +333,13 @@ export async function GET(request: NextRequest) {
           meta_campaign_id: a.meta_campaign_id,
           meta_campaign_name: a.meta_campaign_name,
           headline: a.meta_headline,
+          body: a.meta_body,
           source_type: a.meta_source_type,
           source_url: a.meta_source_url,
-          image_url: a.meta_image_url ?? a.meta_thumbnail_url,
-          mensajes: 0,
+          media_type: a.meta_media_type,
+          image_url: a.meta_image_url,
+          thumbnail_url: a.meta_thumbnail_url,
+          red_social: inferirRedSocial(a.meta_source_url),
           conversaciones: 0,
           leads_nuevos: 0,
           tipificadas: 0,
@@ -348,6 +348,7 @@ export async function GET(request: NextRequest) {
           perdidas: 0,
           no_respuesta: 0,
           reclamos: 0,
+          mensajes: 0,
           ultima_actividad: null,
         };
         aggs.set(key, agg);
@@ -364,6 +365,13 @@ export async function GET(request: NextRequest) {
         const ta = agg.ultima_actividad ? new Date(agg.ultima_actividad).getTime() : 0;
         if (t > ta) agg.ultima_actividad = cierre.closed_at;
       }
+      // Última actividad: máximo entre cierre y último mensaje de la conv
+      const lm = lastMsgByConv.get(a.conversation_id);
+      if (lm) {
+        const t = new Date(lm).getTime();
+        const ta = agg.ultima_actividad ? new Date(agg.ultima_actividad).getTime() : 0;
+        if (t > ta) agg.ultima_actividad = lm;
+      }
       if (oc === "qualified_lead") agg.calificadas += 1;
       if (oc === "conversion") agg.conversiones += 1;
       if (oc === "lost") agg.perdidas += 1;
@@ -371,7 +379,7 @@ export async function GET(request: NextRequest) {
       if (oc === "claim") agg.reclamos += 1;
     }
 
-    // Filtro de outcome aplicado al final si vino
+    // Filtros finales aplicados al agregado
     let campanasArr = [...aggs.values()];
     if (fOutcome) {
       const k =
@@ -391,31 +399,49 @@ export async function GET(request: NextRequest) {
           (c) => (c as unknown as Record<string, number>)[k] > 0
         );
     }
+    if (fRed && (fRed === "instagram" || fRed === "facebook" || fRed === "no_identificado")) {
+      campanasArr = campanasArr.filter((c) => c.red_social === fRed);
+    }
 
-    // Tasa de conversión por campaña
+    // Orden por conversaciones únicas desc (no por mensajes)
     const campanas = campanasArr
       .map((c) => ({
         ...c,
         tasa_conversion: c.conversaciones > 0 ? c.conversiones / c.conversaciones : 0,
       }))
-      .sort((a, b) => b.tasa_conversion - a.tasa_conversion || b.conversaciones - a.conversaciones);
+      .sort(
+        (a, b) =>
+          b.conversiones - a.conversiones ||
+          b.conversaciones - a.conversaciones ||
+          b.tasa_conversion - a.tasa_conversion
+      );
 
-    // 7) KPIs totales
+    // 7) KPIs centrados en únicos
     const conversaciones_atribuidas = attribuciones.length;
     const tipificadas = [...outcomesPorConv.values()].filter((o) => o !== "pending").length;
     const calificadas = [...outcomesPorConv.values()].filter((o) => o === "qualified_lead").length;
     const conversiones = [...outcomesPorConv.values()].filter((o) => o === "conversion").length;
     const tasa_conversion =
       conversaciones_atribuidas > 0 ? conversiones / conversaciones_atribuidas : 0;
-    const tasa_conversion_tipificadas =
-      tipificadas > 0 ? conversiones / tipificadas : 0;
+    const tasa_conversion_tipificadas = tipificadas > 0 ? conversiones / tipificadas : 0;
     const mejor = campanas[0] ?? null;
+
+    // 8) Breakdown por red social (sobre conversaciones únicas)
+    const breakdown_red_social: RedSocialBreakdown = {
+      instagram: 0,
+      facebook: 0,
+      no_identificado: 0,
+    };
+    for (const a of attribuciones) {
+      const r = inferirRedSocial(a.meta_source_url);
+      breakdown_red_social[r] += 1;
+    }
 
     return NextResponse.json(
       successResponse({
         periodo: { desde, hasta },
         kpis: {
-          mensajes_atribuidos: totalMensajes,
+          // Conversaciones únicas como métrica principal
           conversaciones_atribuidas,
           leads_nuevos: leadsNuevosSet.size,
           tipificadas,
@@ -429,9 +455,14 @@ export async function GET(request: NextRequest) {
                 headline: mejor.headline,
                 tasa: mejor.tasa_conversion,
                 conversaciones: mejor.conversaciones,
+                conversiones: mejor.conversiones,
+                red_social: mejor.red_social,
               }
             : null,
+          // Mensajes queda como dato secundario (útil para drill-down)
+          mensajes_atribuidos: totalMensajes,
         },
+        breakdown_red_social,
         campanas,
         meta: {
           tabla_atribucion_disponible: !tablaPendiente,
@@ -439,6 +470,9 @@ export async function GET(request: NextRequest) {
           canales_meta_count: new Set(
             attribuciones.map((a) => a.channel_id).filter(Boolean)
           ).size,
+          red_social_signal: "source_url_domain",
+          red_social_doc:
+            "Inferido por dominio de meta_source_url. YCloud no entrega publisher_platform/placement. Para precisión total (audience network, breakdown costo/ROAS) hay que integrar Meta Marketing API.",
           conteos: {
             atribuciones_periodo: conversaciones_atribuidas,
             cierres_encontrados: cierres.length,
