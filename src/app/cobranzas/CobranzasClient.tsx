@@ -91,8 +91,9 @@ function TramoBadge({ tramo }: { tramo: TramoKey }) {
   );
 }
 
-function Kpi({ label, value, accent }: { label: string; value: string | number; accent?: "featured" | "danger" }) {
-  const valueCls = accent === "featured" ? "text-[#3F8E91]" : accent === "danger" ? "text-rose-700" : "text-slate-900";
+function Kpi({ label, value, accent }: { label: string; value: string | number; accent?: "featured" | "danger" | "warning" }) {
+  const valueCls =
+    accent === "featured" ? "text-[#3F8E91]" : accent === "danger" ? "text-rose-700" : accent === "warning" ? "text-amber-700" : "text-slate-900";
   return (
     <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
       <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-500">{label}</p>
@@ -107,6 +108,7 @@ export default function CobranzasClient() {
   const [data, setData] = useState<ListaPayload | null>(null);
   const [query, setQuery] = useState("");
   const [tramoFiltro, setTramoFiltro] = useState<TramoKey | "todos">("todos");
+  const [tipoFiltro, setTipoFiltro] = useState<string>("__all__");
 
   const [detalleId, setDetalleId] = useState<string | null>(null);
   const [detalle, setDetalle] = useState<DetallePayload | null>(null);
@@ -175,11 +177,21 @@ export default function CobranzasClient() {
     [detalleId, openDetalle, load, showToast]
   );
 
-  const clientesFiltrados = useMemo(() => {
+  /** Tipos de cliente realmente presentes en Cobranzas (para el selector). */
+  const tiposDisponibles = useMemo(() => {
+    const set = new Set<string>();
+    for (const c of data?.clientes ?? []) if (c.tipo) set.add(c.tipo);
+    // Prioriza Contable y SaaS; el resto alfabético.
+    const orden = (t: string) => (t === "Contable" ? 0 : t === "SaaS" ? 1 : 2);
+    return [...set].sort((a, b) => orden(a) - orden(b) || a.localeCompare(b));
+  }, [data]);
+
+  /** Filtro por tipo + búsqueda (base para KPIs y conteo de chips de tramo). */
+  const baseFiltered = useMemo(() => {
     const list = data?.clientes ?? [];
     const q = query.trim().toLowerCase();
     return list.filter((c) => {
-      if (tramoFiltro !== "todos" && c.tramo !== tramoFiltro) return false;
+      if (tipoFiltro !== "__all__" && c.tipo !== tipoFiltro) return false;
       if (!q) return true;
       return (
         c.cliente_label.toLowerCase().includes(q) ||
@@ -187,7 +199,39 @@ export default function CobranzasClient() {
         c.tipo.toLowerCase().includes(q)
       );
     });
-  }, [data, query, tramoFiltro]);
+  }, [data, query, tipoFiltro]);
+
+  /** + filtro de tramo: alimenta la tabla y los KPIs. */
+  const clientesFiltrados = useMemo(
+    () => baseFiltered.filter((c) => tramoFiltro === "todos" || c.tramo === tramoFiltro),
+    [baseFiltered, tramoFiltro]
+  );
+
+  /** Conteo por tramo dentro de tipo+búsqueda (los chips reflejan el tipo elegido). */
+  const tramoCounts = useMemo(() => {
+    const acc = { todos: baseFiltered.length, por_vencer: 0, tramo_1: 0, tramo_2: 0, tramo_3: 0 } as Record<string, number>;
+    for (const c of baseFiltered) acc[c.tramo] = (acc[c.tramo] ?? 0) + 1;
+    return acc;
+  }, [baseFiltered]);
+
+  /** KPIs recalculados sobre lo filtrado (tipo + búsqueda + tramo). */
+  const kpis = useMemo(() => {
+    const list = clientesFiltrados;
+    const porTramo = { por_vencer: 0, tramo_1: 0, tramo_2: 0, tramo_3: 0 } as Record<string, number>;
+    let totalAdeudado = 0;
+    let cuotasVenc = 0;
+    for (const c of list) {
+      totalAdeudado += c.total_adeudado;
+      cuotasVenc += c.cuotas_vencidas;
+      porTramo[c.tramo] = (porTramo[c.tramo] ?? 0) + 1;
+    }
+    return {
+      total_adeudado: Math.round(totalAdeudado),
+      clientes_con_deuda: list.length,
+      cuotas_vencidas: cuotasVenc,
+      por_tramo: porTramo,
+    };
+  }, [clientesFiltrados]);
 
   if (loading) {
     return (
@@ -213,13 +257,12 @@ export default function CobranzasClient() {
     );
   }
 
-  const r = data?.resumen;
-  const tramoChips: { key: TramoKey | "todos"; label: string; count?: number }[] = [
-    { key: "todos", label: "Todos" },
-    { key: "tramo_3", label: "Tramo 3", count: r?.por_tramo.tramo_3 },
-    { key: "tramo_2", label: "Tramo 2", count: r?.por_tramo.tramo_2 },
-    { key: "tramo_1", label: "Tramo 1", count: r?.por_tramo.tramo_1 },
-    { key: "por_vencer", label: "Por vencer", count: r?.por_tramo.por_vencer },
+  const tramoChips: { key: TramoKey | "todos"; label: string; count: number }[] = [
+    { key: "todos", label: "Todos", count: tramoCounts.todos },
+    { key: "tramo_3", label: "Tramo 3", count: tramoCounts.tramo_3 },
+    { key: "tramo_2", label: "Tramo 2", count: tramoCounts.tramo_2 },
+    { key: "tramo_1", label: "Tramo 1", count: tramoCounts.tramo_1 },
+    { key: "por_vencer", label: "Por vencer", count: tramoCounts.por_vencer },
   ];
 
   return (
@@ -243,19 +286,27 @@ export default function CobranzasClient() {
         </button>
       </div>
 
-      {/* KPIs */}
-      {r && (
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <Kpi label="Total adeudado" value={fmtMoney(r.total_adeudado)} accent="danger" />
-          <Kpi label="Clientes con deuda" value={r.clientes_con_deuda} accent="featured" />
-          <Kpi label="Cuotas vencidas" value={r.cuotas_vencidas_total} />
-          <Kpi label="En mora (T1+T2+T3)" value={r.por_tramo.tramo_1 + r.por_tramo.tramo_2 + r.por_tramo.tramo_3} accent="danger" />
-        </div>
-      )}
+      {/* KPIs (reaccionan a tipo + tramo + búsqueda) */}
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <Kpi label="Total adeudado" value={fmtMoney(kpis.total_adeudado)} accent="danger" />
+        <Kpi label="Clientes con deuda" value={kpis.clientes_con_deuda} accent="featured" />
+        <Kpi label="Cuotas vencidas" value={kpis.cuotas_vencidas} />
+        <Kpi
+          label="En mora (T1+T2+T3)"
+          value={kpis.por_tramo.tramo_1 + kpis.por_tramo.tramo_2 + kpis.por_tramo.tramo_3}
+          accent="danger"
+        />
+      </div>
+      <div className="grid gap-3 sm:grid-cols-4">
+        <Kpi label="Por vencer" value={kpis.por_tramo.por_vencer} />
+        <Kpi label="Tramo 1" value={kpis.por_tramo.tramo_1} />
+        <Kpi label="Tramo 2" value={kpis.por_tramo.tramo_2} accent="warning" />
+        <Kpi label="Tramo 3" value={kpis.por_tramo.tramo_3} accent="danger" />
+      </div>
 
       {/* Filtros */}
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex flex-wrap gap-1.5">
+        <div className="flex flex-wrap items-center gap-1.5">
           {tramoChips.map((t) => (
             <button
               key={t.key}
@@ -266,24 +317,41 @@ export default function CobranzasClient() {
               }`}
             >
               {t.label}
-              {typeof t.count === "number" ? <span className="tabular-nums text-slate-400">({t.count})</span> : null}
+              <span className="tabular-nums text-slate-400">({t.count})</span>
             </button>
           ))}
         </div>
-        <div className="relative w-full sm:max-w-xs">
-          <Search aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-          <input
-            type="text"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Buscar cliente, plan o tipo…"
-            className="w-full rounded-xl border border-slate-200 bg-white py-2 pl-9 pr-9 text-sm text-slate-800 shadow-sm placeholder:text-slate-400 focus:border-[#4FAEB2] focus:outline-none focus:ring-2 focus:ring-[#4FAEB2]/20"
-          />
-          {query ? (
-            <button type="button" onClick={() => setQuery("")} aria-label="Limpiar" className="absolute right-2 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100">
-              <X className="h-3.5 w-3.5" />
-            </button>
+        <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
+          {tiposDisponibles.length > 0 ? (
+            <select
+              value={tipoFiltro}
+              onChange={(e) => setTipoFiltro(e.target.value)}
+              className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 shadow-sm focus:border-[#4FAEB2] focus:outline-none focus:ring-2 focus:ring-[#4FAEB2]/20"
+              aria-label="Filtrar por tipo de cliente"
+            >
+              <option value="__all__">Todos los tipos</option>
+              {tiposDisponibles.map((t) => (
+                <option key={t} value={t}>
+                  {t}
+                </option>
+              ))}
+            </select>
           ) : null}
+          <div className="relative w-full sm:w-64">
+            <Search aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <input
+              type="text"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Buscar cliente, plan o tipo…"
+              className="w-full rounded-xl border border-slate-200 bg-white py-2 pl-9 pr-9 text-sm text-slate-800 shadow-sm placeholder:text-slate-400 focus:border-[#4FAEB2] focus:outline-none focus:ring-2 focus:ring-[#4FAEB2]/20"
+            />
+            {query ? (
+              <button type="button" onClick={() => setQuery("")} aria-label="Limpiar" className="absolute right-2 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100">
+                <X className="h-3.5 w-3.5" />
+              </button>
+            ) : null}
+          </div>
         </div>
       </div>
 
@@ -295,7 +363,7 @@ export default function CobranzasClient() {
       ) : (
         <div className="overflow-hidden rounded-xl border border-slate-200">
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[1080px] text-left text-sm">
+            <table className="w-full min-w-[920px] text-left text-sm">
               <thead className="bg-slate-50/80">
                 <tr>
                   {[
@@ -305,7 +373,6 @@ export default function CobranzasClient() {
                     { h: "Monto mensual", r: true },
                     { h: "Total adeudado", r: true },
                     { h: "Cuotas venc.", r: true },
-                    { h: "Meses adeudados", r: false },
                     { h: "Tramo", r: false },
                     { h: "Último pago", r: false },
                     { h: "Próx. venc.", r: false },
@@ -319,24 +386,25 @@ export default function CobranzasClient() {
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {clientesFiltrados.map((c) => (
-                  <tr key={c.cliente_id} className="transition-colors hover:bg-[#4FAEB2]/[0.04]">
-                    <td className="px-3 py-3 text-sm font-medium text-slate-800">{c.cliente_label}</td>
-                    <td className="px-3 py-3 text-xs text-slate-600">{c.tipo}</td>
-                    <td className="px-3 py-3 text-xs text-slate-600">{c.plan ?? "—"}</td>
-                    <td className="px-3 py-3 text-right text-xs tabular-nums text-slate-700">{fmtMoney(c.monto_mensual)}</td>
-                    <td className="px-3 py-3 text-right text-sm font-semibold tabular-nums text-rose-700">{fmtMoney(c.total_adeudado)}</td>
-                    <td className="px-3 py-3 text-right text-sm tabular-nums text-slate-800">{c.cuotas_vencidas}</td>
-                    <td className="px-3 py-3 text-xs text-slate-600">
-                      {c.meses_adeudados.length ? c.meses_adeudados.map(fmtMes).join(", ") : "—"}
+                  <tr key={c.cliente_id} className="align-middle transition-colors hover:bg-[#4FAEB2]/[0.04]">
+                    <td className="px-3 py-3 text-sm font-medium text-slate-800">
+                      <span className="block max-w-[220px] truncate" title={c.cliente_label}>{c.cliente_label}</span>
                     </td>
-                    <td className="px-3 py-3"><TramoBadge tramo={c.tramo} /></td>
-                    <td className="px-3 py-3 text-xs tabular-nums text-slate-600">{fmtDate(c.ultimo_pago)}</td>
-                    <td className="px-3 py-3 text-xs tabular-nums text-slate-600">{fmtDate(c.proximo_vencimiento)}</td>
+                    <td className="px-3 py-3 text-xs text-slate-600 whitespace-nowrap">{c.tipo}</td>
+                    <td className="px-3 py-3 text-xs text-slate-600">
+                      <span className="block max-w-[160px] truncate" title={c.plan ?? "—"}>{c.plan ?? "—"}</span>
+                    </td>
+                    <td className="px-3 py-3 text-right text-xs tabular-nums text-slate-700 whitespace-nowrap">{fmtMoney(c.monto_mensual)}</td>
+                    <td className="px-3 py-3 text-right text-sm font-semibold tabular-nums text-rose-700 whitespace-nowrap">{fmtMoney(c.total_adeudado)}</td>
+                    <td className="px-3 py-3 text-right text-sm tabular-nums text-slate-800">{c.cuotas_vencidas}</td>
+                    <td className="px-3 py-3 whitespace-nowrap"><TramoBadge tramo={c.tramo} /></td>
+                    <td className="px-3 py-3 text-xs tabular-nums text-slate-600 whitespace-nowrap">{fmtDate(c.ultimo_pago)}</td>
+                    <td className="px-3 py-3 text-xs tabular-nums text-slate-600 whitespace-nowrap">{fmtDate(c.proximo_vencimiento)}</td>
                     <td className="px-3 py-3 text-right">
                       <button
                         type="button"
                         onClick={() => void openDetalle(c.cliente_id)}
-                        className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-700 hover:border-[#4FAEB2]/60 hover:text-[#3F8E91]"
+                        className="inline-flex items-center gap-1 whitespace-nowrap rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-700 hover:border-[#4FAEB2]/60 hover:text-[#3F8E91]"
                       >
                         Ver detalle <ChevronRight className="h-3.5 w-3.5" />
                       </button>
