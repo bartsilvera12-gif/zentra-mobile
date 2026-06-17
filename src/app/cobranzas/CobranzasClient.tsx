@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { RefreshCw, Search, X, ChevronRight } from "lucide-react";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
 
-type TramoKey = "al_dia" | "tramo_1" | "tramo_2" | "tramo_3";
+type TramoKey = "por_vencer" | "tramo_1" | "tramo_2" | "tramo_3";
 
 type ClienteCobranza = {
   cliente_id: string;
@@ -24,7 +24,7 @@ type Resumen = {
   total_adeudado: number;
   clientes_con_deuda: number;
   cuotas_vencidas_total: number;
-  por_tramo: { al_dia: number; tramo_1: number; tramo_2: number; tramo_3: number };
+  por_tramo: { por_vencer: number; tramo_1: number; tramo_2: number; tramo_3: number };
 };
 
 type ListaPayload = { hoy: string; puede_registrar?: boolean; resumen: Resumen; clientes: ClienteCobranza[] };
@@ -54,13 +54,13 @@ type DetallePayload = {
 };
 
 const TRAMO_LABEL: Record<TramoKey, string> = {
-  al_dia: "Al día",
+  por_vencer: "Por vencer",
   tramo_1: "Tramo 1",
   tramo_2: "Tramo 2",
   tramo_3: "Tramo 3",
 };
 const TRAMO_CLASS: Record<TramoKey, string> = {
-  al_dia: "border-emerald-200 bg-emerald-50 text-emerald-700",
+  por_vencer: "border-sky-200 bg-sky-50 text-sky-700",
   tramo_1: "border-amber-200 bg-amber-50 text-amber-700",
   tramo_2: "border-orange-200 bg-orange-50 text-orange-700",
   tramo_3: "border-rose-200 bg-rose-50 text-rose-700",
@@ -219,7 +219,7 @@ export default function CobranzasClient() {
     { key: "tramo_3", label: "Tramo 3", count: r?.por_tramo.tramo_3 },
     { key: "tramo_2", label: "Tramo 2", count: r?.por_tramo.tramo_2 },
     { key: "tramo_1", label: "Tramo 1", count: r?.por_tramo.tramo_1 },
-    { key: "al_dia", label: "Al día", count: r?.por_tramo.al_dia },
+    { key: "por_vencer", label: "Por vencer", count: r?.por_tramo.por_vencer },
   ];
 
   return (

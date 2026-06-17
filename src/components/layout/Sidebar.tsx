@@ -219,7 +219,7 @@ const MENU_FAMILIES: { id: string; title: string; itemKeys: string[] }[] = [
     itemKeys: ["clientes", "crm", "gestion-clientes", "ventas", "comisiones", "planes", "agenda"],
   },
   { id: "finanzas", title: "Finanzas", itemKeys: ["pagos", "gastos", "notas_credito", "reportes"] },
-  { id: "operaciones", title: "Operaciones", itemKeys: ["inventario", "compras", "proyectos"] },
+  { id: "operaciones", title: "Operaciones", itemKeys: ["cobranzas", "inventario", "compras", "proyectos"] },
   {
     id: "omnicanal",
     title: "Omnicanal",
@@ -790,17 +790,18 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }: SidebarPr
                   <button
                     type="button"
                     onClick={() => toggleFamily(fam.id)}
-                    className="group/fam mb-1 flex w-full items-center gap-2 px-3 py-0.5"
+                    className="group/fam mb-1 flex w-full items-center gap-2 rounded-lg px-3 py-2 transition-colors hover:bg-white/[0.05]"
                     aria-expanded={open}
+                    title={open ? `Colapsar ${fam.title}` : `Expandir ${fam.title}`}
                   >
                     <span className="h-1 w-1 shrink-0 rounded-full bg-[#7DCFD2]" />
                     <span className="text-[13px] font-bold uppercase tracking-[0.1em] text-slate-300 transition-colors group-hover/fam:text-white">
                       {fam.title}
                     </span>
                     <span className="h-px flex-1 bg-gradient-to-r from-white/[0.08] to-transparent" />
-                    <ChevronDown
-                      className={`h-3 w-3 shrink-0 text-slate-500 transition-transform ${open ? "" : "-rotate-90"}`}
-                    />
+                    <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-slate-300 transition-colors group-hover/fam:bg-white/10 group-hover/fam:text-white">
+                      {open ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                    </span>
                   </button>
                   {open && (
                     <div className="space-y-0.5">

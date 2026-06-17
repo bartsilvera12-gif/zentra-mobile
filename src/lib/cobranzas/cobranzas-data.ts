@@ -6,7 +6,7 @@ type Sb = Awaited<ReturnType<typeof getChatServiceClientForEmpresa>>;
 const PAGE = 800;
 const ESTADOS_NO_DEUDA = new Set(["pagado", "anulado", "corregida nc"]);
 
-export type TramoKey = "al_dia" | "tramo_1" | "tramo_2" | "tramo_3";
+export type TramoKey = "por_vencer" | "tramo_1" | "tramo_2" | "tramo_3";
 
 export type ClienteCobranza = {
   cliente_id: string;
@@ -26,7 +26,7 @@ export type CobranzasResumen = {
   total_adeudado: number;
   clientes_con_deuda: number;
   cuotas_vencidas_total: number;
-  por_tramo: { al_dia: number; tramo_1: number; tramo_2: number; tramo_3: number };
+  por_tramo: { por_vencer: number; tramo_1: number; tramo_2: number; tramo_3: number };
 };
 
 export type FacturaLite = {
@@ -61,8 +61,12 @@ export type DetalleCobranza = {
   pagos_recientes: PagoLite[];
 };
 
+/**
+ * Tramo de mora por cantidad de cuotas vencidas. Dentro de Cobranzas el cliente SIEMPRE
+ * tiene saldo pendiente (se filtra deuda>0): 0 cuotas vencidas = "Por vencer" (no "Al día").
+ */
 export function tramoDe(cuotasVencidas: number): TramoKey {
-  if (cuotasVencidas <= 0) return "al_dia";
+  if (cuotasVencidas <= 0) return "por_vencer";
   if (cuotasVencidas === 1) return "tramo_1";
   if (cuotasVencidas === 2) return "tramo_2";
   return "tramo_3";
@@ -209,7 +213,7 @@ export async function cargarCobranzas(
     total_adeudado: 0,
     clientes_con_deuda: 0,
     cuotas_vencidas_total: 0,
-    por_tramo: { al_dia: 0, tramo_1: 0, tramo_2: 0, tramo_3: 0 },
+    por_tramo: { por_vencer: 0, tramo_1: 0, tramo_2: 0, tramo_3: 0 },
   };
 
   for (const [cid, a] of acc) {
@@ -239,7 +243,7 @@ export async function cargarCobranzas(
 
   resumen.total_adeudado = Math.round(resumen.total_adeudado * 100) / 100;
   // Orden: tramo más alto primero, luego mayor deuda.
-  const peso: Record<TramoKey, number> = { tramo_3: 3, tramo_2: 2, tramo_1: 1, al_dia: 0 };
+  const peso: Record<TramoKey, number> = { tramo_3: 3, tramo_2: 2, tramo_1: 1, por_vencer: 0 };
   clientes.sort((x, y) => peso[y.tramo] - peso[x.tramo] || y.total_adeudado - x.total_adeudado);
 
   return { resumen, clientes };
