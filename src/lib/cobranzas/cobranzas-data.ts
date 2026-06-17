@@ -1,5 +1,6 @@
 import "server-only";
 import type { getChatServiceClientForEmpresa } from "@/lib/supabase/chat-service-role-empresa";
+import { etiquetaVisibleTipoServicio } from "@/lib/clientes/tipo-servicio-catalogo";
 
 type Sb = Awaited<ReturnType<typeof getChatServiceClientForEmpresa>>;
 
@@ -91,12 +92,30 @@ function esDeuda(estado: string | null | undefined): boolean {
   return !ESTADOS_NO_DEUDA.has(String(estado ?? "").trim().toLowerCase());
 }
 
-function tipoClienteLabel(slug: string | null | undefined): string {
+/**
+ * Etiqueta visible del tipo de cliente según el catálogo real
+ * (`cliente_tipos_servicio_catalogo`): saas→SaaS, otro→Contable, web→Web,
+ * marketing→Marketing, etc. null/vacío → "Sin clasificar". Ya NO colapsa a "Otro".
+ */
+function tipoClienteLabel(slug: string | null | undefined, catalogo: Record<string, string>): string {
   const s = (slug ?? "").trim().toLowerCase();
   if (!s) return "Sin clasificar";
-  if (s === "saas") return "SaaS";
-  if (s === "otro") return "Contable";
-  return "Otro";
+  return etiquetaVisibleTipoServicio(s, catalogo);
+}
+
+/** Mapa slug→nombre del catálogo de tipos de servicio de la empresa. */
+async function cargarCatalogoTipos(sb: Sb, empresaId: string): Promise<Record<string, string>> {
+  const map: Record<string, string> = {};
+  const { data } = await sb
+    .from("cliente_tipos_servicio_catalogo")
+    .select("slug, nombre")
+    .eq("empresa_id", empresaId);
+  for (const r of (data ?? []) as Record<string, unknown>[]) {
+    const slug = String(r.slug ?? "").trim().toLowerCase();
+    const nombre = String(r.nombre ?? "").trim();
+    if (slug && nombre) map[slug] = nombre;
+  }
+  return map;
 }
 
 async function fetchAll(
@@ -155,10 +174,11 @@ export async function cargarCobranzas(
   empresaId: string,
   hoyYmd: string
 ): Promise<{ resumen: CobranzasResumen; clientes: ClienteCobranza[] }> {
-  const [clientesRows, facturasRows, suscripcionPorCliente] = await Promise.all([
+  const [clientesRows, facturasRows, suscripcionPorCliente, catalogoTipos] = await Promise.all([
     fetchAll(sb, "clientes", "id, empresa, nombre_contacto, tipo_servicio_cliente, created_at", empresaId),
     fetchAll(sb, "facturas", "id, cliente_id, fecha, fecha_vencimiento, monto, saldo, estado", empresaId),
     cargarSuscripcionPorCliente(sb, empresaId),
+    cargarCatalogoTipos(sb, empresaId),
   ]);
 
   // Último pago por cliente (pagos → factura → cliente).
@@ -225,7 +245,7 @@ export async function cargarCobranzas(
     clientes.push({
       cliente_id: cid,
       cliente_label: label,
-      tipo: tipoClienteLabel(c?.tipo_servicio_cliente as string),
+      tipo: tipoClienteLabel(c?.tipo_servicio_cliente as string, catalogoTipos),
       plan: sus?.plan ?? null,
       monto_mensual: sus?.precio ?? null,
       total_adeudado: Math.round(a.total * 100) / 100,
@@ -330,13 +350,14 @@ export async function cargarDetalleCliente(
   vencidas.sort((a, b) => (a.fecha_vencimiento ?? "").localeCompare(b.fecha_vencimiento ?? ""));
 
   const sus = (await cargarSuscripcionPorCliente(sb, empresaId)).get(clienteId);
+  const catalogoTipos = await cargarCatalogoTipos(sb, empresaId);
   const label = String(c.nombre_contacto ?? c.empresa ?? clienteId.slice(0, 8)).trim() || clienteId.slice(0, 8);
 
   return {
     cliente: {
       cliente_id: clienteId,
       cliente_label: label,
-      tipo: tipoClienteLabel(c.tipo_servicio_cliente as string),
+      tipo: tipoClienteLabel(c.tipo_servicio_cliente as string, catalogoTipos),
       plan: sus?.plan ?? null,
       monto_mensual: sus?.precio ?? null,
       alta: ymd(c.created_at as string) || null,
