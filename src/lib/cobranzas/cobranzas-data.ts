@@ -200,7 +200,7 @@ export async function cargarCobranzas(
     const venc = ymd(f.fecha_vencimiento as string);
     if (venc && venc < hoyYmd) {
       a.cuotasVencidas += 1;
-      const mes = ymd(f.fecha as string).slice(0, 7);
+      const mes = venc.slice(0, 7);
       if (mes) a.meses.add(mes);
     } else if (venc) {
       // próximo vencimiento = el más cercano aún no vencido
@@ -320,7 +320,7 @@ export async function cargarDetalleCliente(
     totalDeuda += saldo;
     if (esVencida) {
       vencidas.push(lite);
-      const mes = ymd(f.fecha as string).slice(0, 7);
+      const mes = venc.slice(0, 7);
       if (mes) meses.add(mes);
     } else {
       pendientes.push(lite);
