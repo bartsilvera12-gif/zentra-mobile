@@ -2,8 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getTenantSupabaseFromAuth } from "@/lib/supabase/tenant-api";
 import { successResponse, errorResponse } from "@/lib/api/response";
 import { API_ERRORS } from "@/lib/api/errors";
-import { emitEvent, EVENT_TYPES } from "@/lib/integrations/events";
-import { toCalendarDateStr } from "@/lib/fechas/calendario";
+import { registrarPago } from "@/lib/pagos/registrar-pago";
 import { etiquetaVisibleTipoServicio } from "@/lib/clientes/tipo-servicio-catalogo";
 
 type RowFacturaPago = { id?: string; numero_factura?: string | null; cliente_id?: string | null };
@@ -256,105 +255,12 @@ export async function POST(request: NextRequest) {
     const { auth, supabase } = ctx;
 
     const body = await request.json();
-    const { factura_id, monto, fecha_pago, metodo_pago, referencia } = body;
-
-    if (!factura_id?.trim()) {
-      return NextResponse.json(errorResponse("factura_id es obligatorio"), { status: 400 });
+    // Lógica única compartida con Cobranzas (mismas validaciones, mensajes y flujo).
+    const result = await registrarPago(supabase, auth, body);
+    if (!result.ok) {
+      return NextResponse.json(errorResponse(result.message), { status: result.status });
     }
-    if (monto == null || Number(monto) <= 0) {
-      return NextResponse.json(errorResponse("monto debe ser mayor a 0"), { status: 400 });
-    }
-    if (!fecha_pago) {
-      return NextResponse.json(errorResponse("fecha_pago es obligatoria"), { status: 400 });
-    }
-    const fechaPagoNorm = toCalendarDateStr(String(fecha_pago));
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(fechaPagoNorm)) {
-      return NextResponse.json(errorResponse("fecha_pago inválida"), { status: 400 });
-    }
-
-
-    const { data: factura, error: errFactura } = await supabase
-      .from("facturas")
-      .select("id, monto, saldo, estado, cliente_id")
-      .eq("id", factura_id)
-      .eq("empresa_id", auth.empresa_id)
-      .single();
-
-    if (errFactura || !factura) {
-      return NextResponse.json(errorResponse("Factura no encontrada"), { status: 404 });
-    }
-
-    const estadoFac = String(factura.estado ?? "");
-    if (estadoFac === "Anulado") {
-      return NextResponse.json(errorResponse("No se puede registrar pago sobre una factura anulada"), { status: 400 });
-    }
-    if (estadoFac === "Corregida NC") {
-      return NextResponse.json(
-        errorResponse("La factura fue liquidada con nota de crédito aprobada (SET); no admite cobros adicionales."),
-        { status: 400 }
-      );
-    }
-    if (estadoFac === "Pagado" && Number(factura.saldo) <= 0) {
-      return NextResponse.json(errorResponse("La factura ya está pagada"), { status: 400 });
-    }
-
-    const saldoActual = Number(factura.saldo);
-    const montoNum = Number(monto);
-    if (montoNum > saldoActual) {
-      return NextResponse.json(
-        errorResponse("El monto del pago no puede superar el saldo pendiente de la factura"),
-        { status: 400 }
-      );
-    }
-    const nuevoSaldo = Math.max(0, saldoActual - montoNum);
-    /** CHECK en BD solo admite Pagado | Pendiente | Vencido | Anulado — nunca "Parcial". */
-    const nuevoEstado =
-      nuevoSaldo <= 0 ? "Pagado" : estadoFac === "Vencido" ? "Vencido" : "Pendiente";
-
-    const metodosValidos = ["efectivo", "transferencia", "cheque", "tarjeta", "otro"];
-    const metodo = metodosValidos.includes(metodo_pago) ? metodo_pago : "efectivo";
-
-    const insertData: Record<string, unknown> = {
-      empresa_id: auth.empresa_id,
-      factura_id: factura_id.trim(),
-      monto: montoNum,
-      fecha_pago: fechaPagoNorm,
-      metodo_pago: metodo,
-      referencia: referencia?.trim() || null,
-      cliente_id: factura.cliente_id ?? null,
-      usuario_id: auth.user?.id ?? null,
-    };
-
-    const { data, error } = await supabase
-      .from("pagos")
-      .insert(insertData)
-      .select()
-      .single();
-
-    if (error) {
-      return NextResponse.json(errorResponse(error.message), { status: 400 });
-    }
-
-    const { error: errUpdFactura } = await supabase
-      .from("facturas")
-      .update({ saldo: nuevoSaldo, estado: nuevoEstado, updated_at: new Date().toISOString() })
-      .eq("id", factura_id.trim())
-      .eq("empresa_id", auth.empresa_id);
-
-    if (errUpdFactura) {
-      await supabase.from("pagos").delete().eq("id", data.id);
-      return NextResponse.json(
-        errorResponse(
-          `El pago no pudo aplicarse al saldo (${errUpdFactura.message}). Verifique el estado de la factura.`
-        ),
-        { status: 500 }
-      );
-    }
-
-    console.log("[API] About to emit event");
-    await emitEvent(EVENT_TYPES.pago_registrado, { pago_id: data.id, factura_id, monto: montoNum });
-
-    return NextResponse.json(successResponse(data));
+    return NextResponse.json(successResponse(result.pago));
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Error";
     return NextResponse.json(errorResponse(msg), { status: 500 });

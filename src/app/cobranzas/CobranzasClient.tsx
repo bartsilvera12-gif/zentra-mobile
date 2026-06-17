@@ -27,7 +27,7 @@ type Resumen = {
   por_tramo: { al_dia: number; tramo_1: number; tramo_2: number; tramo_3: number };
 };
 
-type ListaPayload = { hoy: string; resumen: Resumen; clientes: ClienteCobranza[] };
+type ListaPayload = { hoy: string; puede_registrar?: boolean; resumen: Resumen; clientes: ClienteCobranza[] };
 
 type FacturaLite = {
   id: string;
@@ -42,6 +42,7 @@ type FacturaLite = {
 };
 type PagoLite = { numero_factura: string | null; fecha_pago: string | null; monto: number; metodo_pago: string | null };
 type DetallePayload = {
+  puede_registrar?: boolean;
   cliente: { cliente_id: string; cliente_label: string; tipo: string; plan: string | null; monto_mensual: number | null; alta: string | null };
   total_deuda: number;
   cuotas_vencidas: number;
@@ -111,6 +112,16 @@ export default function CobranzasClient() {
   const [detalle, setDetalle] = useState<DetallePayload | null>(null);
   const [detalleLoading, setDetalleLoading] = useState(false);
 
+  const [puedeRegistrar, setPuedeRegistrar] = useState(false);
+  const [pagoFactura, setPagoFactura] = useState<FacturaLite | null>(null);
+  const [pagoBusy, setPagoBusy] = useState(false);
+  const [toast, setToast] = useState<string | null>(null);
+
+  const showToast = useCallback((msg: string) => {
+    setToast(msg);
+    window.setTimeout(() => setToast(null), 3500);
+  }, []);
+
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -119,6 +130,7 @@ export default function CobranzasClient() {
       const json = (await res.json()) as { success?: boolean; data?: ListaPayload; error?: string };
       if (!res.ok || json.success !== true || !json.data) throw new Error(json.error ?? `Error ${res.status}`);
       setData(json.data);
+      setPuedeRegistrar(json.data.puede_registrar === true);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Error");
     } finally {
@@ -145,6 +157,23 @@ export default function CobranzasClient() {
       setDetalleLoading(false);
     }
   }, []);
+
+  const registrarPagoCobranza = useCallback(
+    async (input: { factura_id: string; monto: number; fecha_pago: string; metodo_pago: string; referencia: string }) => {
+      const res = await fetchWithSupabaseSession("/api/cobranzas/registrar-pago", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(input),
+      });
+      const json = (await res.json()) as { success?: boolean; error?: string };
+      if (!res.ok || json.success !== true) throw new Error(json.error ?? `Error ${res.status}`);
+      setPagoFactura(null);
+      showToast("Pago registrado correctamente.");
+      if (detalleId) await openDetalle(detalleId);
+      await load();
+    },
+    [detalleId, openDetalle, load, showToast]
+  );
 
   const clientesFiltrados = useMemo(() => {
     const list = data?.clientes ?? [];
@@ -358,8 +387,18 @@ export default function CobranzasClient() {
                   ) : null}
                 </div>
 
-                <DetalleSeccion titulo={`Facturas vencidas (${detalle.facturas_vencidas.length})`} facturas={detalle.facturas_vencidas} />
-                <DetalleSeccion titulo={`Facturas pendientes (${detalle.facturas_pendientes.length})`} facturas={detalle.facturas_pendientes} />
+                <DetalleSeccion
+                  titulo={`Facturas vencidas (${detalle.facturas_vencidas.length})`}
+                  facturas={detalle.facturas_vencidas}
+                  puedeRegistrar={puedeRegistrar}
+                  onRegistrar={(f) => setPagoFactura(f)}
+                />
+                <DetalleSeccion
+                  titulo={`Facturas pendientes (${detalle.facturas_pendientes.length})`}
+                  facturas={detalle.facturas_pendientes}
+                  puedeRegistrar={puedeRegistrar}
+                  onRegistrar={(f) => setPagoFactura(f)}
+                />
 
                 <div>
                   <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.1em] text-slate-500">Pagos recientes</p>
@@ -377,17 +416,55 @@ export default function CobranzasClient() {
                   )}
                 </div>
 
-                <p className="text-[11px] text-slate-400">Vista read-only (Fase 1). El registro de pagos desde Cobranzas llega en la Fase 2.</p>
+                {!puedeRegistrar ? (
+                  <p className="text-[11px] text-slate-400">El registro de pagos está disponible solo para administradores.</p>
+                ) : null}
               </div>
             )}
           </div>
+        </div>
+      ) : null}
+
+      {/* Modal registrar pago */}
+      {pagoFactura ? (
+        <RegistrarPagoModal
+          factura={pagoFactura}
+          busy={pagoBusy}
+          onCancel={() => setPagoFactura(null)}
+          onConfirm={async (input) => {
+            setPagoBusy(true);
+            try {
+              await registrarPagoCobranza({ factura_id: pagoFactura.id, ...input });
+            } catch (e) {
+              showToast(e instanceof Error ? e.message : "No se pudo registrar el pago");
+            } finally {
+              setPagoBusy(false);
+            }
+          }}
+        />
+      ) : null}
+
+      {/* Toast */}
+      {toast ? (
+        <div className="fixed bottom-5 left-1/2 z-[70] -translate-x-1/2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-sm font-medium text-emerald-800 shadow-lg">
+          {toast}
         </div>
       ) : null}
     </div>
   );
 }
 
-function DetalleSeccion({ titulo, facturas }: { titulo: string; facturas: FacturaLite[] }) {
+function DetalleSeccion({
+  titulo,
+  facturas,
+  puedeRegistrar,
+  onRegistrar,
+}: {
+  titulo: string;
+  facturas: FacturaLite[];
+  puedeRegistrar: boolean;
+  onRegistrar: (f: FacturaLite) => void;
+}) {
   return (
     <div>
       <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.1em] text-slate-500">{titulo}</p>
@@ -396,16 +473,116 @@ function DetalleSeccion({ titulo, facturas }: { titulo: string; facturas: Factur
       ) : (
         <ul className="divide-y divide-slate-100 rounded-xl border border-slate-200">
           {facturas.map((f) => (
-            <li key={f.id} className="flex items-center justify-between px-3 py-2 text-xs">
-              <span className="text-slate-600">
+            <li key={f.id} className="flex items-center justify-between gap-2 px-3 py-2 text-xs">
+              <span className="min-w-0 text-slate-600">
                 {f.numero_factura ?? "—"} · vence {fmtDate(f.fecha_vencimiento)}
                 {f.vencida ? <span className="ml-1 font-semibold text-rose-600">vencida</span> : null}
               </span>
-              <span className="font-semibold tabular-nums text-slate-800">{fmtMoney(f.saldo)}</span>
+              <span className="flex shrink-0 items-center gap-2">
+                <span className="font-semibold tabular-nums text-slate-800">{fmtMoney(f.saldo)}</span>
+                {puedeRegistrar ? (
+                  <button
+                    type="button"
+                    onClick={() => onRegistrar(f)}
+                    className="rounded-lg border border-[#4FAEB2]/40 bg-[#4FAEB2]/10 px-2 py-1 text-[10px] font-semibold text-[#3F8E91] hover:bg-[#4FAEB2]/20"
+                  >
+                    Registrar pago
+                  </button>
+                ) : null}
+              </span>
             </li>
           ))}
         </ul>
       )}
+    </div>
+  );
+}
+
+function RegistrarPagoModal({
+  factura,
+  busy,
+  onCancel,
+  onConfirm,
+}: {
+  factura: FacturaLite;
+  busy: boolean;
+  onCancel: () => void;
+  onConfirm: (input: { monto: number; fecha_pago: string; metodo_pago: string; referencia: string }) => void;
+}) {
+  const hoyLocal = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Asuncion", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+  const [monto, setMonto] = useState(String(factura.saldo));
+  const [fecha, setFecha] = useState(hoyLocal);
+  const [metodo, setMetodo] = useState("efectivo");
+  const [obs, setObs] = useState("");
+  const [err, setErr] = useState<string | null>(null);
+
+  const montoNum = Number(monto);
+  const invalido = !Number.isFinite(montoNum) || montoNum <= 0 || montoNum > factura.saldo || !fecha;
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/40 p-4" onClick={onCancel}>
+      <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <h3 className="text-base font-semibold text-slate-900">Registrar pago</h3>
+        <p className="mt-1 text-xs text-slate-500">
+          {factura.numero_factura ?? "—"} · vence {fmtDate(factura.fecha_vencimiento)}
+        </p>
+        <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50/60 px-3 py-2 text-xs text-slate-600">
+          Saldo pendiente: <b className="text-slate-900">{fmtMoney(factura.saldo)}</b>
+        </div>
+        <div className="mt-4 grid gap-3">
+          <label className="block">
+            <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Monto a pagar</span>
+            <input
+              type="number"
+              value={monto}
+              min={0}
+              max={factura.saldo}
+              onChange={(e) => setMonto(e.target.value)}
+              className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 shadow-sm focus:border-[#4FAEB2] focus:outline-none focus:ring-2 focus:ring-[#4FAEB2]/20"
+            />
+            {montoNum > factura.saldo ? <span className="mt-1 block text-[11px] text-rose-600">No puede superar el saldo.</span> : null}
+          </label>
+          <label className="block">
+            <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Fecha de pago</span>
+            <input type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 shadow-sm focus:border-[#4FAEB2] focus:outline-none focus:ring-2 focus:ring-[#4FAEB2]/20" />
+          </label>
+          <label className="block">
+            <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Método de pago</span>
+            <select value={metodo} onChange={(e) => setMetodo(e.target.value)} className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 shadow-sm focus:border-[#4FAEB2] focus:outline-none focus:ring-2 focus:ring-[#4FAEB2]/20">
+              <option value="efectivo">Efectivo</option>
+              <option value="transferencia">Transferencia</option>
+              <option value="cheque">Cheque</option>
+              <option value="tarjeta">Tarjeta</option>
+              <option value="otro">Otro</option>
+            </select>
+          </label>
+          <label className="block">
+            <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Observación (opcional)</span>
+            <input type="text" value={obs} onChange={(e) => setObs(e.target.value)} className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 shadow-sm focus:border-[#4FAEB2] focus:outline-none focus:ring-2 focus:ring-[#4FAEB2]/20" />
+          </label>
+        </div>
+        {err ? <p className="mt-3 text-xs text-rose-600">{err}</p> : null}
+        <div className="mt-4 flex justify-end gap-2">
+          <button type="button" onClick={onCancel} disabled={busy} className="rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50">
+            Cancelar
+          </button>
+          <button
+            type="button"
+            disabled={busy || invalido}
+            onClick={() => {
+              setErr(null);
+              try {
+                onConfirm({ monto: montoNum, fecha_pago: fecha, metodo_pago: metodo, referencia: obs.trim() });
+              } catch (e) {
+                setErr(e instanceof Error ? e.message : "Error");
+              }
+            }}
+            className="rounded-xl bg-[#3F8E91] px-3.5 py-2 text-xs font-semibold text-white hover:bg-[#357a7d] disabled:opacity-50"
+          >
+            {busy ? "Registrando…" : "Confirmar pago"}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
