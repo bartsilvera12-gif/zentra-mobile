@@ -160,6 +160,26 @@ export default function CobranzasClient() {
     }
   }, []);
 
+  /** Cuota más vieja pendiente del cliente abierto (oldest-first): venc → emisión → número. */
+  const oldestPayable = useMemo(() => {
+    if (!detalle) return null;
+    const all = [...detalle.facturas_vencidas, ...detalle.facturas_pendientes];
+    if (all.length === 0) return null;
+    const numInt = (n: string | null | undefined) => {
+      const m = String(n ?? "").replace(/\D/g, "");
+      return m ? parseInt(m, 10) : Number.MAX_SAFE_INTEGER;
+    };
+    return [...all].sort((a, b) => {
+      const va = a.fecha_vencimiento ?? "";
+      const vb = b.fecha_vencimiento ?? "";
+      if (va !== vb) return va < vb ? -1 : 1;
+      const ea = a.fecha ?? "";
+      const eb = b.fecha ?? "";
+      if (ea !== eb) return ea < eb ? -1 : 1;
+      return numInt(a.numero_factura) - numInt(b.numero_factura);
+    })[0];
+  }, [detalle]);
+
   const registrarPagoCobranza = useCallback(
     async (input: { factura_id: string; monto: number; fecha_pago: string; metodo_pago: string; referencia: string }) => {
       const res = await fetchWithSupabaseSession("/api/cobranzas/registrar-pago", {
@@ -460,12 +480,16 @@ export default function CobranzasClient() {
                   facturas={detalle.facturas_vencidas}
                   puedeRegistrar={puedeRegistrar}
                   onRegistrar={(f) => setPagoFactura(f)}
+                  oldestId={oldestPayable?.id ?? null}
+                  oldestNumero={oldestPayable?.numero_factura ?? null}
                 />
                 <DetalleSeccion
                   titulo={`Facturas pendientes (${detalle.facturas_pendientes.length})`}
                   facturas={detalle.facturas_pendientes}
                   puedeRegistrar={puedeRegistrar}
                   onRegistrar={(f) => setPagoFactura(f)}
+                  oldestId={oldestPayable?.id ?? null}
+                  oldestNumero={oldestPayable?.numero_factura ?? null}
                 />
 
                 <div>
@@ -527,11 +551,15 @@ function DetalleSeccion({
   facturas,
   puedeRegistrar,
   onRegistrar,
+  oldestId,
+  oldestNumero,
 }: {
   titulo: string;
   facturas: FacturaLite[];
   puedeRegistrar: boolean;
   onRegistrar: (f: FacturaLite) => void;
+  oldestId: string | null;
+  oldestNumero: string | null;
 }) {
   return (
     <div>
@@ -549,13 +577,22 @@ function DetalleSeccion({
               <span className="flex shrink-0 items-center gap-2">
                 <span className="font-semibold tabular-nums text-slate-800">{fmtMoney(f.saldo)}</span>
                 {puedeRegistrar ? (
-                  <button
-                    type="button"
-                    onClick={() => onRegistrar(f)}
-                    className="rounded-lg border border-[#4FAEB2]/40 bg-[#4FAEB2]/10 px-2 py-1 text-[10px] font-semibold text-[#3F8E91] hover:bg-[#4FAEB2]/20"
-                  >
-                    Registrar pago
-                  </button>
+                  f.id === oldestId ? (
+                    <button
+                      type="button"
+                      onClick={() => onRegistrar(f)}
+                      className="rounded-lg border border-[#4FAEB2]/40 bg-[#4FAEB2]/10 px-2 py-1 text-[10px] font-semibold text-[#3F8E91] hover:bg-[#4FAEB2]/20"
+                    >
+                      Registrar pago
+                    </button>
+                  ) : (
+                    <span
+                      className="text-[10px] text-slate-400"
+                      title={`Primero se cobra la cuota más vieja${oldestNumero ? ` (${oldestNumero})` : ""}`}
+                    >
+                      Pagá primero {oldestNumero ?? "la cuota anterior"}
+                    </span>
+                  )
                 ) : null}
               </span>
             </li>

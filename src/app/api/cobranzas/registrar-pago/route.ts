@@ -3,6 +3,7 @@ import { getTenantSupabaseFromAuth } from "@/lib/supabase/tenant-api";
 import { requireCobranzasModuleAccess } from "@/lib/cobranzas/cobranzas-auth";
 import { esRolAdminEmpresaOGlobal } from "@/lib/auth/rol-empresa";
 import { registrarPago } from "@/lib/pagos/registrar-pago";
+import { validarPagoMasVieja } from "@/lib/cobranzas/cobranzas-data";
 import { errorResponse, successResponse } from "@/lib/api/response";
 
 /**
@@ -31,6 +32,22 @@ export async function POST(request: Request) {
     body = await request.json();
   } catch {
     return NextResponse.json(errorResponse("Body JSON inválido"), { status: 400 });
+  }
+
+  // Regla oldest-first: el pago debe aplicarse a la cuota más vieja pendiente del cliente.
+  const facturaId = typeof (body as Record<string, unknown>)?.factura_id === "string"
+    ? String((body as Record<string, unknown>).factura_id)
+    : "";
+  if (facturaId) {
+    const v = await validarPagoMasVieja(ctx.supabase, ctx.auth.empresa_id, facturaId);
+    if (v.ok && !v.esMasVieja) {
+      return NextResponse.json(
+        errorResponse(
+          `Este cliente tiene una cuota anterior pendiente (${v.oldest_numero ?? "factura previa"}). El pago se aplica primero a esa cuota.`
+        ),
+        { status: 409 }
+      );
+    }
   }
 
   const result = await registrarPago(ctx.supabase, ctx.auth, body as Record<string, unknown>);

@@ -92,6 +92,14 @@ function esDeuda(estado: string | null | undefined): boolean {
   return !ESTADOS_NO_DEUDA.has(String(estado ?? "").trim().toLowerCase());
 }
 
+/** Cliente activo para Cobranzas: estado 'activo' (o null=default) y no eliminado. */
+function esClienteActivo(c: Record<string, unknown> | undefined | null): boolean {
+  if (!c) return false;
+  if (c.deleted_at != null) return false;
+  const est = String(c.estado ?? "activo").trim().toLowerCase();
+  return est === "activo";
+}
+
 /**
  * Etiqueta visible del tipo de cliente según el catálogo real
  * (`cliente_tipos_servicio_catalogo`): saas→SaaS, otro→Contable, web→Web,
@@ -175,7 +183,7 @@ export async function cargarCobranzas(
   hoyYmd: string
 ): Promise<{ resumen: CobranzasResumen; clientes: ClienteCobranza[] }> {
   const [clientesRows, facturasRows, suscripcionPorCliente, catalogoTipos] = await Promise.all([
-    fetchAll(sb, "clientes", "id, empresa, nombre_contacto, tipo_servicio_cliente, created_at", empresaId),
+    fetchAll(sb, "clientes", "id, empresa, nombre_contacto, tipo_servicio_cliente, created_at, estado, deleted_at", empresaId),
     fetchAll(sb, "facturas", "id, cliente_id, fecha, fecha_vencimiento, monto, saldo, estado", empresaId),
     cargarSuscripcionPorCliente(sb, empresaId),
     cargarCatalogoTipos(sb, empresaId),
@@ -239,6 +247,7 @@ export async function cargarCobranzas(
   for (const [cid, a] of acc) {
     if (a.total <= 0) continue;
     const c = clienteInfo.get(cid);
+    if (!esClienteActivo(c)) continue; // Cobranzas: solo clientes activos (no inactivos/eliminados)
     const label = String(c?.nombre_contacto ?? c?.empresa ?? cid.slice(0, 8)).trim() || cid.slice(0, 8);
     const sus = suscripcionPorCliente.get(cid);
     const tramo = tramoDe(a.cuotasVencidas);
@@ -278,12 +287,13 @@ export async function cargarDetalleCliente(
 ): Promise<DetalleCobranza | null> {
   const { data: cRows } = await sb
     .from("clientes")
-    .select("id, empresa, nombre_contacto, tipo_servicio_cliente, created_at")
+    .select("id, empresa, nombre_contacto, tipo_servicio_cliente, created_at, estado, deleted_at")
     .eq("empresa_id", empresaId)
     .eq("id", clienteId)
     .limit(1);
   const c = (cRows ?? [])[0] as Record<string, unknown> | undefined;
   if (!c) return null;
+  if (!esClienteActivo(c)) return null; // Cobranzas no muestra detalle de inactivos/eliminados
 
   const { data: fRows } = await sb
     .from("facturas")
@@ -369,5 +379,63 @@ export async function cargarDetalleCliente(
     facturas_pendientes: pendientes,
     facturas_vencidas: vencidas,
     pagos_recientes: pagos.slice(0, 10),
+  };
+}
+
+export type ValidacionMasVieja =
+  | { ok: false; motivo: string }
+  | { ok: true; esMasVieja: boolean; oldest_id: string; oldest_numero: string | null };
+
+/**
+ * Determina la cuota MÁS VIEJA pendiente del cliente dueño de `facturaId`.
+ * Orden de antigüedad: fecha_vencimiento asc → fecha (emisión) asc → numero_factura asc.
+ * El caller (endpoint de Cobranzas) usa esto para forzar que el pago se aplique primero
+ * a la cuota más vieja (regla oldest-first).
+ */
+export async function validarPagoMasVieja(
+  sb: Sb,
+  empresaId: string,
+  facturaId: string
+): Promise<ValidacionMasVieja> {
+  const { data: tRows } = await sb
+    .from("facturas")
+    .select("id, cliente_id")
+    .eq("empresa_id", empresaId)
+    .eq("id", facturaId)
+    .limit(1);
+  const target = ((tRows ?? []) as Record<string, unknown>[])[0];
+  if (!target) return { ok: false, motivo: "Factura no encontrada" };
+  const clienteId = String(target.cliente_id ?? "");
+  if (!clienteId) return { ok: false, motivo: "Factura sin cliente" };
+
+  const { data: fRows } = await sb
+    .from("facturas")
+    .select("id, numero_factura, fecha, fecha_vencimiento, saldo, estado")
+    .eq("empresa_id", empresaId)
+    .eq("cliente_id", clienteId);
+  const pendientes = ((fRows ?? []) as Record<string, unknown>[]).filter(
+    (f) => (Number(f.saldo) || 0) > 0 && esDeuda(f.estado as string)
+  );
+  if (pendientes.length === 0) return { ok: false, motivo: "La factura no tiene saldo pendiente" };
+
+  const numInt = (n: unknown) => {
+    const m = String(n ?? "").replace(/\D/g, "");
+    return m ? parseInt(m, 10) : Number.MAX_SAFE_INTEGER;
+  };
+  pendientes.sort((a, b) => {
+    const va = ymd(a.fecha_vencimiento as string);
+    const vb = ymd(b.fecha_vencimiento as string);
+    if (va !== vb) return va < vb ? -1 : 1;
+    const ea = ymd(a.fecha as string);
+    const eb = ymd(b.fecha as string);
+    if (ea !== eb) return ea < eb ? -1 : 1;
+    return numInt(a.numero_factura) - numInt(b.numero_factura);
+  });
+  const oldest = pendientes[0]!;
+  return {
+    ok: true,
+    esMasVieja: String(oldest.id) === facturaId,
+    oldest_id: String(oldest.id),
+    oldest_numero: (oldest.numero_factura as string) ?? null,
   };
 }
