@@ -248,7 +248,8 @@ export async function cargarCobranzas(
     if (a.total <= 0) continue;
     const c = clienteInfo.get(cid);
     if (!esClienteActivo(c)) continue; // Cobranzas: solo clientes activos (no inactivos/eliminados)
-    const label = String(c?.nombre_contacto ?? c?.empresa ?? cid.slice(0, 8)).trim() || cid.slice(0, 8);
+    const label =
+      String(c?.empresa ?? "").trim() || String(c?.nombre_contacto ?? "").trim() || cid.slice(0, 8);
     const sus = suscripcionPorCliente.get(cid);
     const tramo = tramoDe(a.cuotasVencidas);
     clientes.push({
@@ -361,7 +362,8 @@ export async function cargarDetalleCliente(
 
   const sus = (await cargarSuscripcionPorCliente(sb, empresaId)).get(clienteId);
   const catalogoTipos = await cargarCatalogoTipos(sb, empresaId);
-  const label = String(c.nombre_contacto ?? c.empresa ?? clienteId.slice(0, 8)).trim() || clienteId.slice(0, 8);
+  const label =
+    String(c.empresa ?? "").trim() || String(c.nombre_contacto ?? "").trim() || clienteId.slice(0, 8);
 
   return {
     cliente: {
