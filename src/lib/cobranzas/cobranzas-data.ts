@@ -21,6 +21,16 @@ export type ClienteCobranza = {
   tramo: TramoKey;
   ultimo_pago: string | null;
   proximo_vencimiento: string | null;
+  /** Promesa de pago pendiente vigente (la más reciente), YYYY-MM-DD o null. */
+  promesa_fecha: string | null;
+};
+
+export type PromesaPago = {
+  id: string;
+  fecha_promesa: string | null;
+  estado: string;
+  creado_por_email: string | null;
+  created_at: string | null;
 };
 
 export type CobranzasResumen = {
@@ -60,6 +70,7 @@ export type DetalleCobranza = {
   facturas_pendientes: FacturaLite[];
   facturas_vencidas: FacturaLite[];
   pagos_recientes: PagoLite[];
+  promesas: PromesaPago[];
 };
 
 /**
@@ -176,17 +187,42 @@ async function cargarSuscripcionPorCliente(
   return map;
 }
 
+/** Mapa cliente_id → fecha de la promesa de pago pendiente más reciente (por created_at). */
+async function cargarPromesasPendientes(sb: Sb, empresaId: string): Promise<Map<string, string>> {
+  const fechaPorCliente = new Map<string, string>();
+  const createdPorCliente = new Map<string, string>();
+  const { data } = await sb
+    .from("cobranza_promesas")
+    .select("cliente_id, fecha_promesa, created_at")
+    .eq("empresa_id", empresaId)
+    .eq("estado", "pendiente");
+  for (const r of (data ?? []) as Record<string, unknown>[]) {
+    const cid = String(r.cliente_id ?? "");
+    if (!cid) continue;
+    const fecha = r.fecha_promesa != null ? String(r.fecha_promesa).slice(0, 10) : "";
+    if (!fecha) continue;
+    const cAt = r.created_at != null ? String(r.created_at) : "";
+    const prev = createdPorCliente.get(cid);
+    if (!prev || cAt > prev) {
+      createdPorCliente.set(cid, cAt);
+      fechaPorCliente.set(cid, fecha);
+    }
+  }
+  return fechaPorCliente;
+}
+
 /** Resumen + lista de clientes con deuda (total_adeudado > 0). */
 export async function cargarCobranzas(
   sb: Sb,
   empresaId: string,
   hoyYmd: string
 ): Promise<{ resumen: CobranzasResumen; clientes: ClienteCobranza[] }> {
-  const [clientesRows, facturasRows, suscripcionPorCliente, catalogoTipos] = await Promise.all([
+  const [clientesRows, facturasRows, suscripcionPorCliente, catalogoTipos, promesaPorCliente] = await Promise.all([
     fetchAll(sb, "clientes", "id, empresa, nombre_contacto, tipo_servicio_cliente, created_at, estado, deleted_at", empresaId),
     fetchAll(sb, "facturas", "id, cliente_id, fecha, fecha_vencimiento, monto, saldo, estado", empresaId),
     cargarSuscripcionPorCliente(sb, empresaId),
     cargarCatalogoTipos(sb, empresaId),
+    cargarPromesasPendientes(sb, empresaId),
   ]);
 
   // Último pago por cliente (pagos → factura → cliente).
@@ -264,6 +300,7 @@ export async function cargarCobranzas(
       tramo,
       ultimo_pago: ultimoPagoPorCliente.get(cid) ?? null,
       proximo_vencimiento: a.proximoVenc,
+      promesa_fecha: promesaPorCliente.get(cid) ?? null,
     });
     resumen.total_adeudado += a.total;
     resumen.clientes_con_deuda += 1;
@@ -362,6 +399,21 @@ export async function cargarDetalleCliente(
 
   const sus = (await cargarSuscripcionPorCliente(sb, empresaId)).get(clienteId);
   const catalogoTipos = await cargarCatalogoTipos(sb, empresaId);
+
+  const { data: promRows } = await sb
+    .from("cobranza_promesas")
+    .select("id, fecha_promesa, estado, creado_por_email, created_at")
+    .eq("empresa_id", empresaId)
+    .eq("cliente_id", clienteId);
+  const promesas: PromesaPago[] = ((promRows ?? []) as Record<string, unknown>[])
+    .map((r) => ({
+      id: String(r.id ?? ""),
+      fecha_promesa: r.fecha_promesa != null ? String(r.fecha_promesa).slice(0, 10) : null,
+      estado: String(r.estado ?? "pendiente"),
+      creado_por_email: r.creado_por_email != null ? String(r.creado_por_email) : null,
+      created_at: r.created_at != null ? String(r.created_at) : null,
+    }))
+    .sort((a, b) => (b.created_at ?? "").localeCompare(a.created_at ?? ""));
   const label =
     String(c.empresa ?? "").trim() || String(c.nombre_contacto ?? "").trim() || clienteId.slice(0, 8);
 
@@ -381,6 +433,7 @@ export async function cargarDetalleCliente(
     facturas_pendientes: pendientes,
     facturas_vencidas: vencidas,
     pagos_recientes: pagos.slice(0, 10),
+    promesas,
   };
 }
 

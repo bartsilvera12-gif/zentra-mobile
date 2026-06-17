@@ -18,6 +18,15 @@ type ClienteCobranza = {
   tramo: TramoKey;
   ultimo_pago: string | null;
   proximo_vencimiento: string | null;
+  promesa_fecha: string | null;
+};
+
+type PromesaPago = {
+  id: string;
+  fecha_promesa: string | null;
+  estado: string;
+  creado_por_email: string | null;
+  created_at: string | null;
 };
 
 type Resumen = {
@@ -51,6 +60,7 @@ type DetallePayload = {
   facturas_pendientes: FacturaLite[];
   facturas_vencidas: FacturaLite[];
   pagos_recientes: PagoLite[];
+  promesas: PromesaPago[];
 };
 
 const TRAMO_LABEL: Record<TramoKey, string> = {
@@ -117,6 +127,8 @@ export default function CobranzasClient() {
   const [puedeRegistrar, setPuedeRegistrar] = useState(false);
   const [pagoFactura, setPagoFactura] = useState<FacturaLite | null>(null);
   const [pagoBusy, setPagoBusy] = useState(false);
+  const [promesaOpen, setPromesaOpen] = useState(false);
+  const [promesaBusy, setPromesaBusy] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
 
   const showToast = useCallback((msg: string) => {
@@ -222,6 +234,31 @@ export default function CobranzasClient() {
   }, [data, query, tipoFiltro]);
 
   /** + filtro de tramo: alimenta la tabla y los KPIs. */
+  const registrarPromesa = useCallback(
+    async (fecha: string) => {
+      if (!detalleId) return;
+      setPromesaBusy(true);
+      try {
+        const res = await fetchWithSupabaseSession("/api/cobranzas/promesa", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ cliente_id: detalleId, fecha_promesa: fecha }),
+        });
+        const json = (await res.json()) as { success?: boolean; error?: string };
+        if (!res.ok || json.success !== true) throw new Error(json.error ?? `Error ${res.status}`);
+        setPromesaOpen(false);
+        showToast("Promesa de pago registrada.");
+        await openDetalle(detalleId);
+        await load();
+      } catch (e) {
+        showToast(e instanceof Error ? e.message : "No se pudo registrar la promesa");
+      } finally {
+        setPromesaBusy(false);
+      }
+    },
+    [detalleId, openDetalle, load, showToast]
+  );
+
   const clientesFiltrados = useMemo(
     () => baseFiltered.filter((c) => tramoFiltro === "todos" || c.tramo === tramoFiltro),
     [baseFiltered, tramoFiltro]
@@ -237,21 +274,25 @@ export default function CobranzasClient() {
   /** KPIs recalculados sobre lo filtrado (tipo + búsqueda + tramo). */
   const kpis = useMemo(() => {
     const list = clientesFiltrados;
+    const hoy = data?.hoy ?? "";
     const porTramo = { por_vencer: 0, tramo_1: 0, tramo_2: 0, tramo_3: 0 } as Record<string, number>;
     let totalAdeudado = 0;
     let cuotasVenc = 0;
+    let promesasHoy = 0;
     for (const c of list) {
       totalAdeudado += c.total_adeudado;
       cuotasVenc += c.cuotas_vencidas;
       porTramo[c.tramo] = (porTramo[c.tramo] ?? 0) + 1;
+      if (c.promesa_fecha && hoy && c.promesa_fecha === hoy) promesasHoy += 1;
     }
     return {
       total_adeudado: Math.round(totalAdeudado),
       clientes_con_deuda: list.length,
       cuotas_vencidas: cuotasVenc,
       por_tramo: porTramo,
+      promesas_hoy: promesasHoy,
     };
-  }, [clientesFiltrados]);
+  }, [clientesFiltrados, data]);
 
   if (loading) {
     return (
@@ -311,11 +352,7 @@ export default function CobranzasClient() {
         <Kpi label="Total adeudado" value={fmtMoney(kpis.total_adeudado)} accent="danger" />
         <Kpi label="Clientes con deuda" value={kpis.clientes_con_deuda} accent="featured" />
         <Kpi label="Cuotas vencidas" value={kpis.cuotas_vencidas} />
-        <Kpi
-          label="En mora (T1+T2+T3)"
-          value={kpis.por_tramo.tramo_1 + kpis.por_tramo.tramo_2 + kpis.por_tramo.tramo_3}
-          accent="danger"
-        />
+        <Kpi label="Promesa de pago hoy" value={kpis.promesas_hoy} accent="featured" />
       </div>
       <div className="grid gap-3 sm:grid-cols-4">
         <Kpi label="Por vencer" value={kpis.por_tramo.por_vencer} />
@@ -389,13 +426,13 @@ export default function CobranzasClient() {
                   {[
                     { h: "Cliente", r: false },
                     { h: "Tipo", r: false },
-                    { h: "Plan", r: false },
                     { h: "Monto mensual", r: true },
                     { h: "Total adeudado", r: true },
                     { h: "Cuotas venc.", r: true },
                     { h: "Tramo", r: false },
                     { h: "Último pago", r: false },
                     { h: "Próx. venc.", r: false },
+                    { h: "Promesa de pago", r: false },
                     { h: "Acción", r: true },
                   ].map(({ h, r: right }) => (
                     <th key={h} className={`px-3 py-2.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-500 whitespace-nowrap ${right ? "text-right" : "text-left"}`}>
@@ -411,15 +448,27 @@ export default function CobranzasClient() {
                       <span className="block max-w-[220px] truncate" title={c.cliente_label}>{c.cliente_label}</span>
                     </td>
                     <td className="px-3 py-3 text-xs text-slate-600 whitespace-nowrap">{c.tipo}</td>
-                    <td className="px-3 py-3 text-xs text-slate-600">
-                      <span className="block max-w-[160px] truncate" title={c.plan ?? "—"}>{c.plan ?? "—"}</span>
-                    </td>
                     <td className="px-3 py-3 text-right text-xs tabular-nums text-slate-700 whitespace-nowrap">{fmtMoney(c.monto_mensual)}</td>
                     <td className="px-3 py-3 text-right text-sm font-semibold tabular-nums text-rose-700 whitespace-nowrap">{fmtMoney(c.total_adeudado)}</td>
                     <td className="px-3 py-3 text-right text-sm tabular-nums text-slate-800">{c.cuotas_vencidas}</td>
                     <td className="px-3 py-3 whitespace-nowrap"><TramoBadge tramo={c.tramo} /></td>
                     <td className="px-3 py-3 text-xs tabular-nums text-slate-600 whitespace-nowrap">{fmtDate(c.ultimo_pago)}</td>
                     <td className="px-3 py-3 text-xs tabular-nums text-slate-600 whitespace-nowrap">{fmtDate(c.proximo_vencimiento)}</td>
+                    <td className="px-3 py-3 text-xs tabular-nums whitespace-nowrap">
+                      {c.promesa_fecha ? (
+                        <span
+                          className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold ${
+                            data?.hoy && c.promesa_fecha === data.hoy
+                              ? "border-[#4FAEB2] bg-[#4FAEB2]/10 text-[#3F8E91]"
+                              : "border-slate-200 bg-slate-50 text-slate-600"
+                          }`}
+                        >
+                          {fmtDate(c.promesa_fecha)}
+                        </span>
+                      ) : (
+                        <span className="text-slate-400">—</span>
+                      )}
+                    </td>
                     <td className="px-3 py-3 text-right">
                       <button
                         type="button"
@@ -508,6 +557,34 @@ export default function CobranzasClient() {
                   )}
                 </div>
 
+                <div>
+                  <div className="mb-2 flex items-center justify-between">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.1em] text-slate-500">Promesas de pago</p>
+                    <button
+                      type="button"
+                      onClick={() => setPromesaOpen(true)}
+                      className="rounded-lg border border-[#4FAEB2]/40 bg-[#4FAEB2]/10 px-2.5 py-1 text-[11px] font-semibold text-[#3F8E91] hover:bg-[#4FAEB2]/20"
+                    >
+                      + Agregar promesa
+                    </button>
+                  </div>
+                  {detalle.promesas.length === 0 ? (
+                    <p className="text-xs text-slate-500">Sin promesas registradas.</p>
+                  ) : (
+                    <ul className="divide-y divide-slate-100 rounded-xl border border-slate-200">
+                      {detalle.promesas.map((p) => (
+                        <li key={p.id} className="flex items-center justify-between px-3 py-2 text-xs">
+                          <span className="text-slate-700">
+                            <b className="tabular-nums">{fmtDate(p.fecha_promesa)}</b>
+                            <span className="ml-2 text-slate-400">{p.estado}</span>
+                          </span>
+                          <span className="text-[10px] text-slate-400">{p.creado_por_email ?? ""}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+
                 {!puedeRegistrar ? (
                   <p className="text-[11px] text-slate-400">El registro de pagos está disponible solo para administradores.</p>
                 ) : null}
@@ -536,12 +613,60 @@ export default function CobranzasClient() {
         />
       ) : null}
 
+      {/* Modal promesa de pago */}
+      {promesaOpen ? (
+        <PromesaModal busy={promesaBusy} onCancel={() => setPromesaOpen(false)} onConfirm={(f) => void registrarPromesa(f)} />
+      ) : null}
+
       {/* Toast */}
       {toast ? (
         <div className="fixed bottom-5 left-1/2 z-[70] -translate-x-1/2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-sm font-medium text-emerald-800 shadow-lg">
           {toast}
         </div>
       ) : null}
+    </div>
+  );
+}
+
+function PromesaModal({
+  busy,
+  onCancel,
+  onConfirm,
+}: {
+  busy: boolean;
+  onCancel: () => void;
+  onConfirm: (fecha: string) => void;
+}) {
+  const hoyLocal = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Asuncion", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+  const [fecha, setFecha] = useState(hoyLocal);
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/40 p-4" onClick={onCancel}>
+      <div className="w-full max-w-sm rounded-2xl border border-slate-200 bg-white p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <h3 className="text-base font-semibold text-slate-900">Agregar promesa de pago</h3>
+        <p className="mt-1 text-xs text-slate-500">Fecha en que el cliente se comprometió a pagar.</p>
+        <label className="mt-4 block">
+          <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Fecha de promesa</span>
+          <input
+            type="date"
+            value={fecha}
+            onChange={(e) => setFecha(e.target.value)}
+            className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 shadow-sm focus:border-[#4FAEB2] focus:outline-none focus:ring-2 focus:ring-[#4FAEB2]/20"
+          />
+        </label>
+        <div className="mt-4 flex justify-end gap-2">
+          <button type="button" onClick={onCancel} disabled={busy} className="rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50">
+            Cancelar
+          </button>
+          <button
+            type="button"
+            disabled={busy || !fecha}
+            onClick={() => onConfirm(fecha)}
+            className="rounded-xl bg-[#3F8E91] px-3.5 py-2 text-xs font-semibold text-white hover:bg-[#357a7d] disabled:opacity-50"
+          >
+            {busy ? "Guardando…" : "Guardar promesa"}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
