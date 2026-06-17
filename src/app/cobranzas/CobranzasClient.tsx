@@ -101,12 +101,36 @@ function TramoBadge({ tramo }: { tramo: TramoKey }) {
   );
 }
 
-function Kpi({ label, value, accent }: { label: string; value: string | number; accent?: "featured" | "danger" | "warning" }) {
+function Kpi({
+  label,
+  value,
+  accent,
+  onClick,
+  active,
+}: {
+  label: string;
+  value: string | number;
+  accent?: "featured" | "danger" | "warning";
+  onClick?: () => void;
+  active?: boolean;
+}) {
   const valueCls =
     accent === "featured" ? "text-[#3F8E91]" : accent === "danger" ? "text-rose-700" : accent === "warning" ? "text-amber-700" : "text-slate-900";
+  const clickable = typeof onClick === "function";
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
-      <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-500">{label}</p>
+    <div
+      onClick={onClick}
+      role={clickable ? "button" : undefined}
+      tabIndex={clickable ? 0 : undefined}
+      onKeyDown={clickable ? (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onClick!(); } } : undefined}
+      className={`rounded-2xl border bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)] ${
+        clickable ? "cursor-pointer transition-shadow hover:shadow-md focus:outline-none focus:ring-2 focus:ring-[#4FAEB2]/30" : ""
+      } ${active ? "border-[#4FAEB2] ring-2 ring-[#4FAEB2]/30" : "border-slate-200"}`}
+    >
+      <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-500">
+        {label}
+        {clickable ? <span className="ml-1 text-[#4FAEB2]">{active ? "· filtrando" : "· filtrar"}</span> : null}
+      </p>
       <p className={`mt-1.5 text-xl font-semibold tabular-nums tracking-tight sm:text-2xl ${valueCls}`}>{value}</p>
     </div>
   );
@@ -119,6 +143,7 @@ export default function CobranzasClient() {
   const [query, setQuery] = useState("");
   const [tramoFiltro, setTramoFiltro] = useState<TramoKey | "todos">("todos");
   const [tipoFiltro, setTipoFiltro] = useState<string>("__all__");
+  const [soloPromesaHoy, setSoloPromesaHoy] = useState(false);
 
   const [detalleId, setDetalleId] = useState<string | null>(null);
   const [detalle, setDetalle] = useState<DetallePayload | null>(null);
@@ -260,9 +285,21 @@ export default function CobranzasClient() {
   );
 
   const clientesFiltrados = useMemo(
-    () => baseFiltered.filter((c) => tramoFiltro === "todos" || c.tramo === tramoFiltro),
-    [baseFiltered, tramoFiltro]
+    () =>
+      baseFiltered.filter((c) => {
+        if (tramoFiltro !== "todos" && c.tramo !== tramoFiltro) return false;
+        if (soloPromesaHoy && !(data?.hoy && c.promesa_fecha === data.hoy)) return false;
+        return true;
+      }),
+    [baseFiltered, tramoFiltro, soloPromesaHoy, data]
   );
+
+  /** Conteo estable de promesas para hoy (tipo+búsqueda, sin tramo ni el toggle). */
+  const promesasHoyCount = useMemo(() => {
+    const hoy = data?.hoy ?? "";
+    if (!hoy) return 0;
+    return baseFiltered.filter((c) => c.promesa_fecha === hoy).length;
+  }, [baseFiltered, data]);
 
   /** Conteo por tramo dentro de tipo+búsqueda (los chips reflejan el tipo elegido). */
   const tramoCounts = useMemo(() => {
@@ -352,7 +389,13 @@ export default function CobranzasClient() {
         <Kpi label="Total adeudado" value={fmtMoney(kpis.total_adeudado)} accent="danger" />
         <Kpi label="Clientes con deuda" value={kpis.clientes_con_deuda} accent="featured" />
         <Kpi label="Cuotas vencidas" value={kpis.cuotas_vencidas} />
-        <Kpi label="Promesa de pago hoy" value={kpis.promesas_hoy} accent="featured" />
+        <Kpi
+          label="Promesa de pago hoy"
+          value={promesasHoyCount}
+          accent="featured"
+          onClick={() => setSoloPromesaHoy((v) => !v)}
+          active={soloPromesaHoy}
+        />
       </div>
       <div className="grid gap-3 sm:grid-cols-4">
         <Kpi label="Por vencer" value={kpis.por_tramo.por_vencer} />
