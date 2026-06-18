@@ -59,7 +59,7 @@ export async function POST(request: NextRequest) {
     const { auth, supabase } = ctx;
 
     const body = await request.json();
-    const { cliente_id, plan_id, precio, moneda, fecha_inicio, duracion_meses, dia_facturacion, dia_vencimiento, generar_factura_este_mes } = body;
+    const { cliente_id, plan_id, precio, moneda, fecha_inicio, duracion_meses, dia_facturacion, dia_vencimiento, generar_factura_este_mes, tipo_servicio } = body;
 
     if (!cliente_id?.trim()) {
       return NextResponse.json(errorResponse("cliente_id es obligatorio"), { status: 400 });
@@ -82,6 +82,10 @@ export async function POST(request: NextRequest) {
       dia_facturacion: Math.min(28, Math.max(1, Number(dia_facturacion) || 1)),
       dia_vencimiento: Math.min(31, Math.max(1, Number(dia_vencimiento) || 10)),
       generar_factura_este_mes: Boolean(generar_factura_este_mes),
+      tipo_servicio:
+        typeof tipo_servicio === "string" && tipo_servicio.trim()
+          ? tipo_servicio.trim().toLowerCase()
+          : null,
     };
 
     const { data, error } = await supabase.from("suscripciones").insert([insert]).select("*").single();

@@ -9,20 +9,27 @@ const ESTADOS_NO_DEUDA = new Set(["pagado", "anulado", "corregida nc"]);
 
 export type TramoKey = "por_vencer" | "tramo_1" | "tramo_2" | "tramo_3";
 
-export type ClienteCobranza = {
-  cliente_id: string;
-  cliente_label: string;
-  tipo: string; // SaaS / Contable / Sin clasificar / Otro
+/** Un servicio = una suscripción (o el bucket "General" para facturas sin suscripcion_id). */
+export type ServicioCobranza = {
+  suscripcion_id: string | null;
+  tipo: string; // etiqueta visible: Contable / SaaS / Web / General / ...
   plan: string | null;
   monto_mensual: number | null;
   total_adeudado: number;
   cuotas_vencidas: number;
-  meses_adeudados: string[]; // ['2026-04', ...]
+  meses_adeudados: string[]; // por mes de vencimiento
   tramo: TramoKey;
-  ultimo_pago: string | null;
   proximo_vencimiento: string | null;
+};
+
+export type ClienteCobranza = {
+  cliente_id: string;
+  cliente_label: string;
+  ultimo_pago: string | null;
   /** Promesa de pago pendiente vigente (la más reciente), YYYY-MM-DD o null. */
   promesa_fecha: string | null;
+  /** Deuda desglosada por servicio/suscripción. El front deriva total/tramo/tipo. */
+  servicios: ServicioCobranza[];
 };
 
 export type PromesaPago = {
@@ -54,6 +61,11 @@ export type FacturaLite = {
 
 export type PagoLite = { factura_id: string; numero_factura: string | null; fecha_pago: string | null; monto: number; metodo_pago: string | null };
 
+export type ServicioDetalle = ServicioCobranza & {
+  facturas_vencidas: FacturaLite[];
+  facturas_pendientes: FacturaLite[];
+};
+
 export type DetalleCobranza = {
   cliente: {
     cliente_id: string;
@@ -71,6 +83,7 @@ export type DetalleCobranza = {
   facturas_vencidas: FacturaLite[];
   pagos_recientes: PagoLite[];
   promesas: PromesaPago[];
+  servicios: ServicioDetalle[];
 };
 
 /**
@@ -111,17 +124,6 @@ function esClienteActivo(c: Record<string, unknown> | undefined | null): boolean
   return est === "activo";
 }
 
-/**
- * Etiqueta visible del tipo de cliente según el catálogo real
- * (`cliente_tipos_servicio_catalogo`): saas→SaaS, otro→Contable, web→Web,
- * marketing→Marketing, etc. null/vacío → "Sin clasificar". Ya NO colapsa a "Otro".
- */
-function tipoClienteLabel(slug: string | null | undefined, catalogo: Record<string, string>): string {
-  const s = (slug ?? "").trim().toLowerCase();
-  if (!s) return "Sin clasificar";
-  return etiquetaVisibleTipoServicio(s, catalogo);
-}
-
 /** Mapa slug→nombre del catálogo de tipos de servicio de la empresa. */
 async function cargarCatalogoTipos(sb: Sb, empresaId: string): Promise<Record<string, string>> {
   const map: Record<string, string> = {};
@@ -158,33 +160,123 @@ async function fetchAll(
   return out;
 }
 
-/** Mapa cliente_id → { plan_nombre, precio } de la suscripción activa (si hay varias, la primera activa). */
-async function cargarSuscripcionPorCliente(
-  sb: Sb,
-  empresaId: string
-): Promise<Map<string, { plan: string | null; precio: number | null }>> {
-  const subs = await fetchAll(sb, "suscripciones", "cliente_id, plan_id, precio, estado", empresaId);
+type SuscInfo = { tipo_servicio: string | null; plan: string | null; precio: number | null };
+
+/** Mapa suscripcion_id → { tipo_servicio, plan, precio } (TODAS las suscripciones, cualquier estado). */
+async function cargarSuscripcionInfo(sb: Sb, empresaId: string): Promise<Map<string, SuscInfo>> {
+  const subs = await fetchAll(sb, "suscripciones", "id, plan_id, precio, tipo_servicio", empresaId);
   const planIds = [...new Set(subs.map((s) => String(s.plan_id ?? "")).filter(Boolean))];
   const planNombre = new Map<string, string>();
   for (let i = 0; i < planIds.length; i += 120) {
     const slice = planIds.slice(i, i + 120);
+    if (slice.length === 0) break;
     const { data } = await sb.from("planes").select("id, nombre").in("id", slice);
     for (const p of (data ?? []) as Record<string, unknown>[]) {
       planNombre.set(String(p.id), String(p.nombre ?? ""));
     }
   }
-  const map = new Map<string, { plan: string | null; precio: number | null }>();
+  const map = new Map<string, SuscInfo>();
   for (const s of subs) {
-    if (String(s.estado ?? "").trim().toLowerCase() !== "activa") continue;
-    const cid = String(s.cliente_id ?? "");
-    if (!cid || map.has(cid)) continue;
-    const planId = String(s.plan_id ?? "");
-    map.set(cid, {
-      plan: planNombre.get(planId) || null,
+    map.set(String(s.id), {
+      tipo_servicio: s.tipo_servicio != null ? String(s.tipo_servicio) : null,
+      plan: planNombre.get(String(s.plan_id ?? "")) || null,
       precio: s.precio != null ? Number(s.precio) : null,
     });
   }
   return map;
+}
+
+const PESO_TRAMO: Record<TramoKey, number> = { tramo_3: 3, tramo_2: 2, tramo_1: 1, por_vencer: 0 };
+
+/** Peor (más alto) tramo entre los servicios. */
+export function peorTramo(tramos: TramoKey[]): TramoKey {
+  let worst: TramoKey = "por_vencer";
+  for (const t of tramos) if (PESO_TRAMO[t] > PESO_TRAMO[worst]) worst = t;
+  return worst;
+}
+
+type GrupoServicio = {
+  suscripcion_id: string | null;
+  tipo: string;
+  plan: string | null;
+  monto: number | null;
+  facturas: FacturaLite[];
+};
+
+/** Agrupa las facturas-deuda de un cliente por suscripción (o "General" si no tiene suscripcion_id). */
+function agruparPorServicio(
+  facturasCliente: Record<string, unknown>[],
+  suscInfo: Map<string, SuscInfo>,
+  catalogo: Record<string, string>,
+  clienteTipoSlug: string | null | undefined,
+  hoyYmd: string
+): GrupoServicio[] {
+  const grupos = new Map<string, GrupoServicio>();
+  for (const f of facturasCliente) {
+    const saldo = Number(f.saldo) || 0;
+    if (saldo <= 0 || !esDeuda(f.estado as string)) continue;
+    const sid = f.suscripcion_id != null ? String(f.suscripcion_id) : "";
+    const key = sid || "general";
+    let g = grupos.get(key);
+    if (!g) {
+      if (key === "general") {
+        g = { suscripcion_id: null, tipo: "General", plan: null, monto: null, facturas: [] };
+      } else {
+        const info = suscInfo.get(sid);
+        const tipoSlug = info?.tipo_servicio ?? clienteTipoSlug ?? null;
+        g = {
+          suscripcion_id: sid,
+          tipo: tipoSlug ? etiquetaVisibleTipoServicio(tipoSlug, catalogo) : "Sin clasificar",
+          plan: info?.plan ?? null,
+          monto: info?.precio ?? null,
+          facturas: [],
+        };
+      }
+      grupos.set(key, g);
+    }
+    const venc = ymd(f.fecha_vencimiento as string);
+    g.facturas.push({
+      id: String(f.id),
+      numero_factura: (f.numero_factura as string) ?? null,
+      fecha: ymd(f.fecha as string) || null,
+      fecha_vencimiento: venc || null,
+      monto: Number(f.monto) || 0,
+      saldo,
+      estado: (f.estado as string) ?? null,
+      tipo: (f.tipo as string) ?? null,
+      vencida: !!venc && venc < hoyYmd,
+    });
+  }
+  return [...grupos.values()];
+}
+
+/** Aggrega un grupo de servicio a ServicioCobranza (total, cuotas, meses, próximo, tramo). */
+function aggServicio(g: GrupoServicio): ServicioCobranza {
+  let total = 0;
+  let cuotas = 0;
+  const meses = new Set<string>();
+  let proximo: string | null = null;
+  for (const f of g.facturas) {
+    total += f.saldo;
+    if (f.vencida) {
+      cuotas += 1;
+      const m = (f.fecha_vencimiento ?? "").slice(0, 7);
+      if (m) meses.add(m);
+    } else if (f.fecha_vencimiento) {
+      if (!proximo || f.fecha_vencimiento < proximo) proximo = f.fecha_vencimiento;
+    }
+  }
+  return {
+    suscripcion_id: g.suscripcion_id,
+    tipo: g.tipo,
+    plan: g.plan,
+    monto_mensual: g.monto,
+    total_adeudado: Math.round(total * 100) / 100,
+    cuotas_vencidas: cuotas,
+    meses_adeudados: [...meses].sort(),
+    tramo: tramoDe(cuotas),
+    proximo_vencimiento: proximo,
+  };
 }
 
 /** Mapa cliente_id → fecha de la promesa de pago pendiente más reciente (por created_at). */
@@ -217,10 +309,10 @@ export async function cargarCobranzas(
   empresaId: string,
   hoyYmd: string
 ): Promise<{ resumen: CobranzasResumen; clientes: ClienteCobranza[] }> {
-  const [clientesRows, facturasRows, suscripcionPorCliente, catalogoTipos, promesaPorCliente] = await Promise.all([
+  const [clientesRows, facturasRows, suscInfo, catalogoTipos, promesaPorCliente] = await Promise.all([
     fetchAll(sb, "clientes", "id, empresa, nombre_contacto, tipo_servicio_cliente, created_at, estado, deleted_at", empresaId),
-    fetchAll(sb, "facturas", "id, cliente_id, fecha, fecha_vencimiento, monto, saldo, estado", empresaId),
-    cargarSuscripcionPorCliente(sb, empresaId),
+    fetchAll(sb, "facturas", "id, cliente_id, suscripcion_id, fecha, fecha_vencimiento, monto, saldo, estado", empresaId),
+    cargarSuscripcionInfo(sb, empresaId),
     cargarCatalogoTipos(sb, empresaId),
     cargarPromesasPendientes(sb, empresaId),
   ]);
@@ -242,34 +334,14 @@ export async function cargarCobranzas(
   const clienteInfo = new Map<string, Record<string, unknown>>();
   for (const c of clientesRows) clienteInfo.set(String(c.id), c);
 
-  type Acc = {
-    total: number;
-    cuotasVencidas: number;
-    meses: Set<string>;
-    proximoVenc: string | null;
-  };
-  const acc = new Map<string, Acc>();
-
+  // Facturas agrupadas por cliente.
+  const facturasPorCliente = new Map<string, Record<string, unknown>[]>();
   for (const f of facturasRows) {
     const cid = String(f.cliente_id ?? "");
     if (!cid) continue;
-    const saldo = Number(f.saldo) || 0;
-    if (saldo <= 0 || !esDeuda(f.estado as string)) continue;
-    let a = acc.get(cid);
-    if (!a) {
-      a = { total: 0, cuotasVencidas: 0, meses: new Set(), proximoVenc: null };
-      acc.set(cid, a);
-    }
-    a.total += saldo;
-    const venc = ymd(f.fecha_vencimiento as string);
-    if (venc && venc < hoyYmd) {
-      a.cuotasVencidas += 1;
-      const mes = venc.slice(0, 7);
-      if (mes) a.meses.add(mes);
-    } else if (venc) {
-      // próximo vencimiento = el más cercano aún no vencido
-      if (!a.proximoVenc || venc < a.proximoVenc) a.proximoVenc = venc;
-    }
+    const arr = facturasPorCliente.get(cid) ?? [];
+    arr.push(f);
+    facturasPorCliente.set(cid, arr);
   }
 
   const clientes: ClienteCobranza[] = [];
@@ -280,38 +352,34 @@ export async function cargarCobranzas(
     por_tramo: { por_vencer: 0, tramo_1: 0, tramo_2: 0, tramo_3: 0 },
   };
 
-  for (const [cid, a] of acc) {
-    if (a.total <= 0) continue;
+  for (const [cid, facts] of facturasPorCliente) {
     const c = clienteInfo.get(cid);
     if (!esClienteActivo(c)) continue; // Cobranzas: solo clientes activos (no inactivos/eliminados)
+    const grupos = agruparPorServicio(facts, suscInfo, catalogoTipos, c?.tipo_servicio_cliente as string, hoyYmd);
+    const servicios = grupos.map(aggServicio).filter((s) => s.total_adeudado > 0);
+    if (servicios.length === 0) continue;
     const label =
       String(c?.empresa ?? "").trim() || String(c?.nombre_contacto ?? "").trim() || cid.slice(0, 8);
-    const sus = suscripcionPorCliente.get(cid);
-    const tramo = tramoDe(a.cuotasVencidas);
     clientes.push({
       cliente_id: cid,
       cliente_label: label,
-      tipo: tipoClienteLabel(c?.tipo_servicio_cliente as string, catalogoTipos),
-      plan: sus?.plan ?? null,
-      monto_mensual: sus?.precio ?? null,
-      total_adeudado: Math.round(a.total * 100) / 100,
-      cuotas_vencidas: a.cuotasVencidas,
-      meses_adeudados: [...a.meses].sort(),
-      tramo,
       ultimo_pago: ultimoPagoPorCliente.get(cid) ?? null,
-      proximo_vencimiento: a.proximoVenc,
       promesa_fecha: promesaPorCliente.get(cid) ?? null,
+      servicios,
     });
-    resumen.total_adeudado += a.total;
+    const total = servicios.reduce((acc, s) => acc + s.total_adeudado, 0);
+    const worst = peorTramo(servicios.map((s) => s.tramo));
+    resumen.total_adeudado += total;
     resumen.clientes_con_deuda += 1;
-    resumen.cuotas_vencidas_total += a.cuotasVencidas;
-    resumen.por_tramo[tramo] += 1;
+    resumen.cuotas_vencidas_total += servicios.reduce((acc, s) => acc + s.cuotas_vencidas, 0);
+    resumen.por_tramo[worst] += 1;
   }
 
   resumen.total_adeudado = Math.round(resumen.total_adeudado * 100) / 100;
-  // Orden: tramo más alto primero, luego mayor deuda.
-  const peso: Record<TramoKey, number> = { tramo_3: 3, tramo_2: 2, tramo_1: 1, por_vencer: 0 };
-  clientes.sort((x, y) => peso[y.tramo] - peso[x.tramo] || y.total_adeudado - x.total_adeudado);
+  // Orden: peor tramo primero, luego mayor deuda total.
+  const totalDe = (c: ClienteCobranza) => c.servicios.reduce((a, s) => a + s.total_adeudado, 0);
+  const worstDe = (c: ClienteCobranza) => peorTramo(c.servicios.map((s) => s.tramo));
+  clientes.sort((x, y) => PESO_TRAMO[worstDe(y)] - PESO_TRAMO[worstDe(x)] || totalDe(y) - totalDe(x));
 
   return { resumen, clientes };
 }
@@ -333,9 +401,14 @@ export async function cargarDetalleCliente(
   if (!c) return null;
   if (!esClienteActivo(c)) return null; // Cobranzas no muestra detalle de inactivos/eliminados
 
+  const [suscInfo, catalogoTipos] = await Promise.all([
+    cargarSuscripcionInfo(sb, empresaId),
+    cargarCatalogoTipos(sb, empresaId),
+  ]);
+
   const { data: fRows } = await sb
     .from("facturas")
-    .select("id, numero_factura, fecha, fecha_vencimiento, monto, saldo, estado, tipo")
+    .select("id, numero_factura, suscripcion_id, fecha, fecha_vencimiento, monto, saldo, estado, tipo")
     .eq("empresa_id", empresaId)
     .eq("cliente_id", clienteId);
   const facturas = (fRows ?? []) as Record<string, unknown>[];
@@ -365,40 +438,29 @@ export async function cargarDetalleCliente(
   }
   pagos.sort((a, b) => (b.fecha_pago ?? "").localeCompare(a.fecha_pago ?? ""));
 
-  const pendientes: FacturaLite[] = [];
-  const vencidas: FacturaLite[] = [];
-  const meses = new Set<string>();
-  let totalDeuda = 0;
-  for (const f of facturas) {
-    const saldo = Number(f.saldo) || 0;
-    if (saldo <= 0 || !esDeuda(f.estado as string)) continue;
-    const venc = ymd(f.fecha_vencimiento as string);
-    const esVencida = !!venc && venc < hoyYmd;
-    const lite: FacturaLite = {
-      id: String(f.id),
-      numero_factura: (f.numero_factura as string) ?? null,
-      fecha: ymd(f.fecha as string) || null,
-      fecha_vencimiento: venc || null,
-      monto: Number(f.monto) || 0,
-      saldo,
-      estado: (f.estado as string) ?? null,
-      tipo: (f.tipo as string) ?? null,
-      vencida: esVencida,
-    };
-    totalDeuda += saldo;
-    if (esVencida) {
-      vencidas.push(lite);
-      const mes = venc.slice(0, 7);
-      if (mes) meses.add(mes);
-    } else {
-      pendientes.push(lite);
-    }
-  }
-  pendientes.sort((a, b) => (a.fecha_vencimiento ?? "").localeCompare(b.fecha_vencimiento ?? ""));
-  vencidas.sort((a, b) => (a.fecha_vencimiento ?? "").localeCompare(b.fecha_vencimiento ?? ""));
+  const byVenc = (a: FacturaLite, b: FacturaLite) =>
+    (a.fecha_vencimiento ?? "").localeCompare(b.fecha_vencimiento ?? "");
 
-  const sus = (await cargarSuscripcionPorCliente(sb, empresaId)).get(clienteId);
-  const catalogoTipos = await cargarCatalogoTipos(sb, empresaId);
+  // Deuda por servicio (suscripción) + bucket "General".
+  const grupos = agruparPorServicio(facturas, suscInfo, catalogoTipos, c.tipo_servicio_cliente as string, hoyYmd);
+  const servicios: ServicioDetalle[] = grupos
+    .map((g) => {
+      const agg = aggServicio(g);
+      return {
+        ...agg,
+        facturas_vencidas: g.facturas.filter((f) => f.vencida).sort(byVenc),
+        facturas_pendientes: g.facturas.filter((f) => !f.vencida).sort(byVenc),
+      };
+    })
+    .filter((s) => s.total_adeudado > 0)
+    .sort((a, b) => PESO_TRAMO[b.tramo] - PESO_TRAMO[a.tramo] || b.total_adeudado - a.total_adeudado);
+
+  // Listas planas (todas las facturas-deuda) para la regla oldest-first del cliente.
+  const vencidas: FacturaLite[] = servicios.flatMap((s) => s.facturas_vencidas).sort(byVenc);
+  const pendientes: FacturaLite[] = servicios.flatMap((s) => s.facturas_pendientes).sort(byVenc);
+  const totalDeuda = servicios.reduce((a, s) => a + s.total_adeudado, 0);
+  const meses = new Set<string>();
+  for (const s of servicios) for (const m of s.meses_adeudados) meses.add(m);
 
   const { data: promRows } = await sb
     .from("cobranza_promesas")
@@ -417,23 +479,28 @@ export async function cargarDetalleCliente(
   const label =
     String(c.empresa ?? "").trim() || String(c.nombre_contacto ?? "").trim() || clienteId.slice(0, 8);
 
+  const tipoResumen =
+    servicios.length === 1 ? servicios[0]!.tipo : servicios.length > 1 ? `Varios (${servicios.length})` : "Sin clasificar";
+  const montoResumen = servicios.reduce<number | null>((a, s) => (s.monto_mensual != null ? (a ?? 0) + s.monto_mensual : a), null);
+
   return {
     cliente: {
       cliente_id: clienteId,
       cliente_label: label,
-      tipo: tipoClienteLabel(c.tipo_servicio_cliente as string, catalogoTipos),
-      plan: sus?.plan ?? null,
-      monto_mensual: sus?.precio ?? null,
+      tipo: tipoResumen,
+      plan: servicios.length === 1 ? servicios[0]!.plan : null,
+      monto_mensual: montoResumen,
       alta: ymd(c.created_at as string) || null,
     },
     total_deuda: Math.round(totalDeuda * 100) / 100,
     cuotas_vencidas: vencidas.length,
-    tramo: tramoDe(vencidas.length),
+    tramo: peorTramo(servicios.map((s) => s.tramo)),
     meses_adeudados: [...meses].sort(),
     facturas_pendientes: pendientes,
     facturas_vencidas: vencidas,
     pagos_recientes: pagos.slice(0, 10),
     promesas,
+    servicios,
   };
 }
 

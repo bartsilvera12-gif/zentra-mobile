@@ -260,7 +260,7 @@ export default function ClienteDetalleClient({
   const [planes, setPlanes] = useState<Plan[]>([]);
   const [modalSuscripcion, setModalSuscripcion] = useState(false);
   const [formSusc, setFormSusc] = useState({
-    plan_id: "", precio: "", fecha_inicio: "", duracion_meses: "12", dia_facturacion: "1", dia_vencimiento: "10", generar_factura_este_mes: false,
+    plan_id: "", precio: "", fecha_inicio: "", duracion_meses: "12", dia_facturacion: "1", dia_vencimiento: "10", generar_factura_este_mes: false, tipo_servicio: "",
   });
   const [guardandoSusc, setGuardandoSusc] = useState(false);
   const [marketingTasks, setMarketingTasks] = useState<MarketingTask[]>([]);
@@ -1083,6 +1083,7 @@ export default function ClienteDetalleClient({
                   dia_facturacion: "1",
                   dia_vencimiento: "10",
                   generar_factura_este_mes: false,
+                  tipo_servicio: (cliente?.tipo_servicio_cliente ?? "").trim().toLowerCase(),
                 });
                 setModalSuscripcion(true);
               }}
@@ -2100,7 +2101,7 @@ export default function ClienteDetalleClient({
                 <SectionTitle>Suscripciones</SectionTitle>
                 <button
                   type="button"
-                  onClick={() => { setFormSusc({ plan_id: "", precio: "", fecha_inicio: new Date().toISOString().slice(0, 10), duracion_meses: "12", dia_facturacion: "1", dia_vencimiento: "10", generar_factura_este_mes: false }); setModalSuscripcion(true); }}
+                  onClick={() => { setFormSusc({ plan_id: "", precio: "", fecha_inicio: new Date().toISOString().slice(0, 10), duracion_meses: "12", dia_facturacion: "1", dia_vencimiento: "10", generar_factura_este_mes: false, tipo_servicio: (cliente?.tipo_servicio_cliente ?? "").trim().toLowerCase() }); setModalSuscripcion(true); }}
                   className="bg-[#4FAEB2] hover:bg-[#3F8E91] text-white px-4 py-2 rounded-lg text-sm font-medium"
                 >
                   Nueva suscripción
@@ -2384,12 +2385,30 @@ export default function ClienteDetalleClient({
                 dia_facturacion: parseInt(formSusc.dia_facturacion, 10) || 1,
                 dia_vencimiento: parseInt(formSusc.dia_vencimiento, 10) || 10,
                 generar_factura_este_mes: formSusc.generar_factura_este_mes,
+                tipo_servicio: formSusc.tipo_servicio || null,
               });
               setModalSuscripcion(false);
               getSuscripciones(id).then(setSuscripciones);
               getFacturas(id).then(setFacturas);
               setGuardandoSusc(false);
             }} className="space-y-4">
+              <div>
+                <label className={labelClass}>Tipo de servicio</label>
+                <select
+                  value={formSusc.tipo_servicio}
+                  onChange={(e) => setFormSusc((prev) => ({ ...prev, tipo_servicio: e.target.value }))}
+                  className={inputClass}
+                  required
+                >
+                  <option value="">— Seleccionar —</option>
+                  {filasTiposServicio
+                    .filter((t) => t.activo !== false)
+                    .map((t) => (
+                      <option key={t.slug} value={t.slug}>{t.nombre}</option>
+                    ))}
+                </select>
+                <p className="mt-1 text-[11px] text-slate-500">Cada servicio puede tener su propio tipo (ej. Contable, SaaS).</p>
+              </div>
               <div>
                 <label className={labelClass}>Plan</label>
                 <select

@@ -308,6 +308,7 @@ export async function apiCreateSuscripcion(data: {
   dia_facturacion?: number;
   dia_vencimiento?: number;
   generar_factura_este_mes?: boolean;
+  tipo_servicio?: string | null;
 }): Promise<{ id: string; [key: string]: unknown } | null> {
   const result = await apiPost<{ id: string; [key: string]: unknown }>("/api/suscripciones", data);
   return result.success ? result.data : null;

@@ -6,9 +6,8 @@ import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session"
 
 type TramoKey = "por_vencer" | "tramo_1" | "tramo_2" | "tramo_3";
 
-type ClienteCobranza = {
-  cliente_id: string;
-  cliente_label: string;
+type ServicioCobranza = {
+  suscripcion_id: string | null;
   tipo: string;
   plan: string | null;
   monto_mensual: number | null;
@@ -16,9 +15,15 @@ type ClienteCobranza = {
   cuotas_vencidas: number;
   meses_adeudados: string[];
   tramo: TramoKey;
-  ultimo_pago: string | null;
   proximo_vencimiento: string | null;
+};
+
+type ClienteCobranza = {
+  cliente_id: string;
+  cliente_label: string;
+  ultimo_pago: string | null;
   promesa_fecha: string | null;
+  servicios: ServicioCobranza[];
 };
 
 type PromesaPago = {
@@ -50,6 +55,10 @@ type FacturaLite = {
   vencida: boolean;
 };
 type PagoLite = { numero_factura: string | null; fecha_pago: string | null; monto: number; metodo_pago: string | null };
+type ServicioDetalle = ServicioCobranza & {
+  facturas_vencidas: FacturaLite[];
+  facturas_pendientes: FacturaLite[];
+};
 type DetallePayload = {
   puede_registrar?: boolean;
   cliente: { cliente_id: string; cliente_label: string; tipo: string; plan: string | null; monto_mensual: number | null; alta: string | null };
@@ -61,6 +70,7 @@ type DetallePayload = {
   facturas_vencidas: FacturaLite[];
   pagos_recientes: PagoLite[];
   promesas: PromesaPago[];
+  servicios: ServicioDetalle[];
 };
 
 const TRAMO_LABEL: Record<TramoKey, string> = {
@@ -76,6 +86,43 @@ const TRAMO_CLASS: Record<TramoKey, string> = {
   tramo_3: "border-rose-200 bg-rose-50 text-rose-700",
 };
 const MES_LABEL = ["", "ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
+const TRAMO_PESO: Record<TramoKey, number> = { por_vencer: 0, tramo_1: 1, tramo_2: 2, tramo_3: 3 };
+
+function peorTramoUI(servs: { tramo: TramoKey }[]): TramoKey {
+  let w: TramoKey = "por_vencer";
+  for (const s of servs) if (TRAMO_PESO[s.tramo] > TRAMO_PESO[w]) w = s.tramo;
+  return w;
+}
+
+/** Fila de la tabla = cliente con sus servicios visibles (según el filtro de tipo) ya agregados. */
+type Row = {
+  c: ClienteCobranza;
+  servicios: ServicioCobranza[];
+  tipo: string;
+  total_adeudado: number;
+  cuotas_vencidas: number;
+  tramo: TramoKey;
+  monto_mensual: number | null;
+  proximo_vencimiento: string | null;
+};
+
+function makeRow(c: ClienteCobranza, servs: ServicioCobranza[], tipoFiltro: string): Row {
+  const total = servs.reduce((a, s) => a + s.total_adeudado, 0);
+  const cuotas = servs.reduce((a, s) => a + s.cuotas_vencidas, 0);
+  const monto = servs.reduce<number | null>((a, s) => (s.monto_mensual != null ? (a ?? 0) + s.monto_mensual : a), null);
+  const proximos = servs.map((s) => s.proximo_vencimiento).filter((x): x is string => !!x).sort();
+  const tipo = servs.length === 1 ? servs[0]!.tipo : tipoFiltro !== "__all__" ? tipoFiltro : `Varios (${servs.length})`;
+  return {
+    c,
+    servicios: servs,
+    tipo,
+    total_adeudado: total,
+    cuotas_vencidas: cuotas,
+    tramo: peorTramoUI(servs),
+    monto_mensual: monto,
+    proximo_vencimiento: proximos[0] ?? null,
+  };
+}
 
 function fmtMoney(n: number | null | undefined): string {
   if (n == null) return "—";
@@ -234,28 +281,30 @@ export default function CobranzasClient() {
     [detalleId, openDetalle, load, showToast]
   );
 
-  /** Tipos de cliente realmente presentes en Cobranzas (para el selector). */
+  /** Tipos de SERVICIO presentes (para el selector). */
   const tiposDisponibles = useMemo(() => {
     const set = new Set<string>();
-    for (const c of data?.clientes ?? []) if (c.tipo) set.add(c.tipo);
-    // Prioriza Contable y SaaS; el resto alfabético.
-    const orden = (t: string) => (t === "Contable" ? 0 : t === "SaaS" ? 1 : 2);
+    for (const c of data?.clientes ?? []) for (const s of c.servicios) if (s.tipo) set.add(s.tipo);
+    const orden = (t: string) => (t === "Contable" ? 0 : t === "SaaS" ? 1 : t === "General" ? 9 : 2);
     return [...set].sort((a, b) => orden(a) - orden(b) || a.localeCompare(b));
   }, [data]);
 
-  /** Filtro por tipo + búsqueda (base para KPIs y conteo de chips de tramo). */
-  const baseFiltered = useMemo(() => {
-    const list = data?.clientes ?? [];
+  /** Filas (cliente con servicios visibles según tipo) + búsqueda. Base de KPIs y chips. */
+  const baseRows = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return list.filter((c) => {
-      if (tipoFiltro !== "__all__" && c.tipo !== tipoFiltro) return false;
-      if (!q) return true;
-      return (
-        c.cliente_label.toLowerCase().includes(q) ||
-        (c.plan ?? "").toLowerCase().includes(q) ||
-        c.tipo.toLowerCase().includes(q)
-      );
-    });
+    const out: Row[] = [];
+    for (const c of data?.clientes ?? []) {
+      const servs = tipoFiltro === "__all__" ? c.servicios : c.servicios.filter((s) => s.tipo === tipoFiltro);
+      if (servs.length === 0) continue;
+      if (q) {
+        const hay =
+          c.cliente_label.toLowerCase().includes(q) ||
+          servs.some((s) => (s.plan ?? "").toLowerCase().includes(q) || s.tipo.toLowerCase().includes(q));
+        if (!hay) continue;
+      }
+      out.push(makeRow(c, servs, tipoFiltro));
+    }
+    return out;
   }, [data, query, tipoFiltro]);
 
   /** + filtro de tramo: alimenta la tabla y los KPIs. */
@@ -284,52 +333,47 @@ export default function CobranzasClient() {
     [detalleId, openDetalle, load, showToast]
   );
 
-  const clientesFiltrados = useMemo(
+  const rows = useMemo(
     () =>
-      baseFiltered.filter((c) => {
-        if (tramoFiltro !== "todos" && c.tramo !== tramoFiltro) return false;
-        if (soloPromesaHoy && !(data?.hoy && c.promesa_fecha === data.hoy)) return false;
+      baseRows.filter((r) => {
+        if (tramoFiltro !== "todos" && r.tramo !== tramoFiltro) return false;
+        if (soloPromesaHoy && !(data?.hoy && r.c.promesa_fecha === data.hoy)) return false;
         return true;
       }),
-    [baseFiltered, tramoFiltro, soloPromesaHoy, data]
+    [baseRows, tramoFiltro, soloPromesaHoy, data]
   );
 
   /** Conteo estable de promesas para hoy (tipo+búsqueda, sin tramo ni el toggle). */
   const promesasHoyCount = useMemo(() => {
     const hoy = data?.hoy ?? "";
     if (!hoy) return 0;
-    return baseFiltered.filter((c) => c.promesa_fecha === hoy).length;
-  }, [baseFiltered, data]);
+    return baseRows.filter((r) => r.c.promesa_fecha === hoy).length;
+  }, [baseRows, data]);
 
   /** Conteo por tramo dentro de tipo+búsqueda (los chips reflejan el tipo elegido). */
   const tramoCounts = useMemo(() => {
-    const acc = { todos: baseFiltered.length, por_vencer: 0, tramo_1: 0, tramo_2: 0, tramo_3: 0 } as Record<string, number>;
-    for (const c of baseFiltered) acc[c.tramo] = (acc[c.tramo] ?? 0) + 1;
+    const acc = { todos: baseRows.length, por_vencer: 0, tramo_1: 0, tramo_2: 0, tramo_3: 0 } as Record<string, number>;
+    for (const r of baseRows) acc[r.tramo] = (acc[r.tramo] ?? 0) + 1;
     return acc;
-  }, [baseFiltered]);
+  }, [baseRows]);
 
-  /** KPIs recalculados sobre lo filtrado (tipo + búsqueda + tramo). */
+  /** KPIs recalculados sobre lo filtrado (tipo + búsqueda + tramo + promesa). */
   const kpis = useMemo(() => {
-    const list = clientesFiltrados;
-    const hoy = data?.hoy ?? "";
     const porTramo = { por_vencer: 0, tramo_1: 0, tramo_2: 0, tramo_3: 0 } as Record<string, number>;
     let totalAdeudado = 0;
     let cuotasVenc = 0;
-    let promesasHoy = 0;
-    for (const c of list) {
-      totalAdeudado += c.total_adeudado;
-      cuotasVenc += c.cuotas_vencidas;
-      porTramo[c.tramo] = (porTramo[c.tramo] ?? 0) + 1;
-      if (c.promesa_fecha && hoy && c.promesa_fecha === hoy) promesasHoy += 1;
+    for (const r of rows) {
+      totalAdeudado += r.total_adeudado;
+      cuotasVenc += r.cuotas_vencidas;
+      porTramo[r.tramo] = (porTramo[r.tramo] ?? 0) + 1;
     }
     return {
       total_adeudado: Math.round(totalAdeudado),
-      clientes_con_deuda: list.length,
+      clientes_con_deuda: rows.length,
       cuotas_vencidas: cuotasVenc,
       por_tramo: porTramo,
-      promesas_hoy: promesasHoy,
     };
-  }, [clientesFiltrados, data]);
+  }, [rows]);
 
   if (loading) {
     return (
@@ -456,7 +500,7 @@ export default function CobranzasClient() {
       </div>
 
       {/* Tabla */}
-      {clientesFiltrados.length === 0 ? (
+      {rows.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/60 px-4 py-12 text-center text-sm text-slate-600">
           No hay clientes con deuda para este filtro.
         </div>
@@ -485,28 +529,28 @@ export default function CobranzasClient() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {clientesFiltrados.map((c) => (
-                  <tr key={c.cliente_id} className="align-middle transition-colors hover:bg-[#4FAEB2]/[0.04]">
+                {rows.map((r) => (
+                  <tr key={r.c.cliente_id} className="align-middle transition-colors hover:bg-[#4FAEB2]/[0.04]">
                     <td className="px-3 py-3 text-sm font-medium text-slate-800">
-                      <span className="block max-w-[220px] truncate" title={c.cliente_label}>{c.cliente_label}</span>
+                      <span className="block max-w-[220px] truncate" title={r.c.cliente_label}>{r.c.cliente_label}</span>
                     </td>
-                    <td className="px-3 py-3 text-xs text-slate-600 whitespace-nowrap">{c.tipo}</td>
-                    <td className="px-3 py-3 text-right text-xs tabular-nums text-slate-700 whitespace-nowrap">{fmtMoney(c.monto_mensual)}</td>
-                    <td className="px-3 py-3 text-right text-sm font-semibold tabular-nums text-rose-700 whitespace-nowrap">{fmtMoney(c.total_adeudado)}</td>
-                    <td className="px-3 py-3 text-right text-sm tabular-nums text-slate-800">{c.cuotas_vencidas}</td>
-                    <td className="px-3 py-3 whitespace-nowrap"><TramoBadge tramo={c.tramo} /></td>
-                    <td className="px-3 py-3 text-xs tabular-nums text-slate-600 whitespace-nowrap">{fmtDate(c.ultimo_pago)}</td>
-                    <td className="px-3 py-3 text-xs tabular-nums text-slate-600 whitespace-nowrap">{fmtDate(c.proximo_vencimiento)}</td>
+                    <td className="px-3 py-3 text-xs text-slate-600 whitespace-nowrap">{r.tipo}</td>
+                    <td className="px-3 py-3 text-right text-xs tabular-nums text-slate-700 whitespace-nowrap">{fmtMoney(r.monto_mensual)}</td>
+                    <td className="px-3 py-3 text-right text-sm font-semibold tabular-nums text-rose-700 whitespace-nowrap">{fmtMoney(r.total_adeudado)}</td>
+                    <td className="px-3 py-3 text-right text-sm tabular-nums text-slate-800">{r.cuotas_vencidas}</td>
+                    <td className="px-3 py-3 whitespace-nowrap"><TramoBadge tramo={r.tramo} /></td>
+                    <td className="px-3 py-3 text-xs tabular-nums text-slate-600 whitespace-nowrap">{fmtDate(r.c.ultimo_pago)}</td>
+                    <td className="px-3 py-3 text-xs tabular-nums text-slate-600 whitespace-nowrap">{fmtDate(r.proximo_vencimiento)}</td>
                     <td className="px-3 py-3 text-xs tabular-nums whitespace-nowrap">
-                      {c.promesa_fecha ? (
+                      {r.c.promesa_fecha ? (
                         <span
                           className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold ${
-                            data?.hoy && c.promesa_fecha === data.hoy
+                            data?.hoy && r.c.promesa_fecha === data.hoy
                               ? "border-[#4FAEB2] bg-[#4FAEB2]/10 text-[#3F8E91]"
                               : "border-slate-200 bg-slate-50 text-slate-600"
                           }`}
                         >
-                          {fmtDate(c.promesa_fecha)}
+                          {fmtDate(r.c.promesa_fecha)}
                         </span>
                       ) : (
                         <span className="text-slate-400">—</span>
@@ -515,7 +559,7 @@ export default function CobranzasClient() {
                     <td className="px-3 py-3 text-right">
                       <button
                         type="button"
-                        onClick={() => void openDetalle(c.cliente_id)}
+                        onClick={() => void openDetalle(r.c.cliente_id)}
                         className="inline-flex items-center gap-1 whitespace-nowrap rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-700 hover:border-[#4FAEB2]/60 hover:text-[#3F8E91]"
                       >
                         Ver detalle <ChevronRight className="h-3.5 w-3.5" />
@@ -567,22 +611,48 @@ export default function CobranzasClient() {
                   ) : null}
                 </div>
 
-                <DetalleSeccion
-                  titulo={`Facturas vencidas (${detalle.facturas_vencidas.length})`}
-                  facturas={detalle.facturas_vencidas}
-                  puedeRegistrar={puedeRegistrar}
-                  onRegistrar={(f) => setPagoFactura(f)}
-                  oldestId={oldestPayable?.id ?? null}
-                  oldestNumero={oldestPayable?.numero_factura ?? null}
-                />
-                <DetalleSeccion
-                  titulo={`Facturas pendientes (${detalle.facturas_pendientes.length})`}
-                  facturas={detalle.facturas_pendientes}
-                  puedeRegistrar={puedeRegistrar}
-                  onRegistrar={(f) => setPagoFactura(f)}
-                  oldestId={oldestPayable?.id ?? null}
-                  oldestNumero={oldestPayable?.numero_factura ?? null}
-                />
+                <div>
+                  <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.1em] text-slate-500">
+                    Servicios asociados ({detalle.servicios.length})
+                  </p>
+                  <div className="space-y-3">
+                    {detalle.servicios.map((s) => (
+                      <div key={s.suscripcion_id ?? "general"} className="rounded-xl border border-slate-200 p-3">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <div className="min-w-0">
+                            <span className="text-sm font-semibold text-slate-900">{s.tipo}</span>
+                            {s.plan ? <span className="ml-2 text-xs text-slate-500">{s.plan}</span> : null}
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <TramoBadge tramo={s.tramo} />
+                            <span className="text-sm font-semibold tabular-nums text-rose-700">{fmtMoney(s.total_adeudado)}</span>
+                          </div>
+                        </div>
+                        <p className="mt-1 text-[11px] text-slate-500">
+                          Monto {fmtMoney(s.monto_mensual)} · próx. venc. {fmtDate(s.proximo_vencimiento)} · {s.cuotas_vencidas} cuota(s) venc.
+                        </p>
+                        <div className="mt-2 space-y-2">
+                          <DetalleSeccion
+                            titulo={`Vencidas (${s.facturas_vencidas.length})`}
+                            facturas={s.facturas_vencidas}
+                            puedeRegistrar={puedeRegistrar}
+                            onRegistrar={(f) => setPagoFactura(f)}
+                            oldestId={oldestPayable?.id ?? null}
+                            oldestNumero={oldestPayable?.numero_factura ?? null}
+                          />
+                          <DetalleSeccion
+                            titulo={`Pendientes (${s.facturas_pendientes.length})`}
+                            facturas={s.facturas_pendientes}
+                            puedeRegistrar={puedeRegistrar}
+                            onRegistrar={(f) => setPagoFactura(f)}
+                            oldestId={oldestPayable?.id ?? null}
+                            oldestNumero={oldestPayable?.numero_factura ?? null}
+                          />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
 
                 <div>
                   <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.1em] text-slate-500">Pagos recientes</p>
