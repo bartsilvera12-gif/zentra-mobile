@@ -353,6 +353,20 @@ export async function POST(request: NextRequest) {
     }
 
     if (error) {
+      // Candado duro en DB: índice único por documento normalizado (carrera que evade el chequeo app).
+      const errCode = (error as { code?: string }).code;
+      if (errCode === "23505" || /ux_clientes_documento_norm/i.test(error.message)) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: "Ya existe un cliente con este RUC/Cédula.",
+            code: "DUPLICATE",
+            hay_inactivo: false,
+            matches: [],
+          },
+          { status: 409 }
+        );
+      }
       return NextResponse.json(errorResponse(error.message), { status: 400 });
     }
 
