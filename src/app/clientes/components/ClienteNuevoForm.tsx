@@ -9,6 +9,7 @@ import {
   apiGetGestionTributariaClientes,
   apiGetObligacionesTributariasCatalogo,
   apiPutClientePerfilTributario,
+  type DuplicadoMatchClient,
 } from "@/lib/api/client";
 import {
   ClientePerfilTributarioForm,
@@ -60,6 +61,9 @@ function ClienteNuevoFormInner({ variant = "page", onCreated, onCancel }: Client
 
   const [crmBanner, setCrmBanner] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [duplicado, setDuplicado] = useState<
+    { mensaje: string; hay_inactivo: boolean; matches: DuplicadoMatchClient[] } | null
+  >(null);
   const [guardando, setGuardando] = useState(false);
   const [planes, setPlanes] = useState<Plan[]>([]);
   const [usuariosEmpresa, setUsuariosEmpresa] = useState<UsuarioEmpresa[]>([]);
@@ -220,6 +224,7 @@ function ClienteNuevoFormInner({ variant = "page", onCreated, onCancel }: Client
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
+    setDuplicado(null);
 
     if (!form.nombre_contacto.trim()) return setError("El nombre de contacto es obligatorio.");
     if (form.tipo_cliente === "empresa" && !form.empresa.trim())
@@ -321,6 +326,14 @@ function ClienteNuevoFormInner({ variant = "page", onCreated, onCancel }: Client
 
     if (creado.ok !== true) {
       setGuardando(false);
+      if (creado.code === "DUPLICATE") {
+        setDuplicado({
+          mensaje: creado.error,
+          hay_inactivo: creado.hay_inactivo ?? false,
+          matches: creado.matches ?? [],
+        });
+        return;
+      }
       return setError(creado.error || "Error al guardar. Revisá la consola.");
     }
     const clienteId = creado.data.id;
@@ -918,6 +931,44 @@ function ClienteNuevoFormInner({ variant = "page", onCreated, onCancel }: Client
               </div>
             </details>
           </section>
+        )}
+
+        {duplicado && (
+          <div
+            className={
+              "rounded-xl border px-4 py-3 text-sm " +
+              (duplicado.hay_inactivo
+                ? "border-amber-200 bg-amber-50 text-amber-800"
+                : "border-rose-200 bg-rose-50 text-rose-700")
+            }
+          >
+            <p className="font-semibold">{duplicado.mensaje}</p>
+            <ul className="mt-3 space-y-2">
+              {duplicado.matches.map((m) => (
+                <li
+                  key={m.cliente_id}
+                  className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-white/60 bg-white/70 px-3 py-2"
+                >
+                  <div className="min-w-0">
+                    <p className="truncate font-medium text-slate-800">{m.nombre}</p>
+                    <p className="text-xs text-slate-500">
+                      {m.documento ? `RUC/Cédula: ${m.documento} · ` : ""}
+                      Estado: {m.activo ? "Activo" : "Inactivo"}
+                      {m.tipo_servicio ? ` · ${m.tipo_servicio}` : ""}
+                      {` · coincide por ${m.match_type === "ambos" ? "RUC/Cédula y nombre" : m.match_type === "documento" ? "RUC/Cédula" : "nombre"}`}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => router.push(`/clientes/${m.cliente_id}`)}
+                    className="shrink-0 rounded-lg bg-[#4FAEB2] px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-[#3F8E91]"
+                  >
+                    {m.activo ? "Abrir ficha" : "Abrir ficha para reactivar"}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
         )}
 
         {error && (

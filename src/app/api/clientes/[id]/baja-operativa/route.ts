@@ -3,6 +3,7 @@ import { isAdmin } from "@/lib/middleware/auth";
 import { successResponse, errorResponse } from "@/lib/api/response";
 import { API_ERRORS } from "@/lib/api/errors";
 import { getTenantSupabaseFromAuthWithRol } from "@/lib/supabase/tenant-api";
+import { registrarHistorialCliente } from "@/lib/clientes/historial";
 
 
 /**
@@ -197,6 +198,23 @@ export async function POST(
     if (errCliente) {
       return NextResponse.json(errorResponse("Error al actualizar cliente: " + errCliente.message), { status: 500 });
     }
+
+    await registrarHistorialCliente(supabase, {
+      empresaId: auth.empresa_id,
+      clienteId: String(clienteId),
+      accion: "deactivate",
+      detalle: {
+        changed_fields: ["estado"],
+        before: { estado: "activo" },
+        after: { estado: "inactivo" },
+        motivo,
+        suscripciones_canceladas: cancelarSuscripciones,
+        factura_anulada: anularFacturaPendiente,
+      },
+      authUserId: auth.user?.id ?? null,
+      email: typeof auth.user?.email === "string" ? auth.user.email : null,
+      source: "clientes_ui",
+    });
 
     return NextResponse.json(successResponse({
       baja: true,

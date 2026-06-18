@@ -7,6 +7,8 @@ import { createServiceRoleClient } from "@/lib/supabase/service-admin";
 import { getClientesSupabaseFromAuthWithRol } from "@/lib/clientes/clientes-service-client";
 import { fetchPerfilTributarioActivosMap } from "@/lib/clientes/tributario-server";
 import { ensureSemillasCatalogoTipos, tipoServicioSlugValido } from "@/lib/clientes/tipo-servicio-catalogo";
+import { buscarDuplicadosCliente } from "@/lib/clientes/dedupe";
+import { registrarHistorialCliente } from "@/lib/clientes/historial";
 
 /** Une `plan_activo` (nombre) a cada fila de cliente según suscripción activa más reciente. */
 function attachPlanesActivos(
@@ -232,6 +234,33 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(errorResponse("nombre_contacto es obligatorio"), { status: 400 });
     }
 
+    // Anti-duplicados (backend): bloquear si ya existe por documento o nombre principal.
+    const nombrePrincipal = (typeof empresa === "string" && empresa.trim()) || nombre_contacto.trim();
+    const documentoPrincipal = (typeof ruc === "string" && ruc.trim()) || (typeof documento === "string" && documento.trim()) || null;
+    const duplicados = await buscarDuplicadosCliente(supabase, auth.empresa_id, {
+      nombre: nombrePrincipal,
+      documento: documentoPrincipal,
+    });
+    if (duplicados.length > 0) {
+      const hayInactivo = duplicados.some((d) => !d.activo);
+      const mensaje = duplicados.every((d) => !d.activo)
+        ? "Este cliente ya existe pero está inactivo. Podés reactivarlo y editar sus datos desde la ficha."
+        : "Ya existe un cliente con este RUC/Cédula o nombre.";
+      await registrarHistorialCliente(supabase, {
+        empresaId: auth.empresa_id,
+        clienteId: duplicados[0].cliente_id,
+        accion: "duplicate_blocked",
+        detalle: { intento: { nombre: nombrePrincipal, documento: documentoPrincipal }, matches: duplicados },
+        authUserId: auth.user?.id ?? null,
+        email: typeof auth.user?.email === "string" ? auth.user.email : null,
+        source: "clientes_ui",
+      });
+      return NextResponse.json(
+        { success: false, error: mensaje, code: "DUPLICATE", hay_inactivo: hayInactivo, matches: duplicados },
+        { status: 409 }
+      );
+    }
+
     const tipoServicio = tipo_servicio_cliente?.trim();
     if (tipoServicio) {
       await ensureSemillasCatalogoTipos(supabase, auth.empresa_id);
@@ -328,6 +357,24 @@ export async function POST(request: NextRequest) {
     }
 
     await emitEvent(EVENT_TYPES.cliente_creado, { cliente_id: data.id, empresa: data.empresa });
+    await registrarHistorialCliente(supabase, {
+      empresaId: auth.empresa_id,
+      clienteId: String(data.id),
+      accion: "create",
+      detalle: {
+        after: {
+          empresa: data.empresa,
+          nombre: data.nombre,
+          ruc: data.ruc,
+          documento: data.documento,
+          tipo_servicio_cliente: data.tipo_servicio_cliente,
+          estado: data.estado,
+        },
+      },
+      authUserId: auth.user?.id ?? null,
+      email: typeof auth.user?.email === "string" ? auth.user.email : null,
+      source: "clientes_ui",
+    });
 
     return NextResponse.json(successResponse(data));
   } catch (err) {

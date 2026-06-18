@@ -22,8 +22,10 @@ import {
   apiCreateFacturaWithError,
   apiCreatePago,
   apiCreateSuscripcion,
+  apiGetClienteHistorial,
   type BajaOperativaPreview,
   type EliminarClientePreview,
+  type HistorialClienteFila,
 } from "@/lib/api/client";
 import { getFacturas, getSuscripciones } from "@/lib/facturacion/storage";
 import { getMarketingTasks, createMarketingTask, updateTaskStatus } from "@/lib/marketing/storage";
@@ -100,6 +102,45 @@ function formatFechaHora(iso: string) {
     const d = new Date(iso);
     return `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}/${d.getFullYear()} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
   } catch { return ""; }
+}
+
+// ── Auditoría / Historial de cambios ───────────────────────────────────────────
+const ACCION_HISTORIAL: Record<string, { label: string; color: string }> = {
+  create:            { label: "Cliente creado",          color: "bg-emerald-100 text-emerald-700" },
+  update:            { label: "Datos editados",          color: "bg-sky-100 text-sky-700" },
+  deactivate:        { label: "Baja / inactivación",     color: "bg-rose-100 text-rose-700" },
+  reactivate:        { label: "Reactivación",            color: "bg-emerald-100 text-emerald-700" },
+  duplicate_blocked: { label: "Alta bloqueada (duplicado)", color: "bg-amber-100 text-amber-700" },
+};
+
+const CAMPO_HISTORIAL: Record<string, string> = {
+  empresa: "Razón social",
+  nombre: "Nombre",
+  nombre_contacto: "Contacto",
+  ruc: "RUC",
+  documento: "Documento",
+  tipo_servicio_cliente: "Tipo de servicio",
+  tipo_cliente: "Tipo de cliente",
+  estado: "Estado",
+  condicion_pago: "Condición de pago",
+  moneda_preferida: "Moneda",
+  vendedor_usuario_id: "Vendedor",
+};
+
+function resumenCambiosHistorial(detalle: Record<string, unknown> | null | undefined): {
+  campo: string;
+  antes: string;
+  despues: string;
+}[] {
+  if (!detalle) return [];
+  const changed = Array.isArray(detalle.changed_fields) ? (detalle.changed_fields as string[]) : [];
+  const before = (detalle.before ?? {}) as Record<string, unknown>;
+  const after = (detalle.after ?? {}) as Record<string, unknown>;
+  return changed.map((k) => ({
+    campo: CAMPO_HISTORIAL[k] ?? k,
+    antes: before[k] == null || before[k] === "" ? "—" : String(before[k]),
+    despues: after[k] == null || after[k] === "" ? "—" : String(after[k]),
+  }));
 }
 
 // ── Placeholder para pestañas futuras ─────────────────────────────────────────
@@ -195,6 +236,24 @@ export default function ClienteDetalleClient({
   const [bajaPreview, setBajaPreview] = useState<BajaOperativaPreview | null>(null);
   const [bajaProcesando, setBajaProcesando] = useState(false);
   const [errorBaja, setErrorBaja] = useState<string | null>(null);
+  const [historial, setHistorial] = useState<HistorialClienteFila[]>([]);
+  const [cargandoHistorial, setCargandoHistorial] = useState(false);
+  const [historialCargado, setHistorialCargado] = useState(false);
+
+  const cargarHistorial = useCallback(async () => {
+    if (!id) return;
+    setCargandoHistorial(true);
+    const filas = await apiGetClienteHistorial(id);
+    setHistorial(filas);
+    setHistorialCargado(true);
+    setCargandoHistorial(false);
+  }, [id]);
+
+  useEffect(() => {
+    if (activeTab === "actividad" && !historialCargado && !cargandoHistorial) {
+      void cargarHistorial();
+    }
+  }, [activeTab, historialCargado, cargandoHistorial, cargarHistorial]);
 
   // Estados del formulario de información
   const [form, setForm] = useState({
@@ -2226,11 +2285,76 @@ export default function ClienteDetalleClient({
 
           {/* ── ACTIVIDAD ────────────────────────────────────────────────── */}
           {activeTab === "actividad" && (
-            <PlaceholderTab
-              icon="🕐"
-              title="Actividad"
-              desc="Timeline completo de interacciones, cambios de estado, ventas y eventos del cliente."
-            />
+            <div className="max-w-3xl">
+              <div className="mb-4 flex items-center justify-between">
+                <h3 className="text-sm font-semibold text-slate-700">Historial de cambios</h3>
+                <button
+                  type="button"
+                  onClick={() => void cargarHistorial()}
+                  disabled={cargandoHistorial}
+                  className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 transition-colors hover:border-[#4FAEB2]/60 hover:text-[#4FAEB2] disabled:opacity-50"
+                >
+                  {cargandoHistorial ? "Actualizando…" : "Actualizar"}
+                </button>
+              </div>
+
+              {cargandoHistorial && historial.length === 0 ? (
+                <p className="text-sm text-slate-400">Cargando historial…</p>
+              ) : historial.length === 0 ? (
+                <p className="text-sm text-slate-400 italic">
+                  No hay cambios registrados aún para este cliente.
+                </p>
+              ) : (
+                <ol className="space-y-3">
+                  {historial.map((h) => {
+                    const meta = ACCION_HISTORIAL[h.accion] ?? {
+                      label: h.accion,
+                      color: "bg-slate-100 text-slate-600",
+                    };
+                    const cambios = resumenCambiosHistorial(h.detalle);
+                    const motivo =
+                      h.detalle && typeof h.detalle.motivo === "string" ? h.detalle.motivo : null;
+                    return (
+                      <li
+                        key={h.id}
+                        className="rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm"
+                      >
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <span
+                            className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${meta.color}`}
+                          >
+                            {meta.label}
+                          </span>
+                          <span className="text-xs text-slate-400">
+                            {formatFechaHora(h.created_at)}
+                          </span>
+                        </div>
+                        {h.creado_por_email && (
+                          <p className="mt-1 text-xs text-slate-500">por {h.creado_por_email}</p>
+                        )}
+                        {cambios.length > 0 && (
+                          <ul className="mt-2 space-y-1">
+                            {cambios.map((c, i) => (
+                              <li key={i} className="text-xs text-slate-600">
+                                <span className="font-medium text-slate-700">{c.campo}:</span>{" "}
+                                <span className="text-rose-600 line-through">{c.antes}</span>{" "}
+                                <span aria-hidden>→</span>{" "}
+                                <span className="text-emerald-700">{c.despues}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                        {motivo && (
+                          <p className="mt-2 text-xs text-slate-500">
+                            <span className="font-medium text-slate-600">Motivo:</span> {motivo}
+                          </p>
+                        )}
+                      </li>
+                    );
+                  })}
+                </ol>
+              )}
+            </div>
           )}
 
           {/* ── NOTAS ───────────────────────────────────────────────────── */}

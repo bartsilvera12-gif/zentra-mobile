@@ -7,6 +7,7 @@ import { createServiceRoleClient } from "@/lib/supabase/service-admin";
 import { fetchPerfilTributarioDetalle } from "@/lib/clientes/tributario-server";
 import { construirPatchActualizacionCliente, type ActualizarClienteInput } from "@/lib/clientes/storage";
 import { ensureSemillasCatalogoTipos, tipoServicioSlugValido } from "@/lib/clientes/tipo-servicio-catalogo";
+import { registrarHistorialCliente, diffCamposCliente, CAMPOS_AUDITABLES } from "@/lib/clientes/historial";
 
 /**
  * GET /api/clientes/:id — un cliente de la empresa (mismo schema que el resto de APIs tenant).
@@ -118,7 +119,7 @@ export async function PATCH(
 
     const { data: existing, error: errExist } = await supabase
       .from("clientes")
-      .select("id, deleted_at")
+      .select(["id", "deleted_at", ...CAMPOS_AUDITABLES].join(", "))
       .eq("id", clienteId)
       .eq("empresa_id", auth.empresa_id)
       .maybeSingle();
@@ -165,6 +166,32 @@ export async function PATCH(
     }
     if (!data) {
       return NextResponse.json(errorResponse("Cliente no encontrado"), { status: 404 });
+    }
+
+    const before = existing as unknown as Record<string, unknown>;
+    const after = data as unknown as Record<string, unknown>;
+    const diff = diffCamposCliente(before, after);
+    if (diff.changed_fields.length > 0) {
+      const estadoAntes = String(before.estado ?? "").trim().toLowerCase();
+      const estadoDespues = String(after.estado ?? "").trim().toLowerCase();
+      const esReactivacion =
+        estadoAntes && estadoAntes !== "activo" && estadoDespues === "activo";
+      const esBaja =
+        estadoAntes === "activo" && estadoDespues && estadoDespues !== "activo";
+      const accion = esReactivacion ? "reactivate" : esBaja ? "deactivate" : "update";
+      await registrarHistorialCliente(supabase, {
+        empresaId: auth.empresa_id,
+        clienteId: String(clienteId),
+        accion,
+        detalle: {
+          changed_fields: diff.changed_fields,
+          before: diff.before,
+          after: diff.after,
+        },
+        authUserId: auth.user?.id ?? null,
+        email: typeof auth.user?.email === "string" ? auth.user.email : null,
+        source: "clientes_ui",
+      });
     }
 
     return NextResponse.json(successResponse(data));
