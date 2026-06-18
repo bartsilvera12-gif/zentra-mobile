@@ -32,7 +32,7 @@ export async function GET(request: Request) {
       .from("usuarios")
       .select("id, nombre, email, rol, estado")
       .eq("empresa_id", empresaId)
-      .eq("estado", "activo")
+      .ilike("estado", "activo")
       .order("nombre", { ascending: true })
       .order("email", { ascending: true });
 
