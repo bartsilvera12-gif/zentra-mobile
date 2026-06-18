@@ -7,59 +7,39 @@ import { emitEvent, EVENT_TYPES } from "@/lib/integrations/events";
 import { fechaVencimientoSuscripcion, vencimientoPeriodo, toCalendarDateStr, hoyYmdLocal } from "@/lib/fechas/calendario";
 import { aplicarPlanPendienteSiVencido } from "./suscripcion-plan-pendiente";
 
+/**
+ * Reserva el siguiente número de factura SIEMPRE vía el RPC transaccional
+ * `next_numero_factura_empresa` (contador `<schema>.factura_correlativos` con lock).
+ *
+ * ENDURECIDO (Opción A): si el RPC falla o devuelve vacío, LANZA error y NO genera
+ * la factura. Antes había un fallback `MAX(numero)+1` sin lock que desincronizaba el
+ * contador y producía números duplicados; se eliminó a propósito. Es preferible fallar
+ * a duplicar. Todo nuevo camino de emisión debe usar este helper (no calcular números).
+ */
 export async function obtenerSiguienteNumeroFacturaEmpresa(
   supabase: AppSupabaseClient,
   empresaId: string
 ): Promise<string> {
   const prefijoDefault = process.env.FACTURA_PREFIJO ?? "FAC-";
 
-  // Camino principal: función SQL transaccional (contador por empresa/schema).
   const { data: rpc, error: rpcErr } = await supabase.rpc("next_numero_factura_empresa", {
     p_empresa_id: empresaId,
     p_prefijo_default: prefijoDefault,
   });
-  if (!rpcErr && typeof rpc === "string" && rpc.trim() !== "") {
-    return rpc.trim();
+
+  if (rpcErr) {
+    throw new Error(
+      `No se pudo reservar el número de factura (contador transaccional falló: ${rpcErr.message}). ` +
+        `No se generó la factura para evitar numeración duplicada.`
+    );
   }
-
-  // Fallback de compatibilidad si la migración aún no fue aplicada.
-  const { data: ultima } = await supabase
-    .from("facturas")
-    .select("numero_factura")
-    .eq("empresa_id", empresaId)
-    .order("created_at", { ascending: false })
-    .order("updated_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  let max = 0;
-  let prefijo = prefijoDefault;
-  const nUlt = String((ultima as { numero_factura?: string } | null)?.numero_factura ?? "").trim();
-  const pUlt = nUlt.replace(/(\d+)$/, "");
-  if (pUlt.trim()) prefijo = pUlt;
-
-  // Escaneo paginado para evitar tope fijo (solo se usa si falta la migración).
-  let from = 0;
-  const pageSize = 1000;
-  while (true) {
-    const { data: page, error: pageErr } = await supabase
-      .from("facturas")
-      .select("numero_factura")
-      .eq("empresa_id", empresaId)
-      .range(from, from + pageSize - 1);
-    if (pageErr || !page?.length) break;
-    for (const r of page) {
-      const n = String((r as { numero_factura?: string }).numero_factura ?? "").trim();
-      const m = n.match(/(\d+)$/);
-      if (!m) continue;
-      const num = Number(m[1]);
-      if (Number.isFinite(num) && num > max) max = num;
-    }
-    if (page.length < pageSize) break;
-    from += pageSize;
+  if (typeof rpc !== "string" || rpc.trim() === "") {
+    throw new Error(
+      "No se pudo reservar el número de factura (respuesta vacía del contador transaccional). " +
+        "No se generó la factura para evitar numeración duplicada."
+    );
   }
-
-  return `${prefijo}${String(max + 1).padStart(6, "0")}`;
+  return rpc.trim();
 }
 
 export type SuscripcionFacturaRow = {
@@ -139,7 +119,18 @@ export async function crearFacturaInicialSuscripcionSiCorresponde(opts: {
   const monto = Number(sRow.precio);
   if (!Number.isFinite(monto) || monto <= 0) return;
 
-  const numeroFactura = await obtenerSiguienteNumeroFacturaEmpresa(supabase, empresaId);
+  // Best-effort: si el contador transaccional falla, NO frenamos la creación de la
+  // suscripción ni intentamos numerar a mano (evita duplicados). Se loguea y se omite la factura.
+  let numeroFactura: string;
+  try {
+    numeroFactura = await obtenerSiguienteNumeroFacturaEmpresa(supabase, empresaId);
+  } catch (e) {
+    console.error(
+      "[crearFacturaInicialSuscripcionSiCorresponde] no se pudo reservar número, se omite factura inicial:",
+      e instanceof Error ? e.message : e
+    );
+    return;
+  }
   const moneda = sRow.moneda === "USD" ? "USD" : "GS";
   const diaVencCfg = Math.min(Math.max(1, Number(sRow.dia_vencimiento) || 10), 31);
   let fechaVenc: string;
