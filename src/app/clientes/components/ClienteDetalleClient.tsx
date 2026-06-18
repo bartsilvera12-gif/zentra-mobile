@@ -2788,16 +2788,21 @@ export default function ClienteDetalleClient({
               const fid = facturaPago?.id ?? formPago.factura_id;
               if (!fid) return;
               setGuardandoPago(true);
-              await apiCreatePago({
+              const resPago = await apiCreatePago({
                 factura_id: fid,
                 monto: parseFloat(formPago.monto) || 0,
                 fecha_pago: formPago.fecha_pago,
                 metodo_pago: formPago.metodo_pago,
                 referencia: formPago.referencia || undefined,
               });
+              setGuardandoPago(false);
+              if (!resPago.ok) {
+                // Incluye PAY_OLDEST_FIRST (debe pagar primero la factura más antigua).
+                window.alert(resPago.error || "No se pudo registrar el pago.");
+                return;
+              }
               setModalPago(false);
               getFacturas(id).then(setFacturas);
-              setGuardandoPago(false);
             }} className="space-y-4">
               {!facturaPago && facturas.filter((f) => f.saldo > 0).length > 0 && (
                 <div>

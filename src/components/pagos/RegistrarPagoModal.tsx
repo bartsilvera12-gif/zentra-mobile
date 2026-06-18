@@ -44,6 +44,7 @@ export function RegistrarPagoModal({
   const [metodoPago, setMetodoPago] = useState<MetodoPago>("efectivo");
   const [referencia, setReferencia] = useState("");
   const [guardando, setGuardando] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open || !factura) return;
@@ -51,6 +52,7 @@ export function RegistrarPagoModal({
     setFechaPago(hoyYmdLocal());
     setMetodoPago("efectivo");
     setReferencia("");
+    setErrorMsg(null);
   }, [open, factura?.id, factura?.saldo, factura?.moneda, factura?.numero_factura]);
 
   if (!open || !factura) return null;
@@ -70,6 +72,7 @@ export function RegistrarPagoModal({
       return;
     }
     setGuardando(true);
+    setErrorMsg(null);
     const result = await apiCreatePago({
       factura_id: f.id,
       monto: m,
@@ -78,11 +81,12 @@ export function RegistrarPagoModal({
       referencia: referencia.trim() || undefined,
     });
     setGuardando(false);
-    if (result) {
+    if (result.ok) {
       await Promise.resolve(onExito());
       onClose();
     } else {
-      window.alert("Error al registrar el pago. Verificá el monto y vuelve a intentar.");
+      // PAY_OLDEST_FIRST u otro error: mensaje limpio inline (no alert genérico).
+      setErrorMsg(result.error || "Error al registrar el pago. Verificá el monto y vuelve a intentar.");
     }
   }
 
@@ -103,6 +107,11 @@ export function RegistrarPagoModal({
           Registrar pago
         </h3>
         <p className="mb-4 text-sm text-slate-600">{saldoDescripcion(f)}</p>
+        {errorMsg && (
+          <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+            {errorMsg}
+          </div>
+        )}
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className={labelClass} htmlFor="reg-pago-monto">

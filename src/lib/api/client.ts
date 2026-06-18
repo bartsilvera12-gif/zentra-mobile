@@ -380,15 +380,51 @@ export async function apiCreateFacturaWithError(data: Parameters<typeof apiCreat
   return { ok: true, data: result.data };
 }
 
+export type FacturaMasViejaClient = {
+  id: string;
+  numero_factura: string | null;
+  fecha_vencimiento: string | null;
+  saldo: number;
+};
+
+export type CrearPagoResult =
+  | { ok: true; data: { id: string; [key: string]: unknown } }
+  | { ok: false; error: string; code?: string; oldest?: FacturaMasViejaClient };
+
 export async function apiCreatePago(data: {
   factura_id: string;
   monto: number;
   fecha_pago: string;
   metodo_pago?: string;
   referencia?: string;
-}): Promise<{ id: string; [key: string]: unknown } | null> {
-  const result = await apiPost<{ id: string; [key: string]: unknown }>("/api/pagos", data);
-  return result.success ? result.data : null;
+}): Promise<CrearPagoResult> {
+  const res = await fetchWithSupabaseSession("/api/pagos", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+  let json: unknown;
+  try {
+    json = await res.json();
+  } catch {
+    return { ok: false, error: res.ok ? "Respuesta inválida del servidor" : `Error ${res.status}` };
+  }
+  const body = json as {
+    success?: boolean;
+    data?: { id: string; [key: string]: unknown };
+    error?: string;
+    code?: string;
+    oldest?: FacturaMasViejaClient;
+  };
+  if (!res.ok || body?.success !== true || !body.data) {
+    return {
+      ok: false,
+      error: body?.error ?? `Error ${res.status}`,
+      code: body?.code,
+      oldest: body?.oldest,
+    };
+  }
+  return { ok: true, data: body.data };
 }
 
 export async function apiCreateSuscripcion(data: {

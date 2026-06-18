@@ -1,6 +1,7 @@
 import "server-only";
 import { emitEvent, EVENT_TYPES } from "@/lib/integrations/events";
 import { toCalendarDateStr } from "@/lib/fechas/calendario";
+import { validarPagoMasVieja, type FacturaMasVieja } from "@/lib/pagos/oldest-first";
 
 /**
  * Servicio ÚNICO de registro de pagos. Fuente de verdad compartida por:
@@ -26,7 +27,7 @@ export type RegistrarPagoAuth = {
 
 export type RegistrarPagoResult =
   | { ok: true; pago: Record<string, unknown>; nuevoSaldo: number; nuevoEstado: string }
-  | { ok: false; status: number; message: string };
+  | { ok: false; status: number; message: string; code?: string; oldest?: FacturaMasVieja };
 
 const METODOS_VALIDOS = ["efectivo", "transferencia", "cheque", "tarjeta", "otro"];
 
@@ -80,6 +81,20 @@ export async function registrarPago(
   }
   if (estadoFac === "Pagado" && Number(factura.saldo) <= 0) {
     return { ok: false, status: 400, message: "La factura ya está pagada" };
+  }
+
+  // Regla oldest-first (por cliente): no se permite pagar una factura posterior si
+  // existe una anterior con saldo. Guarda centralizada → aplica a Pagos y Cobranzas.
+  const vMasVieja = await validarPagoMasVieja(supabase, auth.empresa_id, factura_id.trim());
+  if (vMasVieja.ok && !vMasVieja.esMasVieja) {
+    const old = vMasVieja.oldest;
+    return {
+      ok: false,
+      status: 409,
+      code: "PAY_OLDEST_FIRST",
+      oldest: old,
+      message: `Este cliente tiene una factura más antigua pendiente. Registrá primero el pago de ${old.numero_factura ?? "la factura anterior"}.`,
+    };
   }
 
   const saldoActual = Number(factura.saldo);

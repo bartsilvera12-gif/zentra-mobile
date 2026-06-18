@@ -258,6 +258,12 @@ export async function POST(request: NextRequest) {
     // Lógica única compartida con Cobranzas (mismas validaciones, mensajes y flujo).
     const result = await registrarPago(supabase, auth, body);
     if (!result.ok) {
+      if (result.code === "PAY_OLDEST_FIRST") {
+        return NextResponse.json(
+          { success: false, error: result.message, code: result.code, oldest: result.oldest },
+          { status: result.status }
+        );
+      }
       return NextResponse.json(errorResponse(result.message), { status: result.status });
     }
     return NextResponse.json(successResponse(result.pago));
