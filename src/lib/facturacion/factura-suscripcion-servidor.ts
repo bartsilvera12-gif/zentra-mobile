@@ -4,7 +4,7 @@
 import type { AppSupabaseClient } from "@/lib/supabase/schema";
 import { montosFacturaItemParaInsert } from "./factura-item-montos";
 import { emitEvent, EVENT_TYPES } from "@/lib/integrations/events";
-import { fechaVencimientoSuscripcion, hoyYmdLocal } from "@/lib/fechas/calendario";
+import { fechaVencimientoSuscripcion, vencimientoPeriodo, toCalendarDateStr, hoyYmdLocal } from "@/lib/fechas/calendario";
 import { aplicarPlanPendienteSiVencido } from "./suscripcion-plan-pendiente";
 
 export async function obtenerSiguienteNumeroFacturaEmpresa(
@@ -75,12 +75,25 @@ export type SuscripcionFacturaRow = {
 /**
  * Si no hay factura del mes calendario actual para esa suscripción, crea una (equivalente a emitir este mes).
  */
+/**
+ * Modo de cálculo del vencimiento de la factura inicial:
+ *  - "auto": regla histórica (mes de emisión; si el día ya pasó, salta al mes siguiente).
+ *  - "actual": vencimiento en el mes de emisión (puede quedar vencido).
+ *  - "siguiente": vencimiento en el mes siguiente.
+ *  - "override": usa `vencimientoOverride` (YYYY-MM-DD) tal cual.
+ */
+export type VencimientoFacturaInicial =
+  | { modo: "auto" | "actual" | "siguiente" }
+  | { modo: "override"; vencimientoOverride: string };
+
 export async function crearFacturaInicialSuscripcionSiCorresponde(opts: {
   supabase: AppSupabaseClient;
   empresaId: string;
   suscripcion: SuscripcionFacturaRow;
+  vencimiento?: VencimientoFacturaInicial;
 }): Promise<void> {
   const { supabase, empresaId, suscripcion } = opts;
+  const vencCfg: VencimientoFacturaInicial = opts.vencimiento ?? { modo: "auto" };
   await aplicarPlanPendienteSiVencido({
     supabase,
     empresaId,
@@ -129,7 +142,15 @@ export async function crearFacturaInicialSuscripcionSiCorresponde(opts: {
   const numeroFactura = await obtenerSiguienteNumeroFacturaEmpresa(supabase, empresaId);
   const moneda = sRow.moneda === "USD" ? "USD" : "GS";
   const diaVencCfg = Math.min(Math.max(1, Number(sRow.dia_vencimiento) || 10), 31);
-  const fechaVenc = fechaVencimientoSuscripcion(hoy, diaVencCfg);
+  let fechaVenc: string;
+  if (vencCfg.modo === "override") {
+    const ov = toCalendarDateStr(vencCfg.vencimientoOverride);
+    fechaVenc = /^\d{4}-\d{2}-\d{2}$/.test(ov) ? ov : fechaVencimientoSuscripcion(hoy, diaVencCfg);
+  } else if (vencCfg.modo === "actual" || vencCfg.modo === "siguiente") {
+    fechaVenc = vencimientoPeriodo(hoy, diaVencCfg, vencCfg.modo);
+  } else {
+    fechaVenc = fechaVencimientoSuscripcion(hoy, diaVencCfg);
+  }
 
   const { data: factura, error: errFact } = await supabase
     .from("facturas")

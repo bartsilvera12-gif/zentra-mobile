@@ -59,7 +59,7 @@ export async function POST(request: NextRequest) {
     const { auth, supabase } = ctx;
 
     const body = await request.json();
-    const { cliente_id, plan_id, precio, moneda, fecha_inicio, duracion_meses, dia_facturacion, dia_vencimiento, generar_factura_este_mes, tipo_servicio } = body;
+    const { cliente_id, plan_id, precio, moneda, fecha_inicio, duracion_meses, dia_facturacion, dia_vencimiento, generar_factura_este_mes, generar_factura, periodo_factura, fecha_vencimiento_override, tipo_servicio } = body;
 
     if (!cliente_id?.trim()) {
       return NextResponse.json(errorResponse("cliente_id es obligatorio"), { status: 400 });
@@ -69,6 +69,39 @@ export async function POST(request: NextRequest) {
     }
     if (!fecha_inicio) {
       return NextResponse.json(errorResponse("fecha_inicio es obligatoria"), { status: 400 });
+    }
+
+    // Decisión EXPLÍCITA de facturación inicial (el backend no decide en silencio).
+    //   periodo_factura: "actual" | "siguiente" | "none"   (canónico)
+    //   fecha_vencimiento_override: YYYY-MM-DD              (opcional, gana sobre el período)
+    //   legacy: generar_factura_este_mes (boolean) → modo "auto" (regla histórica)
+    let debeGenerar = false;
+    let vencimiento: { modo: "auto" | "actual" | "siguiente" | "override"; vencimientoOverride?: string } = { modo: "auto" };
+    const overrideYmd =
+      typeof fecha_vencimiento_override === "string" && /^\d{4}-\d{2}-\d{2}$/.test(fecha_vencimiento_override.trim())
+        ? fecha_vencimiento_override.trim()
+        : null;
+
+    if (periodo_factura === "none") {
+      debeGenerar = false;
+    } else if (periodo_factura === "actual" || periodo_factura === "siguiente") {
+      debeGenerar = true;
+      vencimiento = overrideYmd ? { modo: "override", vencimientoOverride: overrideYmd } : { modo: periodo_factura };
+    } else if (periodo_factura != null) {
+      return NextResponse.json(
+        errorResponse('periodo_factura inválido: usá "actual", "siguiente" o "none".'),
+        { status: 400 }
+      );
+    } else if (generar_factura === true) {
+      // Flag nuevo sin período → ambigüedad: rechazar.
+      return NextResponse.json(
+        errorResponse('Falta periodo_factura ("actual" | "siguiente") cuando generar_factura = true.'),
+        { status: 400 }
+      );
+    } else {
+      // Camino legacy: comportamiento seguro/histórico (modo auto).
+      debeGenerar = Boolean(generar_factura_este_mes);
+      vencimiento = overrideYmd ? { modo: "override", vencimientoOverride: overrideYmd } : { modo: "auto" };
     }
 
     const insert = {
@@ -81,7 +114,7 @@ export async function POST(request: NextRequest) {
       duracion_meses: Number(duracion_meses) || 12,
       dia_facturacion: Math.min(28, Math.max(1, Number(dia_facturacion) || 1)),
       dia_vencimiento: Math.min(31, Math.max(1, Number(dia_vencimiento) || 10)),
-      generar_factura_este_mes: Boolean(generar_factura_este_mes),
+      generar_factura_este_mes: debeGenerar,
       tipo_servicio:
         typeof tipo_servicio === "string" && tipo_servicio.trim()
           ? tipo_servicio.trim().toLowerCase()
@@ -97,7 +130,7 @@ export async function POST(request: NextRequest) {
     console.log("[API] About to emit event");
     await emitEvent(EVENT_TYPES.suscripcion_creada, { suscripcion_id: data.id, cliente_id: data.cliente_id });
 
-    if (insert.generar_factura_este_mes) {
+    if (debeGenerar) {
       await crearFacturaInicialSuscripcionSiCorresponde({
         supabase,
         empresaId: auth.empresa_id,
@@ -110,6 +143,7 @@ export async function POST(request: NextRequest) {
           dia_facturacion: data.dia_facturacion,
           dia_vencimiento: data.dia_vencimiento,
         },
+        vencimiento,
       });
     }
 

@@ -401,6 +401,10 @@ export async function apiCreateSuscripcion(data: {
   dia_facturacion?: number;
   dia_vencimiento?: number;
   generar_factura_este_mes?: boolean;
+  /** Decisión explícita de facturación inicial (preferido sobre generar_factura_este_mes). */
+  generar_factura?: boolean;
+  periodo_factura?: "actual" | "siguiente" | "none";
+  fecha_vencimiento_override?: string | null;
   tipo_servicio?: string | null;
 }): Promise<{ id: string; [key: string]: unknown } | null> {
   const result = await apiPost<{ id: string; [key: string]: unknown }>("/api/suscripciones", data);

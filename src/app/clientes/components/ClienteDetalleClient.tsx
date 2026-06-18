@@ -35,6 +35,7 @@ import { SifenEstadoBadge } from "@/components/sifen/SifenEstadoBadge";
 import { useFacturaSifenEstados } from "@/hooks/useFacturaSifenEstados";
 import MontoInput from "@/components/ui/MontoInput";
 import { getPlanes } from "@/lib/planes/storage";
+import { hoyYmdLocal, vencimientoPeriodo } from "@/lib/fechas/calendario";
 import type { Cliente, NotaCliente } from "@/lib/clientes/types";
 import {
   etiquetaVisibleTipoServicio,
@@ -90,11 +91,31 @@ const TABS: { id: TabId; label: string; showWhen?: (c: Cliente) => boolean }[] =
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
+// Date-safe: para columnas tipo DATE (y timestamps) corta YYYY-MM-DD sin convertir timezone.
+// Evita el corrimiento de -1 día que producía new Date("2026-06-18") en zona Paraguay (UTC-4).
 function formatFecha(iso: string) {
-  try {
-    const d = new Date(iso);
-    return `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}/${d.getFullYear()}`;
-  } catch { return ""; }
+  if (!iso) return "";
+  const s = String(iso).slice(0, 10);
+  const [y, m, d] = s.split("-");
+  return d && m && y ? `${d}/${m}/${y}` : "";
+}
+
+const MESES_ES = [
+  "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
+  "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre",
+];
+
+/** Etiqueta "Junio 2026" del período (actual = mes de emisión; siguiente = mes posterior). */
+function etiquetaPeriodo(fechaEmisionYmd: string, periodo: "actual" | "siguiente"): string {
+  const m = fechaEmisionYmd.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return "";
+  let y = parseInt(m[1], 10);
+  let mo = parseInt(m[2], 10);
+  if (periodo === "siguiente") {
+    mo += 1;
+    if (mo > 12) { mo = 1; y += 1; }
+  }
+  return `${MESES_ES[mo - 1]} ${y}`;
 }
 
 function formatFechaHora(iso: string) {
@@ -319,7 +340,7 @@ export default function ClienteDetalleClient({
   const [planes, setPlanes] = useState<Plan[]>([]);
   const [modalSuscripcion, setModalSuscripcion] = useState(false);
   const [formSusc, setFormSusc] = useState({
-    plan_id: "", precio: "", fecha_inicio: "", duracion_meses: "12", dia_facturacion: "1", dia_vencimiento: "10", generar_factura_este_mes: false, tipo_servicio: "",
+    plan_id: "", precio: "", fecha_inicio: "", duracion_meses: "12", dia_facturacion: "1", dia_vencimiento: "10", generar_factura_este_mes: false, periodo_factura: "actual" as "actual" | "siguiente", fecha_vencimiento_override: "", tipo_servicio: "",
   });
   const [guardandoSusc, setGuardandoSusc] = useState(false);
   const [marketingTasks, setMarketingTasks] = useState<MarketingTask[]>([]);
@@ -1142,6 +1163,8 @@ export default function ClienteDetalleClient({
                   dia_facturacion: "1",
                   dia_vencimiento: "10",
                   generar_factura_este_mes: false,
+                  periodo_factura: "actual",
+                  fecha_vencimiento_override: "",
                   tipo_servicio: (cliente?.tipo_servicio_cliente ?? "").trim().toLowerCase(),
                 });
                 setModalSuscripcion(true);
@@ -2160,7 +2183,7 @@ export default function ClienteDetalleClient({
                 <SectionTitle>Suscripciones</SectionTitle>
                 <button
                   type="button"
-                  onClick={() => { setFormSusc({ plan_id: "", precio: "", fecha_inicio: new Date().toISOString().slice(0, 10), duracion_meses: "12", dia_facturacion: "1", dia_vencimiento: "10", generar_factura_este_mes: false, tipo_servicio: (cliente?.tipo_servicio_cliente ?? "").trim().toLowerCase() }); setModalSuscripcion(true); }}
+                  onClick={() => { setFormSusc({ plan_id: "", precio: "", fecha_inicio: new Date().toISOString().slice(0, 10), duracion_meses: "12", dia_facturacion: "1", dia_vencimiento: "10", generar_factura_este_mes: false, periodo_factura: "actual", fecha_vencimiento_override: "", tipo_servicio: (cliente?.tipo_servicio_cliente ?? "").trim().toLowerCase() }); setModalSuscripcion(true); }}
                   className="bg-[#4FAEB2] hover:bg-[#3F8E91] text-white px-4 py-2 rounded-lg text-sm font-medium"
                 >
                   Nueva suscripción
@@ -2508,7 +2531,9 @@ export default function ClienteDetalleClient({
                 duracion_meses: parseInt(formSusc.duracion_meses, 10) || 12,
                 dia_facturacion: parseInt(formSusc.dia_facturacion, 10) || 1,
                 dia_vencimiento: parseInt(formSusc.dia_vencimiento, 10) || 10,
-                generar_factura_este_mes: formSusc.generar_factura_este_mes,
+                generar_factura: formSusc.generar_factura_este_mes,
+                periodo_factura: formSusc.generar_factura_este_mes ? formSusc.periodo_factura : "none",
+                fecha_vencimiento_override: formSusc.fecha_vencimiento_override || null,
                 tipo_servicio: formSusc.tipo_servicio || null,
               });
               setModalSuscripcion(false);
@@ -2571,10 +2596,96 @@ export default function ClienteDetalleClient({
                 <label className={labelClass}>Día vencimiento</label>
                 <input type="number" value={formSusc.dia_vencimiento} onChange={(e) => setFormSusc((p) => ({ ...p, dia_vencimiento: e.target.value }))} className={inputClass} min={1} max={31} />
               </div>
-              <div className="flex items-center gap-2">
-                <input type="checkbox" id="gen_fact" checked={formSusc.generar_factura_este_mes} onChange={(e) => setFormSusc((p) => ({ ...p, generar_factura_este_mes: e.target.checked }))} />
-                <label htmlFor="gen_fact" className="text-sm text-slate-600">Emitir factura este mes</label>
-              </div>
+              {/* Facturación inicial: decisión explícita (sin que el sistema decida solo) */}
+              {(() => {
+                const hoy = hoyYmdLocal();
+                const diaVenc = Math.min(31, Math.max(1, parseInt(formSusc.dia_vencimiento, 10) || 10));
+                const vencActual = vencimientoPeriodo(hoy, diaVenc, "actual");
+                const vencSiguiente = vencimientoPeriodo(hoy, diaVenc, "siguiente");
+                const override = (formSusc.fecha_vencimiento_override || "").trim();
+                const vencElegido =
+                  override ? override : formSusc.periodo_factura === "siguiente" ? vencSiguiente : vencActual;
+                const yaVencio = !override && formSusc.periodo_factura === "actual" && vencActual < hoy;
+                return (
+                  <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-3 space-y-3">
+                    <label className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        checked={formSusc.generar_factura_este_mes}
+                        onChange={(e) => setFormSusc((p) => ({ ...p, generar_factura_este_mes: e.target.checked }))}
+                      />
+                      <span className="text-sm font-medium text-slate-700">Emitir factura inicial al crear</span>
+                    </label>
+
+                    {!formSusc.generar_factura_este_mes ? (
+                      <p className="text-[11px] text-slate-500">Solo se crea la suscripción. No se genera ninguna factura ahora.</p>
+                    ) : (
+                      <div className="space-y-2">
+                        <p className="text-[11px] text-slate-500">Elegí qué período facturar. La emisión siempre es hoy ({formatFecha(hoy)}).</p>
+
+                        <label className="flex items-start gap-2 cursor-pointer">
+                          <input
+                            type="radio"
+                            name="periodo_factura"
+                            className="mt-0.5"
+                            checked={!override && formSusc.periodo_factura === "actual"}
+                            onChange={() => setFormSusc((p) => ({ ...p, periodo_factura: "actual", fecha_vencimiento_override: "" }))}
+                          />
+                          <span className="text-sm text-slate-700">
+                            Período actual — <strong>{etiquetaPeriodo(hoy, "actual")}</strong>
+                            <span className="block text-[11px] text-slate-500">Vence {formatFecha(vencActual)}</span>
+                          </span>
+                        </label>
+
+                        <label className="flex items-start gap-2 cursor-pointer">
+                          <input
+                            type="radio"
+                            name="periodo_factura"
+                            className="mt-0.5"
+                            checked={!override && formSusc.periodo_factura === "siguiente"}
+                            onChange={() => setFormSusc((p) => ({ ...p, periodo_factura: "siguiente", fecha_vencimiento_override: "" }))}
+                          />
+                          <span className="text-sm text-slate-700">
+                            Próximo período — <strong>{etiquetaPeriodo(hoy, "siguiente")}</strong>
+                            <span className="block text-[11px] text-slate-500">Vence {formatFecha(vencSiguiente)}</span>
+                          </span>
+                        </label>
+
+                        <label className="flex items-start gap-2 cursor-pointer">
+                          <input
+                            type="radio"
+                            name="periodo_factura"
+                            className="mt-0.5"
+                            checked={!!override}
+                            onChange={() => setFormSusc((p) => ({ ...p, fecha_vencimiento_override: vencActual }))}
+                          />
+                          <span className="text-sm text-slate-700 w-full">
+                            Fecha de vencimiento personalizada
+                            {override && (
+                              <input
+                                type="date"
+                                value={override}
+                                onChange={(e) => setFormSusc((p) => ({ ...p, fecha_vencimiento_override: e.target.value }))}
+                                className={`${inputClass} mt-1`}
+                              />
+                            )}
+                          </span>
+                        </label>
+
+                        <div className="rounded-lg bg-white border border-slate-200 px-3 py-2 text-[11px] text-slate-600">
+                          Se generará: emisión <strong>{formatFecha(hoy)}</strong> · vencimiento <strong>{formatFecha(vencElegido)}</strong>
+                        </div>
+
+                        {yaVencio && (
+                          <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-800">
+                            ⚠ El vencimiento {formatFecha(vencActual)} ya pasó; esta factura quedará <strong>vencida</strong>.
+                          </p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
               <div className="flex gap-3 pt-2">
                 <button type="submit" disabled={guardandoSusc} className="bg-[#4FAEB2] hover:bg-[#3F8E91] text-white px-4 py-2 rounded-lg text-sm font-medium disabled:opacity-50">
                   Guardar
