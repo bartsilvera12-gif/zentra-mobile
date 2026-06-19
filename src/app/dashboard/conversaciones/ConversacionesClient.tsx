@@ -428,8 +428,16 @@ export function ConversacionesClient({
       /* ignore */
     }
   }, [headerCollapsed]);
-  /** Filtro local del listado (nombre o teléfono); no altera la carga desde servidor. */
+  /** Texto del buscador (input). Se debouncea a `debouncedQ` y se envía al backend (búsqueda global). */
   const [listSearch, setListSearch] = useState("");
+  /** Término de búsqueda server-side (debounced 300ms). */
+  const [debouncedQ, setDebouncedQ] = useState("");
+  /** Ventana creciente: cuántas conversaciones pedir (50, +50 con "Cargar más"). */
+  const [listLimit, setListLimit] = useState(50);
+  const debouncedQRef = useRef("");
+  const listLimitRef = useRef(50);
+  debouncedQRef.current = debouncedQ;
+  listLimitRef.current = listLimit;
   const [finalizeOpen, setFinalizeOpen] = useState(false);
   const [finalizeLoading, setFinalizeLoading] = useState(false);
   const [opPresenceLoaded, setOpPresenceLoaded] = useState(
@@ -525,7 +533,13 @@ export function ConversacionesClient({
     async (opts?: { silent?: boolean }) => {
       const silent = opts?.silent ?? false;
       const sp = new URLSearchParams(searchParamsRef.current?.toString() ?? "");
-      const filters = parseInboxFilters(sp);
+      const baseFilters = parseInboxFilters(sp) ?? {};
+      const qNow = debouncedQRef.current.trim();
+      const filters = {
+        ...baseFilters,
+        limit: listLimitRef.current,
+        q: qNow ? qNow : null,
+      };
       const previousCount = conversationsRef.current.length;
       if (silent) {
         chatListUiLog("refetch-start", {
@@ -792,6 +806,31 @@ export function ConversacionesClient({
     setLoadingList(true);
     void loadConversations();
   }, [loadConversations, inboxFilterKey]);
+
+  // Debounce del buscador (300ms) → término server-side. Resetea la ventana a la primera página.
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setDebouncedQ(listSearch.trim());
+      setListLimit(50);
+    }, 300);
+    return () => clearTimeout(t);
+  }, [listSearch]);
+
+  // Al cambiar filtros de URL (canal/cola/asignación/vista) volver a la primera página.
+  useEffect(() => {
+    setListLimit(50);
+  }, [inboxFilterKey]);
+
+  // Recarga cuando cambia el término server-side o la ventana ("Cargar más").
+  // Se omite la primera ejecución: el effect de [inboxFilterKey] ya hace la carga inicial.
+  const qWindowMountRef = useRef(true);
+  useEffect(() => {
+    if (qWindowMountRef.current) {
+      qWindowMountRef.current = false;
+      return;
+    }
+    void loadConversationsRef.current?.();
+  }, [debouncedQ, listLimit]);
 
   useEffect(() => {
     listChatQueues()
@@ -1597,20 +1636,9 @@ export function ConversacionesClient({
     }
   }
 
-  const visibleConversations = useMemo(() => {
-    const q = listSearch.trim().toLowerCase();
-    if (!q) return conversations;
-    const qDigits = q.replace(/\D/g, "");
-    return conversations.filter((c) => {
-      const name = (c.contact.name || "").toLowerCase();
-      const phone = String(c.contact.phone_number || "");
-      const phoneDigits = phone.replace(/\D/g, "");
-      if (name.includes(q)) return true;
-      if (phone.toLowerCase().includes(q)) return true;
-      if (qDigits.length > 0 && phoneDigits.includes(qDigits)) return true;
-      return false;
-    });
-  }, [conversations, listSearch]);
+  // La búsqueda es server-side (debouncedQ → backend). No se filtra localmente para no ocultar
+  // coincidencias por preview/teléfono normalizado que el server sí incluye.
+  const visibleConversations = conversations;
 
   const selected = conversations.find((c) => c.id === selectedId);
   const canResendCurrentFlowStep = Boolean(
@@ -2498,14 +2526,14 @@ export function ConversacionesClient({
                   key={c.id}
                   type="button"
                   onClick={() => handleSelect(c.id)}
-                  className={`w-full text-left px-3 py-3 border-b border-slate-100 transition-colors ${
+                  className={`w-full text-left px-3 py-2 border-b border-slate-100 transition-colors ${
                     isSelected ? "bg-white border-l-[3px] border-l-[#4FAEB2]" : "hover:bg-white"
                   }`}
                 >
                   <div className="flex items-start gap-2.5">
                     <span
                       aria-hidden="true"
-                      className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[13px] font-semibold ${
+                      className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[12px] font-semibold ${
                         hasNameInCard
                           ? "bg-[#4FAEB2]/12 text-[#3F8E91] border border-[#4FAEB2]/30"
                           : "bg-slate-100 text-slate-500 border border-slate-200"
@@ -2540,15 +2568,12 @@ export function ConversacionesClient({
                           )}
                         </div>
                       </div>
-                      <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-                        <ChannelBadge type={c.channel.type} nombre={c.channel.nombre} />
-                      </div>
-                      <p className="mt-1.5 text-[12px] text-slate-500 truncate leading-snug">
+                      <p className="mt-1 text-[12px] text-slate-500 truncate leading-snug">
                         {c.last_message_preview || "—"}
                       </p>
                     </div>
                   </div>
-                  <div className="flex flex-wrap gap-1 mt-1.5">
+                  <div className="flex flex-wrap gap-1 mt-1">
                     <span
                       className={`text-[9px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded border ${badgeEstadoClass(c.status)}`}
                     >
@@ -2588,6 +2613,15 @@ export function ConversacionesClient({
                 );
               })
             )}
+            {!loadingList && conversations.length >= listLimit ? (
+              <button
+                type="button"
+                onClick={() => setListLimit((l) => l + 50)}
+                className="w-full px-3 py-2.5 text-center text-xs font-semibold text-[#3F8E91] hover:bg-white border-b border-slate-100 transition-colors"
+              >
+                Cargar más
+              </button>
+            ) : null}
           </div>
         </div>
         ) : null}

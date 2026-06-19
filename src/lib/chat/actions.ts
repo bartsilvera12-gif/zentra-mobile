@@ -93,6 +93,16 @@ export type ChatInboxFilters = {
   priority?: string | null;
   /** Filtro opcional por `chat_conversations.channel_id` (UUID). */
   channel_id?: string | null;
+  /**
+   * Paginación por "ventana creciente": trae las primeras `limit` conversaciones del alcance
+   * (ordenadas por actividad). "Cargar más" en el cliente incrementa `limit`. Default 50.
+   */
+  limit?: number | null;
+  /**
+   * Búsqueda server-side dentro del alcance del usuario: teléfono (normalizado), nombre de contacto
+   * y preview del último mensaje. NO limita a las ya cargadas en el cliente.
+   */
+  q?: string | null;
 };
 
 export type InboxConversation = {
@@ -521,32 +531,63 @@ async function fetchChatConversationsUnsafe(
       qb = qb.eq("channel_id", fch);
     }
 
+    // Búsqueda server-side: teléfono / nombre de contacto / preview. Pre-resuelve contact_ids.
+    const qraw = filters?.q?.trim();
+    if (qraw) {
+      const safe = qraw.replace(/[(),*]/g, " ").trim();
+      const digits = qraw.replace(/\D/g, "");
+      if (safe) {
+        const contactOr = [`name.ilike.*${safe}*`, `phone_number.ilike.*${safe}*`];
+        if (digits.length >= 3) contactOr.push(`phone_normalized.ilike.*${digits}*`);
+        let contactIds: string[] = [];
+        try {
+          const { data: cRows } = await supabase
+            .from("chat_contacts")
+            .select("id")
+            .eq("empresa_id", empresa_id)
+            .or(contactOr.join(","))
+            .limit(500);
+          contactIds = (cRows ?? [])
+            .map((r) => String((r as { id?: string }).id ?? "").trim())
+            .filter(Boolean);
+        } catch {
+          /* sin contactos resueltos */
+        }
+        const ors = [`last_message_preview.ilike.*${safe}*`];
+        if (contactIds.length > 0) ors.push(`contact_id.in.(${contactIds.join(",")})`);
+        qb = qb.or(ors.join(","));
+      }
+    }
+
     return { builder: qb };
   };
 
+  // Ventana creciente (default 50, tope 1000). Antes el listado no tenía límite (lentitud).
+  const reqLimit = Number(filters?.limit);
+  const pageLimit = Number.isFinite(reqLimit) && reqLimit > 0
+    ? Math.min(1000, Math.max(50, Math.ceil(reqLimit / 50) * 50))
+    : 50;
+
   /* PostgREST: desempaquetar `.builder` — el builder es thenable y no puede devolverse solo desde async. */
   let q: any = (await buildFilteredConversationQuery(convSelectWithWait)).builder;
-  let { data: convs, error } = await q.order("last_message_at", {
-    ascending: false,
-    nullsFirst: false,
-  });
+  let { data: convs, error } = await q
+    .order("last_message_at", { ascending: false, nullsFirst: false })
+    .limit(pageLimit);
 
   if (error && isMissingColumnError(error.message, "assignment_wait_code")) {
     console.warn("[fetchChatConversations] assignment_wait_code ausente; reintento sin columna");
     q = (await buildFilteredConversationQuery(convSelectLegacy)).builder;
-    ({ data: convs, error } = await q.order("last_message_at", {
-      ascending: false,
-      nullsFirst: false,
-    }));
+    ({ data: convs, error } = await q
+      .order("last_message_at", { ascending: false, nullsFirst: false })
+      .limit(pageLimit));
   }
 
   if (error) {
     console.warn("[fetchChatConversations] reintento select mínimo sin priority ni assignment_wait_code");
     q = (await buildFilteredConversationQuery(convSelectLegacyNoPriority)).builder;
-    ({ data: convs, error } = await q.order("last_message_at", {
-      ascending: false,
-      nullsFirst: false,
-    }));
+    ({ data: convs, error } = await q
+      .order("last_message_at", { ascending: false, nullsFirst: false })
+      .limit(pageLimit));
   }
 
   if (error) {

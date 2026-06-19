@@ -182,7 +182,8 @@ async function pgFetchConversationsWithColumns(
   schema: string,
   whereSql: string,
   params: unknown[],
-  variant: "full" | "legacy" | "min"
+  variant: "full" | "legacy" | "min",
+  limit?: number
 ): Promise<Record<string, unknown>[] | null> {
   const qt = quoteSchemaTable(schema, "chat_conversations");
   const colsFull = `
@@ -201,11 +202,15 @@ async function pgFetchConversationsWithColumns(
     flow_code, flow_current_node, flow_status, human_taken_over, active_flow_session_id
   `;
   const cols = variant === "full" ? colsFull : variant === "legacy" ? colsLegacy : colsMin;
+  // LIMIT validado como entero literal (no es input de usuario libre). `id DESC` estabiliza el orden
+  // ante empates de last_message_at (paginación por ventana creciente consistente).
+  const limSql =
+    Number.isFinite(limit) && (limit as number) > 0 ? ` LIMIT ${Math.floor(limit as number)}` : "";
   const q = `
     SELECT ${cols}
     FROM ${qt}
     WHERE ${whereSql}
-    ORDER BY last_message_at DESC NULLS LAST
+    ORDER BY last_message_at DESC NULLS LAST, id DESC${limSql}
   `;
   try {
     const r = await pool.query(q, params);
@@ -369,6 +374,31 @@ export async function fetchChatConversationsFromTenantPg(
     pi++;
   }
 
+  // Búsqueda server-side (dentro del alcance ya aplicado): teléfono / nombre de contacto / preview.
+  // NO se limita a las ya cargadas en el cliente.
+  const qraw = filters?.q?.trim();
+  if (qraw) {
+    const contactsQt = quoteSchemaTable(dataSchema, "chat_contacts");
+    const like = `%${qraw}%`;
+    const digits = qraw.replace(/\D/g, "");
+    const likeIdx = pi;
+    params.push(like);
+    pi++;
+    let phoneNormClause = "";
+    if (digits.length >= 3) {
+      phoneNormClause = ` OR phone_normalized ILIKE $${pi}`;
+      params.push(`%${digits}%`);
+      pi++;
+    }
+    whereParts.push(
+      `(last_message_preview ILIKE $${likeIdx} OR contact_id IN (
+         SELECT id FROM ${contactsQt}
+         WHERE empresa_id = $1::uuid
+           AND (name ILIKE $${likeIdx} OR phone_number ILIKE $${likeIdx}${phoneNormClause})
+       ))`
+    );
+  }
+
   if (!bypass) {
     const scopeSql = await buildPgOmnicanalConversationScopeAndClause(
       pool,
@@ -384,14 +414,21 @@ export async function fetchChatConversationsFromTenantPg(
 
   const whereSql = whereParts.join(" AND ");
 
-  const full = await pgFetchConversationsWithColumns(pool, dataSchema, whereSql, params, "full");
+  // Ventana creciente: trae como máximo `pageLimit` (default 50, tope 1000). El cliente sube el limit
+  // con "Cargar más". Antes NO había LIMIT → traía y enriquecía TODAS (causa de la lentitud).
+  const reqLimit = Number(filters?.limit);
+  const pageLimit = Number.isFinite(reqLimit) && reqLimit > 0
+    ? Math.min(1000, Math.max(50, Math.ceil(reqLimit / 50) * 50))
+    : 50;
+
+  const full = await pgFetchConversationsWithColumns(pool, dataSchema, whereSql, params, "full", pageLimit);
   const legacy =
     full === null
-      ? await pgFetchConversationsWithColumns(pool, dataSchema, whereSql, params, "legacy")
+      ? await pgFetchConversationsWithColumns(pool, dataSchema, whereSql, params, "legacy", pageLimit)
       : null;
   const min =
     full === null && legacy === null
-      ? await pgFetchConversationsWithColumns(pool, dataSchema, whereSql, params, "min")
+      ? await pgFetchConversationsWithColumns(pool, dataSchema, whereSql, params, "min", pageLimit)
       : null;
 
   let list: Record<string, unknown>[];
