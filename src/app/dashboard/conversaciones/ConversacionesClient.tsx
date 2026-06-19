@@ -2130,71 +2130,40 @@ export function ConversacionesClient({
         </div>
       ) : null}
 
-      {/* Toggle "Ocultar / Mostrar barra" — siempre visible. Persiste en
-          localStorage. Permite maximizar el espacio del chat. */}
-      <div className="flex shrink-0 items-center justify-end">
-        <button
-          type="button"
-          onClick={() => setHeaderCollapsed((v) => !v)}
-          className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-[11px] font-semibold text-slate-600 shadow-sm transition-colors hover:border-[#4FAEB2]/60 hover:bg-[#4FAEB2]/5 hover:text-[#3F8E91]"
-          title={headerCollapsed ? "Mostrar barra superior" : "Ocultar barra superior"}
-          aria-pressed={headerCollapsed}
-        >
-          {headerCollapsed ? (
-            <>
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                className="h-3.5 w-3.5"
-                aria-hidden="true"
-              >
-                <polyline points="6 9 12 15 18 9" />
-              </svg>
-              Mostrar barra
-            </>
-          ) : (
-            <>
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                className="h-3.5 w-3.5"
-                aria-hidden="true"
-              >
-                <polyline points="18 15 12 9 6 15" />
-              </svg>
-              Ocultar barra
-            </>
-          )}
-        </button>
-      </div>
+      {/* Toggle "Mostrar barra" standalone — solo cuando está colapsada (al expandir va en la línea del nombre). */}
+      {headerCollapsed ? (
+        <div className="flex shrink-0 items-center justify-end">
+          <button
+            type="button"
+            onClick={() => setHeaderCollapsed(false)}
+            className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-1 text-[11px] font-semibold text-slate-600 shadow-sm transition-colors hover:border-[#4FAEB2]/60 hover:bg-[#4FAEB2]/5 hover:text-[#3F8E91]"
+            title="Mostrar barra superior"
+            aria-pressed={true}
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-3.5 w-3.5" aria-hidden="true">
+              <polyline points="6 9 12 15 18 9" />
+            </svg>
+            Mostrar barra
+          </button>
+        </div>
+      ) : null}
 
       {!headerCollapsed ? (
       <>
-      <div className="flex flex-wrap items-center justify-between gap-3 shrink-0">
-        <div className="min-w-0">
-          <div className="flex items-center gap-2">
-            <span
-              aria-hidden="true"
-              className="inline-block h-2 w-2 shrink-0 rounded-full bg-[#4FAEB2] shadow-[0_0_0_3px_rgba(79,174,178,0.18)]"
-            />
-            <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#4FAEB2]">
-              Omnicanal
-            </p>
-          </div>
-          <h1 className="mt-1 text-xl sm:text-2xl font-semibold tracking-tight text-slate-900 leading-tight truncate">
+      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 shrink-0">
+        <div className="min-w-0 flex flex-1 items-center gap-2 flex-wrap">
+          <span
+            aria-hidden="true"
+            className="inline-block h-2 w-2 shrink-0 rounded-full bg-[#4FAEB2] shadow-[0_0_0_3px_rgba(79,174,178,0.18)]"
+          />
+          <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#4FAEB2] hidden sm:inline">
+            Omnicanal
+          </span>
+          <h1 className="text-base font-semibold tracking-tight text-slate-900 leading-tight truncate">
             {agentDisplayName}
           </h1>
-          <p className="text-xs text-slate-500 leading-snug mt-1">
+          <span className="text-xs text-slate-500 leading-snug">
+            {"· "}
             {mode === "historial"
               ? "Historial omnicanal"
               : vista === "inbox"
@@ -2208,12 +2177,12 @@ export function ConversacionesClient({
                 </Link>
               </>
             ) : null}
-          </p>
+          </span>
         </div>
         {mode === "inbox" && opPresenceLoaded && !opInQueues ? (
           initialCabeceraInsignia === "admin" ? (
-            <div className="flex flex-col items-end gap-1 shrink-0 max-w-[20rem] text-right">
-              <span className="inline-flex items-center rounded-full bg-slate-800 px-3 py-1 text-[10px] font-bold uppercase tracking-wide text-white">
+            <div className="flex items-center gap-2 shrink-0">
+              <span className="inline-flex items-center rounded-full bg-slate-800 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">
                 Administrador
               </span>
               <span className="text-[10px] text-slate-600 leading-snug">
@@ -2224,8 +2193,8 @@ export function ConversacionesClient({
               </span>
             </div>
           ) : initialCabeceraInsignia === "supervisor" ? (
-            <div className="flex flex-col items-end gap-1 shrink-0 max-w-[20rem] text-right">
-              <span className="inline-flex items-center rounded-full bg-indigo-800 px-3 py-1 text-[10px] font-bold uppercase tracking-wide text-white">
+            <div className="flex items-center gap-2 shrink-0">
+              <span className="inline-flex items-center rounded-full bg-indigo-800 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">
                 Supervisor
               </span>
               <span className="text-[10px] text-slate-600 leading-snug">
@@ -2308,6 +2277,17 @@ export function ConversacionesClient({
             ) : null}
           </div>
         ) : null}
+        <button
+          type="button"
+          onClick={() => setHeaderCollapsed(true)}
+          className="ml-auto inline-flex shrink-0 items-center gap-1.5 self-start rounded-xl border border-slate-200 bg-white px-3 py-1 text-[11px] font-semibold text-slate-600 shadow-sm transition-colors hover:border-[#4FAEB2]/60 hover:bg-[#4FAEB2]/5 hover:text-[#3F8E91]"
+          title="Ocultar barra superior"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-3.5 w-3.5" aria-hidden="true">
+            <polyline points="18 15 12 9 6 15" />
+          </svg>
+          Ocultar barra
+        </button>
       </div>
       {mode === "inbox" && sessionSinceIso && !opInQueues ? (
         <div className="flex justify-end w-full shrink-0 -mt-1">
