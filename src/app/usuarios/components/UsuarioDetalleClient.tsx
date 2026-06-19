@@ -191,6 +191,9 @@ export default function UsuarioDetalleClient({
   const [omniScheduleId, setOmniScheduleId] = useState<string>("");
   const [omnicanalWarning, setOmnicanalWarning] = useState<string | null>(null);
 
+  const [modulosCollapsed, setModulosCollapsed] = useState(false);
+  const [modulosSearch, setModulosSearch] = useState("");
+
   useEffect(() => {
     if (!id) return;
     setLoadError(null);
@@ -804,31 +807,116 @@ export default function UsuarioDetalleClient({
                 ) : null}
 
                 {usuario.puede_editar_modulos && !usuario.es_admin_empresa && (usuario.modulos_empresa?.length ?? 0) > 0 ? (
-                  <SectionCard title="Módulos del usuario" icon="📦">
-                    <p className="mb-4 text-xs text-slate-500">
-                      Solo aplica a supervisores y usuarios. Marcá los módulos que esta persona puede usar (lo habilitado
-                      para tu empresa).
-                    </p>
-                    <div className="space-y-2">
-                      {(usuario.modulos_empresa ?? []).map((m) => (
-                        <label
-                          key={m.id}
-                          className="flex cursor-pointer items-center gap-3 rounded-lg border border-slate-200 px-3 py-2.5 transition-colors hover:border-[#4FAEB2]/40 hover:bg-[#4FAEB2]/[0.04]"
+                  (() => {
+                    const todos = usuario.modulos_empresa ?? [];
+                    const q = modulosSearch.trim().toLowerCase();
+                    const filtrados = q
+                      ? todos.filter(
+                          (m) =>
+                            (m.nombre ?? "").toLowerCase().includes(q) ||
+                            (m.slug ?? "").toLowerCase().includes(q),
+                        )
+                      : todos;
+                    const seleccionados = todos.filter((m) => form.modulo_ids.includes(m.id)).length;
+                    return (
+                      <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm ring-1 ring-[#4FAEB2]/15">
+                        <button
+                          type="button"
+                          onClick={() => setModulosCollapsed((v) => !v)}
+                          className="mb-3 flex w-full items-center gap-2 border-b border-slate-100 pb-3 text-left"
+                          aria-expanded={!modulosCollapsed}
                         >
-                          <input
-                            type="checkbox"
-                            name={`modulo_${m.id}`}
-                            value={m.id}
-                            checked={form.modulo_ids.includes(m.id)}
-                            onChange={handleChange}
-                            className="rounded border-slate-300 text-[#4FAEB2] focus:ring-[#4FAEB2]/30"
-                          />
-                          <span className="text-sm font-medium text-slate-800">{m.nombre}</span>
-                          <span className="ml-auto font-mono text-xs text-slate-400">{m.slug}</span>
-                        </label>
-                      ))}
-                    </div>
-                  </SectionCard>
+                          <span className="text-base">📦</span>
+                          <h3 className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#4FAEB2]">
+                            Módulos del usuario
+                          </h3>
+                          <span className="ml-2 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-600">
+                            {seleccionados}/{todos.length}
+                          </span>
+                          <span className="ml-auto text-xs text-slate-400">
+                            {modulosCollapsed ? "▸ Mostrar" : "▾ Ocultar"}
+                          </span>
+                        </button>
+                        {!modulosCollapsed && (
+                          <>
+                            <p className="mb-3 text-xs text-slate-500">
+                              Solo aplica a supervisores y usuarios. Marcá los módulos que esta persona puede usar (lo
+                              habilitado para tu empresa).
+                            </p>
+                            <div className="mb-3 flex flex-wrap items-center gap-2">
+                              <input
+                                type="text"
+                                value={modulosSearch}
+                                onChange={(e) => setModulosSearch(e.target.value)}
+                                placeholder="Buscar módulo por nombre o slug…"
+                                className={`${usuarioFormInputGray} flex-1 min-w-[200px]`}
+                              />
+                              {modulosSearch && (
+                                <button
+                                  type="button"
+                                  onClick={() => setModulosSearch("")}
+                                  className="rounded-lg border border-slate-200 px-3 py-2 text-xs text-slate-600 hover:bg-slate-50"
+                                >
+                                  Limpiar
+                                </button>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const ids = filtrados.map((m) => m.id);
+                                  setForm((prev) => ({
+                                    ...prev,
+                                    modulo_ids: Array.from(new Set([...(prev.modulo_ids ?? []), ...ids])),
+                                  }));
+                                }}
+                                className="rounded-lg border border-[#4FAEB2]/40 px-3 py-2 text-xs font-medium text-[#3F8E91] hover:bg-[#4FAEB2]/10"
+                              >
+                                Marcar visibles
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const ids = new Set(filtrados.map((m) => m.id));
+                                  setForm((prev) => ({
+                                    ...prev,
+                                    modulo_ids: (prev.modulo_ids ?? []).filter((x) => !ids.has(x)),
+                                  }));
+                                }}
+                                className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50"
+                              >
+                                Desmarcar visibles
+                              </button>
+                            </div>
+                            <div className="max-h-[420px] space-y-2 overflow-y-auto pr-1">
+                              {filtrados.length === 0 ? (
+                                <p className="rounded-lg border border-dashed border-slate-200 px-3 py-6 text-center text-sm text-slate-500">
+                                  No hay módulos que coincidan con "{modulosSearch}".
+                                </p>
+                              ) : (
+                                filtrados.map((m) => (
+                                  <label
+                                    key={m.id}
+                                    className="flex cursor-pointer items-center gap-3 rounded-lg border border-slate-200 px-3 py-2.5 transition-colors hover:border-[#4FAEB2]/40 hover:bg-[#4FAEB2]/[0.04]"
+                                  >
+                                    <input
+                                      type="checkbox"
+                                      name={`modulo_${m.id}`}
+                                      value={m.id}
+                                      checked={form.modulo_ids.includes(m.id)}
+                                      onChange={handleChange}
+                                      className="rounded border-slate-300 text-[#4FAEB2] focus:ring-[#4FAEB2]/30"
+                                    />
+                                    <span className="text-sm font-medium text-slate-800">{m.nombre}</span>
+                                    <span className="ml-auto font-mono text-xs text-slate-400">{m.slug}</span>
+                                  </label>
+                                ))
+                              )}
+                            </div>
+                          </>
+                        )}
+                      </section>
+                    );
+                  })()
                 ) : null}
 
                 {usuario.puede_editar_modulos &&

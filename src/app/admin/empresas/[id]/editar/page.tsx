@@ -58,6 +58,9 @@ export default function EditarEmpresaPage() {
 
   const [dashCatalog, setDashCatalog] = useState<DashboardViewCatalog[]>([]);
 
+  const [modulosCollapsed, setModulosCollapsed] = useState(false);
+  const [modulosSearch, setModulosSearch] = useState("");
+
   const [form, setForm] = useState({
     nombre_empresa: "",
     plan: "",
@@ -549,35 +552,115 @@ export default function EditarEmpresaPage() {
         </section>
 
         <section className="bg-white rounded-xl border border-gray-100 shadow-sm p-6">
-          <div className="flex items-center gap-2 mb-5 pb-2 border-b border-gray-100">
-            <span className="text-base">📦</span>
-            <h3 className="text-sm font-bold text-gray-700 uppercase tracking-wider">
-              Módulos habilitados
-            </h3>
-          </div>
-          {cargandoModulos ? (
-            <p className="text-sm text-gray-400">Cargando módulos…</p>
-          ) : modulos.length === 0 ? (
-            <p className="text-sm text-gray-400">No hay módulos configurados en el sistema.</p>
-          ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-              {modulos.map((m) => (
-                <label
-                  key={m.id}
-                  className="flex items-center gap-2 cursor-pointer p-2 rounded-lg hover:bg-gray-50 transition-colors"
+          {(() => {
+            const q = modulosSearch.trim().toLowerCase();
+            const filtrados = q
+              ? modulos.filter(
+                  (m) =>
+                    String(m.nombre ?? m.name ?? "").toLowerCase().includes(q) ||
+                    String((m as { slug?: string }).slug ?? "").toLowerCase().includes(q),
+                )
+              : modulos;
+            const seleccionados = modulos.filter((m) => form.modulo_ids.includes(m.id)).length;
+            return (
+              <>
+                <button
+                  type="button"
+                  onClick={() => setModulosCollapsed((v) => !v)}
+                  className="flex w-full items-center gap-2 mb-3 pb-2 border-b border-gray-100 text-left"
+                  aria-expanded={!modulosCollapsed}
                 >
-                  <input
-                    type="checkbox"
-                    value={m.id}
-                    checked={form.modulo_ids.includes(m.id)}
-                    onChange={handleChange}
-                    className="rounded border-gray-300"
-                  />
-                  <span className="text-sm text-gray-700">{m.nombre ?? m.name ?? m.id}</span>
-                </label>
-              ))}
-            </div>
-          )}
+                  <span className="text-base">📦</span>
+                  <h3 className="text-sm font-bold text-gray-700 uppercase tracking-wider">
+                    Módulos habilitados
+                  </h3>
+                  <span className="ml-2 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-600">
+                    {seleccionados}/{modulos.length}
+                  </span>
+                  <span className="ml-auto text-xs text-slate-400">
+                    {modulosCollapsed ? "▸ Mostrar" : "▾ Ocultar"}
+                  </span>
+                </button>
+                {!modulosCollapsed && (
+                  cargandoModulos ? (
+                    <p className="text-sm text-gray-400">Cargando módulos…</p>
+                  ) : modulos.length === 0 ? (
+                    <p className="text-sm text-gray-400">No hay módulos configurados en el sistema.</p>
+                  ) : (
+                    <>
+                      <div className="mb-3 flex flex-wrap items-center gap-2">
+                        <input
+                          type="text"
+                          value={modulosSearch}
+                          onChange={(e) => setModulosSearch(e.target.value)}
+                          placeholder="Buscar módulo por nombre o slug…"
+                          className={`${fInput} flex-1 min-w-[220px]`}
+                        />
+                        {modulosSearch && (
+                          <button
+                            type="button"
+                            onClick={() => setModulosSearch("")}
+                            className="rounded-lg border border-slate-200 px-3 py-2 text-xs text-slate-600 hover:bg-slate-50"
+                          >
+                            Limpiar
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const ids = filtrados.map((m) => m.id);
+                            setForm((prev) => ({
+                              ...prev,
+                              modulo_ids: Array.from(new Set([...prev.modulo_ids, ...ids])),
+                            }));
+                          }}
+                          className="rounded-lg border border-[#4FAEB2]/40 px-3 py-2 text-xs font-medium text-[#3F8E91] hover:bg-[#4FAEB2]/10"
+                        >
+                          Marcar visibles
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const ids = new Set(filtrados.map((m) => m.id));
+                            setForm((prev) => ({
+                              ...prev,
+                              modulo_ids: prev.modulo_ids.filter((x) => !ids.has(x)),
+                            }));
+                          }}
+                          className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50"
+                        >
+                          Desmarcar visibles
+                        </button>
+                      </div>
+                      {filtrados.length === 0 ? (
+                        <p className="rounded-lg border border-dashed border-slate-200 px-3 py-6 text-center text-sm text-slate-500">
+                          No hay módulos que coincidan con "{modulosSearch}".
+                        </p>
+                      ) : (
+                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 max-h-[460px] overflow-y-auto pr-1">
+                          {filtrados.map((m) => (
+                            <label
+                              key={m.id}
+                              className="flex items-center gap-2 cursor-pointer p-2 rounded-lg hover:bg-gray-50 transition-colors"
+                            >
+                              <input
+                                type="checkbox"
+                                value={m.id}
+                                checked={form.modulo_ids.includes(m.id)}
+                                onChange={handleChange}
+                                className="rounded border-gray-300"
+                              />
+                              <span className="text-sm text-gray-700">{m.nombre ?? m.name ?? m.id}</span>
+                            </label>
+                          ))}
+                        </div>
+                      )}
+                    </>
+                  )
+                )}
+              </>
+            );
+          })()}
         </section>
 
         <section className="bg-white rounded-xl border border-gray-100 shadow-sm p-6">
