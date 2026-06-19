@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getTenantSupabaseFromAuth } from "@/lib/supabase/tenant-api";
 import { successResponse, errorResponse } from "@/lib/api/response";
 import { API_ERRORS } from "@/lib/api/errors";
+import { requireEmpresaTenantServiceRole } from "@/lib/chat/empresa-tenant-service-role";
+import { filterConversationIdsByOmnicanalScope } from "@/lib/chat/omnicanal-scope";
 
 /**
  * GET /api/chat/mobile-inbox
@@ -16,29 +17,16 @@ import { API_ERRORS } from "@/lib/api/errors";
  */
 export async function GET(request: NextRequest) {
   try {
-    const ctx = await getTenantSupabaseFromAuth(request);
-    if (!ctx) {
+    let ctx;
+    try {
+      ctx = await requireEmpresaTenantServiceRole();
+    } catch {
       return NextResponse.json(errorResponse(API_ERRORS.UNAUTHORIZED), { status: 401 });
     }
-    const { supabase, auth } = ctx;
-    const empresaId = auth.empresa_id;
+    const { supabase, catalogSr, empresa_id: empresaId, usuario_id: usuarioId } = ctx;
 
     const onlyOpen = request.nextUrl.searchParams.get("only_open") !== "0";
     const statusList = onlyOpen ? ["open", "pending"] : ["open", "pending", "closed"];
-
-    const { data: convs, error } = await supabase
-      .from("chat_conversations")
-      .select(
-        "id, status, last_message_at, last_message_preview, unread_count, contact_id, channel_id"
-      )
-      .eq("empresa_id", empresaId)
-      .in("status", statusList)
-      .order("last_message_at", { ascending: false, nullsFirst: false })
-      .limit(50);
-
-    if (error) {
-      return NextResponse.json(errorResponse(error.message), { status: 400 });
-    }
 
     type Row = {
       id: string;
@@ -50,7 +38,32 @@ export async function GET(request: NextRequest) {
       channel_id: string | null;
     };
 
-    const rows = (convs ?? []) as Row[];
+    // Candidatas (ventana amplia) ordenadas por actividad. El scope omnicanal se aplica con el
+    // mismo helper que el desktop (admin=bypass; agente=asignadas a él + sin-asignar de su cola),
+    // y recién después se recorta a 50. Antes este endpoint NO aplicaba scope (sobre-exposición).
+    const { data: convs, error } = await supabase
+      .from("chat_conversations")
+      .select(
+        "id, status, last_message_at, last_message_preview, unread_count, contact_id, channel_id"
+      )
+      .eq("empresa_id", empresaId)
+      .in("status", statusList)
+      .order("last_message_at", { ascending: false, nullsFirst: false })
+      .limit(200);
+
+    if (error) {
+      return NextResponse.json(errorResponse(error.message), { status: 400 });
+    }
+
+    const candidatas = (convs ?? []) as Row[];
+    const visibles = await filterConversationIdsByOmnicanalScope(
+      supabase,
+      catalogSr,
+      empresaId,
+      usuarioId,
+      candidatas.map((r) => r.id)
+    );
+    const rows = candidatas.filter((r) => visibles.has(r.id)).slice(0, 50);
 
     const contactIds = [...new Set(rows.map((r) => r.contact_id).filter((id): id is string => !!id))];
     const channelIds = [...new Set(rows.map((r) => r.channel_id).filter((id): id is string => !!id))];

@@ -122,11 +122,15 @@ export async function getOmnicanalScope(
     }
 
     if (role === "agente") {
-      return { role: "agente", queueIds: [], agentUsuarioIds: [uid] };
+      // Regla B: el agente ve lo asignado a él + sin-asignar de SUS colas → poblar queueIds propias.
+      const queueIds = await resolveQueueIdsForUsuarios(supabase, emp, [uid], tenantDataSchema);
+      return { role: "agente", queueIds, agentUsuarioIds: [uid] };
     }
 
     if (await usuarioTieneFilaChatAgents(supabase, emp, uid, tenantDataSchema)) {
-      return { role: null, queueIds: [], agentUsuarioIds: [uid] };
+      // Operador sin rol explícito pero con fila chat_agents: mismo alcance tipo agente (regla B).
+      const queueIds = await resolveQueueIdsForUsuarios(supabase, emp, [uid], tenantDataSchema);
+      return { role: null, queueIds, agentUsuarioIds: [uid] };
     }
 
     return { role: null, queueIds: [], agentUsuarioIds: [] };
@@ -452,18 +456,22 @@ export async function appendOmnicanalConversationScopeToQuery(
     }
     return wrap(q.eq("id", NO_CONVERSATION_MATCH));
   }
-  if (queueIds.length > 0 && agentFkIds.length > 0) {
-    const qIn = queueIds.map((id) => `"${normalizeId(id)}"`).join(",");
-    const aIn = agentFkIds.map((id) => `"${normalizeId(id)}"`).join(",");
-    return wrap(q.or(`queue_id.in.(${qIn}),assigned_agent_id.in.(${aIn})`));
-  }
-  if (queueIds.length > 0) {
-    return wrap(q.in("queue_id", queueIds));
-  }
-  if (agentFkIds.length === 0) {
-    return wrap(q.eq("id", NO_CONVERSATION_MATCH));
-  }
-  return wrap(q.in("assigned_agent_id", agentFkIds));
+
+  /**
+   * Regla B (agente/operador): asignadas a él + SIN ASIGNAR de sus colas (y sin-asignar cuyo canal
+   * esté vinculado a sus colas, para cubrir queue_id NULL). NO ve las asignadas a otros (eso sería C).
+   * Reutiliza el mismo armado que el supervisor pero con SUS propios agentFkIds/colas.
+   */
+  const channelIdsFromQueues =
+    queueIds.length > 0 ? await resolveChannelIdsForQueueIds(supabase, empresaId, queueIds, ds) : [];
+  return wrap(
+    applySupervisorBundleToQuery(q, {
+      kind: "ok",
+      agentFkIds,
+      queueIdsUnion: queueIds,
+      channelIdsFromTeamQueues: channelIdsFromQueues,
+    })
+  );
 }
 
 /**

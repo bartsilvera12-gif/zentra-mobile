@@ -240,31 +240,34 @@ export async function buildPgOmnicanalConversationScopeAndClause(
     };
   }
 
+  /**
+   * Regla B (agente/operador): asignadas a él + SIN ASIGNAR de sus colas (+ sin-asignar cuyo canal
+   * esté vinculado a sus colas, para cubrir queue_id NULL). NUNCA las asignadas a otros (eso sería C).
+   */
+  const channelIds =
+    queueIds.length > 0 ? await pgResolveChannelIdsForQueueIds(pool, schema, empresaId, queueIds) : [];
+
   const parts: string[] = [];
   const params: unknown[] = [];
   let off = paramOffset;
 
-  if (queueIds.length > 0 && agentFkIds.length > 0) {
-    parts.push(`queue_id = ANY($${off}::uuid[])`);
-    params.push(queueIds);
-    off++;
+  if (agentFkIds.length > 0) {
     parts.push(`assigned_agent_id = ANY($${off}::uuid[])`);
     params.push(agentFkIds);
     off++;
-    return {
-      sql: `(${parts.join(" OR ")})`,
-      params,
-      nextOffset: off,
-    };
   }
   if (queueIds.length > 0) {
-    return {
-      sql: `queue_id = ANY($${paramOffset}::uuid[])`,
-      params: [queueIds],
-      nextOffset: paramOffset + 1,
-    };
+    parts.push(`(assigned_agent_id IS NULL AND queue_id IS NOT NULL AND queue_id = ANY($${off}::uuid[]))`);
+    params.push(queueIds);
+    off++;
   }
-  if (agentFkIds.length === 0) {
+  if (channelIds.length > 0) {
+    parts.push(`(assigned_agent_id IS NULL AND channel_id IS NOT NULL AND channel_id = ANY($${off}::uuid[]))`);
+    params.push(channelIds);
+    off++;
+  }
+
+  if (parts.length === 0) {
     const impossible = normalizeId(IMPOSSIBLE_CONVERSATION_ID);
     return {
       sql: `id = $${paramOffset}::uuid`,
@@ -272,9 +275,10 @@ export async function buildPgOmnicanalConversationScopeAndClause(
       nextOffset: paramOffset + 1,
     };
   }
+
   return {
-    sql: `assigned_agent_id = ANY($${paramOffset}::uuid[])`,
-    params: [agentFkIds],
-    nextOffset: paramOffset + 1,
+    sql: `(${parts.join(" OR ")})`,
+    params,
+    nextOffset: off,
   };
 }
