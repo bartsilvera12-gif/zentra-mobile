@@ -2327,127 +2327,104 @@ export function ConversacionesClient({
         </div>
       ) : null}
 
-      {mode === "inbox" ? (
-        <div className="flex flex-wrap items-stretch gap-2 shrink-0 min-w-0">
-          <div className="flex flex-wrap gap-1 rounded-lg border border-slate-200 bg-slate-100/80 p-1 w-fit shrink-0 self-center">
-            <button type="button" className={tabClass(vista === "inbox")} onClick={() => setVista("inbox")}>
-              Inbox
-            </button>
-            {hasActiveBotFlows ? (
-              <button type="button" className={tabClass(vista === "bot")} onClick={() => setVista("bot")}>
-                Bot
+      {mode === "inbox" || mode === "historial" ? (
+        <div className="flex flex-wrap items-center gap-2 shrink-0 min-w-0">
+          {mode === "inbox" ? (
+            <div className="flex flex-wrap gap-1 rounded-lg border border-slate-200 bg-slate-100/80 p-1 w-fit shrink-0">
+              <button type="button" className={tabClass(vista === "inbox")} onClick={() => setVista("inbox")}>
+                Inbox
               </button>
-            ) : null}
-          </div>
+              {hasActiveBotFlows ? (
+                <button type="button" className={tabClass(vista === "bot")} onClick={() => setVista("bot")}>
+                  Bot
+                </button>
+              ) : null}
+            </div>
+          ) : null}
           <input
             type="search"
             value={listSearch}
             onChange={(e) => setListSearch(e.target.value)}
             placeholder="Buscar por nombre o número"
-            className="flex-1 min-w-[12rem] border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-800 bg-white placeholder:text-slate-400 outline-none focus:ring-2 focus:ring-[#4FAEB2]/20 focus:border-[#4FAEB2]"
+            className="flex-1 min-w-[10rem] border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-800 bg-white placeholder:text-slate-400 outline-none focus:ring-2 focus:ring-[#4FAEB2]/20 focus:border-[#4FAEB2]"
             aria-label="Buscar por nombre o número"
           />
-        </div>
-      ) : null}
-
-      {mode === "historial" ? (
-        <div className="flex flex-wrap items-stretch gap-2 shrink-0 min-w-0">
-          <input
-            type="search"
-            value={listSearch}
-            onChange={(e) => setListSearch(e.target.value)}
-            placeholder="Buscar por nombre o número"
-            className="flex-1 min-w-[12rem] border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-800 bg-white placeholder:text-slate-400 outline-none focus:ring-2 focus:ring-[#4FAEB2]/20 focus:border-[#4FAEB2]"
-            aria-label="Buscar en historial"
-          />
-        </div>
-      ) : null}
-
-      {(mode === "historial" || vista === "inbox") ? (
-        <div className="flex flex-wrap items-end gap-3 shrink-0 rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
-          <label className="flex flex-col gap-1.5 min-w-[12rem]">
-            <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-500">
-              Canal
-            </span>
-            <select
-              className="appearance-none rounded-xl border border-slate-200 bg-white bg-[length:14px_14px] bg-[right_0.7rem_center] bg-no-repeat px-3 py-2 pr-8 text-xs font-medium text-slate-700 shadow-sm outline-none transition-colors hover:border-[#4FAEB2]/60 focus:border-[#4FAEB2] focus:ring-2 focus:ring-[#4FAEB2]/20 min-w-[12rem] max-w-[min(22rem,90vw)]"
-              style={{
-                backgroundImage:
-                  "url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%234FAEB2' stroke-width='2.5'><path stroke-linecap='round' stroke-linejoin='round' d='M6 9l6 6 6-6'/></svg>\")",
-              }}
-              value={displayCanal}
-              onChange={(e) => {
-                const v = e.target.value.trim();
-                setPendingCanal(v.length > 0 ? v : "");
-                patchInboxQuery({ canal: v.length > 0 ? v : null });
-              }}
-              aria-label="Filtrar por canal"
-            >
-              <option value="">Todos los canales</option>
-              {inboxChannels.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {formatChannelOptionLabel(c)}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="flex flex-col gap-1.5 min-w-[11rem]">
-            <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-500">
-              Cola
-            </span>
-            <select
-              className="appearance-none rounded-xl border border-slate-200 bg-white bg-[length:14px_14px] bg-[right_0.7rem_center] bg-no-repeat px-3 py-2 pr-8 text-xs font-medium text-slate-700 shadow-sm outline-none transition-colors hover:border-[#4FAEB2]/60 focus:border-[#4FAEB2] focus:ring-2 focus:ring-[#4FAEB2]/20 min-w-[11rem]"
-              style={{
-                backgroundImage:
-                  "url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%234FAEB2' stroke-width='2.5'><path stroke-linecap='round' stroke-linejoin='round' d='M6 9l6 6 6-6'/></svg>\")",
-              }}
-              value={displayCola}
-              onChange={(e) => {
-                const v = e.target.value.trim();
-                setPendingCola(v.length > 0 ? v : "");
-                patchInboxQuery({ cola: v.length > 0 ? v : null });
-              }}
-              aria-label="Filtrar por cola"
-            >
-              <option value="">Todas (según tu alcance)</option>
-              {opsQueues
-                .filter((q) => q.is_active)
-                .map((q) => (
-                  <option key={q.id} value={q.id}>
-                    {q.nombre}
+          {mode === "historial" || vista === "inbox" ? (
+            <>
+              <select
+                className="appearance-none rounded-lg border border-slate-200 bg-white bg-[length:13px_13px] bg-[right_0.55rem_center] bg-no-repeat px-2.5 py-2 pr-7 text-xs font-medium text-slate-700 shadow-sm outline-none transition-colors hover:border-[#4FAEB2]/60 focus:border-[#4FAEB2] focus:ring-2 focus:ring-[#4FAEB2]/20 min-w-[8.5rem] max-w-[min(16rem,60vw)] shrink-0"
+                style={{
+                  backgroundImage:
+                    "url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%234FAEB2' stroke-width='2.5'><path stroke-linecap='round' stroke-linejoin='round' d='M6 9l6 6 6-6'/></svg>\")",
+                }}
+                value={displayCanal}
+                onChange={(e) => {
+                  const v = e.target.value.trim();
+                  setPendingCanal(v.length > 0 ? v : "");
+                  patchInboxQuery({ canal: v.length > 0 ? v : null });
+                }}
+                aria-label="Filtrar por canal"
+                title="Canal"
+              >
+                <option value="">Todos los canales</option>
+                {inboxChannels.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {formatChannelOptionLabel(c)}
                   </option>
                 ))}
-            </select>
-          </label>
-          <label className="flex flex-col gap-1.5 min-w-[11rem]">
-            <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-500">
-              Asignación
-            </span>
-            <select
-              className="appearance-none rounded-xl border border-slate-200 bg-white bg-[length:14px_14px] bg-[right_0.7rem_center] bg-no-repeat px-3 py-2 pr-8 text-xs font-medium text-slate-700 shadow-sm outline-none transition-colors hover:border-[#4FAEB2]/60 focus:border-[#4FAEB2] focus:ring-2 focus:ring-[#4FAEB2]/20 min-w-[11rem]"
-              style={{
-                backgroundImage:
-                  "url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%234FAEB2' stroke-width='2.5'><path stroke-linecap='round' stroke-linejoin='round' d='M6 9l6 6 6-6'/></svg>\")",
-              }}
-              value={displayAsignacion}
-              onChange={(e) => {
-                const v = e.target.value;
-                setPendingAsignacion(v === "" ? "" : v);
-                patchInboxQuery({ asignacion: v === "" ? null : v });
-              }}
-              aria-label="Filtrar por asignación"
-            >
-              <option value="">Todas</option>
-              {opInQueues ? <option value="mios">Asignadas a mí</option> : null}
-              <option value="sin_asignar">Sin asignar</option>
-            </select>
-          </label>
-          {initialOmnicanalRole === "supervisor" ? (
-            <p className="text-[11px] text-slate-500 max-w-[18rem] leading-snug pb-0.5">
-              Colas y vistas acotadas a tu equipo supervisado (mismo criterio que inbox y monitoreo).
-            </p>
+              </select>
+              <select
+                className="appearance-none rounded-lg border border-slate-200 bg-white bg-[length:13px_13px] bg-[right_0.55rem_center] bg-no-repeat px-2.5 py-2 pr-7 text-xs font-medium text-slate-700 shadow-sm outline-none transition-colors hover:border-[#4FAEB2]/60 focus:border-[#4FAEB2] focus:ring-2 focus:ring-[#4FAEB2]/20 min-w-[8.5rem] shrink-0"
+                style={{
+                  backgroundImage:
+                    "url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%234FAEB2' stroke-width='2.5'><path stroke-linecap='round' stroke-linejoin='round' d='M6 9l6 6 6-6'/></svg>\")",
+                }}
+                value={displayCola}
+                onChange={(e) => {
+                  const v = e.target.value.trim();
+                  setPendingCola(v.length > 0 ? v : "");
+                  patchInboxQuery({ cola: v.length > 0 ? v : null });
+                }}
+                aria-label="Filtrar por cola"
+                title="Cola"
+              >
+                <option value="">Todas las colas</option>
+                {opsQueues
+                  .filter((q) => q.is_active)
+                  .map((q) => (
+                    <option key={q.id} value={q.id}>
+                      {q.nombre}
+                    </option>
+                  ))}
+              </select>
+              <select
+                className="appearance-none rounded-lg border border-slate-200 bg-white bg-[length:13px_13px] bg-[right_0.55rem_center] bg-no-repeat px-2.5 py-2 pr-7 text-xs font-medium text-slate-700 shadow-sm outline-none transition-colors hover:border-[#4FAEB2]/60 focus:border-[#4FAEB2] focus:ring-2 focus:ring-[#4FAEB2]/20 min-w-[8rem] shrink-0"
+                style={{
+                  backgroundImage:
+                    "url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%234FAEB2' stroke-width='2.5'><path stroke-linecap='round' stroke-linejoin='round' d='M6 9l6 6 6-6'/></svg>\")",
+                }}
+                value={displayAsignacion}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  setPendingAsignacion(v === "" ? "" : v);
+                  patchInboxQuery({ asignacion: v === "" ? null : v });
+                }}
+                aria-label="Filtrar por asignación"
+                title="Asignación"
+              >
+                <option value="">Asignación: todas</option>
+                {opInQueues ? <option value="mios">Asignadas a mí</option> : null}
+                <option value="sin_asignar">Sin asignar</option>
+              </select>
+            </>
           ) : null}
         </div>
+      ) : null}
+
+      {initialOmnicanalRole === "supervisor" && (mode === "historial" || vista === "inbox") ? (
+        <p className="text-[11px] text-slate-500 leading-snug shrink-0 -mt-1">
+          Colas y vistas acotadas a tu equipo supervisado (mismo criterio que inbox y monitoreo).
+        </p>
       ) : null}
       </>
       ) : null}
