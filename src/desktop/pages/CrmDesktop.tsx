@@ -693,12 +693,16 @@ function MetricCard({
   sub,
   icon,
   accent = "neutral",
+  onClick,
+  active = false,
 }: {
   label: string;
   value: string | number;
   sub?: string;
   icon?: React.ReactNode;
   accent?: MetricAccent;
+  onClick?: () => void;
+  active?: boolean;
 }) {
   const chipCls =
     accent === "featured"
@@ -714,8 +718,12 @@ function MetricCard({
       ? "relative overflow-hidden rounded-2xl border border-[#4FAEB2]/55 bg-gradient-to-br from-white via-white to-[#4FAEB2]/8 p-4 shadow-[0_4px_18px_rgba(79,174,178,0.08)] transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_8px_28px_rgba(79,174,178,0.14)]"
       : "relative overflow-hidden rounded-2xl border border-[#4FAEB2]/45 bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md";
 
-  return (
-    <div className={cardCls}>
+  const interactiveCls = onClick
+    ? ` cursor-pointer text-left ${active ? "ring-2 ring-[#4FAEB2] border-[#4FAEB2]" : "hover:border-[#4FAEB2]/70"}`
+    : "";
+
+  const inner = (
+    <>
       {accent === "featured" ? (
         <span
           aria-hidden="true"
@@ -738,8 +746,17 @@ function MetricCard({
         {value}
       </p>
       {sub ? <p className="mt-1 text-[11px] text-slate-500">{sub}</p> : null}
-    </div>
+    </>
   );
+
+  if (onClick) {
+    return (
+      <button type="button" onClick={onClick} aria-pressed={active} className={`${cardCls}${interactiveCls}`}>
+        {inner}
+      </button>
+    );
+  }
+  return <div className={cardCls}>{inner}</div>;
 }
 
 // ── Top Productos Widget premium ──────────────────────────────────────────────
@@ -836,18 +853,40 @@ function ProspectoLista({
   onEdit: (id: string) => void;
 }) {
   const [pageSize, setPageSize] = useState<ListPageSize>(25);
+  const [filtroEtapa, setFiltroEtapa] = useState<string>("");
   const etapaSelectOptions = etapas.map((e) => ({ value: e.codigo, label: e.nombre }));
-  const ordered = prospectos
+  const base = filtroEtapa
+    ? prospectos.filter((p) => normalizeEtapaCodigo(p.etapa) === normalizeEtapaCodigo(filtroEtapa))
+    : prospectos;
+  const ordered = base
     .slice()
     .sort((a, b) => new Date(b.fecha_creacion).getTime() - new Date(a.fecha_creacion).getTime());
   const rows = pageSize === "todos" ? ordered : ordered.slice(0, pageSize);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-2">
-      <div className="flex items-center justify-between gap-2 text-[11px] text-slate-500">
-        <span>
-          Mostrando <strong className="text-slate-700">{rows.length}</strong> de {ordered.length}
-        </span>
+      <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-500">
+        <div className="flex items-center gap-3">
+          <span>
+            Mostrando <strong className="text-slate-700">{rows.length}</strong> de {ordered.length}
+          </span>
+          <label className="flex items-center gap-1.5">
+            <span>Etapa:</span>
+            <select
+              value={filtroEtapa}
+              onChange={(e) => setFiltroEtapa(e.target.value)}
+              className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs font-medium text-slate-700 outline-none focus:border-[#4FAEB2] focus:ring-2 focus:ring-[#4FAEB2]/20"
+              aria-label="Filtrar por etapa"
+            >
+              <option value="">Todas</option>
+              {etapas.map((e) => (
+                <option key={e.id} value={e.codigo}>
+                  {e.nombre}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
         <label className="flex items-center gap-1.5">
           <span>Registros:</span>
           <select
@@ -1016,6 +1055,8 @@ export default function CrmPage() {
       /* ignore */
     }
   }, [vista]);
+  /** Filtro rápido: solo leads creados hoy (toggle desde la card "Leads Hoy"). */
+  const [filtroHoy, setFiltroHoy] = useState(false);
   const dragIdRef = useRef<string | null>(null);
 
   function recargar() {
@@ -1076,8 +1117,13 @@ export default function CrmPage() {
    * más nuevos al final). Decisión de UX local — la API sigue devolviendo
    * DESC para el resto de consumidores.
    */
+  /** Base de la vista: aplica el filtro "solo hoy" (afecta Kanban y Lista). */
+  const prospectosVista = filtroHoy
+    ? prospectos.filter((p) => esHoy(p.fecha_creacion))
+    : prospectos;
+
   const porEtapa = (codigo: string) =>
-    prospectos
+    prospectosVista
       .filter((p) => normalizeEtapaCodigo(p.etapa) === normalizeEtapaCodigo(codigo))
       .slice()
       .sort((a, b) => {
@@ -1090,6 +1136,9 @@ export default function CrmPage() {
 
   // Mantenemos getEtapaClasses como import para no romper otros usos.
   void getEtapaClasses;
+  // Top productos en negociación se removió de la UI; se conservan helpers por compatibilidad.
+  void topProductosEnNegociacion;
+  void TopProductosWidget;
 
   const leadsHoy = prospectos.filter((p) => esHoy(p.fecha_creacion)).length;
   const leadsMes = prospectos.filter((p) => esMesActual(p.fecha_creacion)).length;
@@ -1097,7 +1146,6 @@ export default function CrmPage() {
     (p) => normalizeEtapaCodigo(p.etapa) === "NEGOCIACION",
   );
   const valorNegociacion = enNegociacion.reduce((s, p) => s + p.valor_estimado, 0);
-  const topProductos = topProductosEnNegociacion(prospectos);
   const ganadosHoy = prospectos.filter(
     (p) =>
       normalizeEtapaCodigo(p.etapa) === "GANADO" && esHoy(p.fecha_actualizacion),
@@ -1168,15 +1216,21 @@ export default function CrmPage() {
       </div>
 
       {/* KPIs premium */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-        <MetricCard label="Leads Hoy" value={leadsHoy} sub="creados hoy" icon={<IconUsers />} />
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+        <MetricCard
+          label="Leads Hoy"
+          value={leadsHoy}
+          sub={filtroHoy ? "filtrando · clic para quitar" : "creados hoy · clic para filtrar"}
+          icon={<IconUsers />}
+          onClick={() => setFiltroHoy((v) => !v)}
+          active={filtroHoy}
+        />
         <MetricCard
           label="Leads del Mes"
           value={leadsMes}
           sub="creados en el mes"
           icon={<IconCalendar />}
         />
-        <TopProductosWidget items={topProductos} total={valorNegociacion} />
         <MetricCard
           label="Valor en Negociación"
           value={`Gs. ${formatGs(valorNegociacion)}`}
@@ -1226,7 +1280,7 @@ export default function CrmPage() {
         </KanbanScroller>
       ) : (
         <ProspectoLista
-          prospectos={prospectos}
+          prospectos={prospectosVista}
           etapas={etapas}
           onMoverEtapa={handleMoverEtapa}
           onEdit={(id) => setEditandoId(id)}
