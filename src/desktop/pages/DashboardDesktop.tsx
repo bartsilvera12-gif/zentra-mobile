@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import { getConfig } from "@/lib/config/storage";
 import { getUsuarios } from "@/lib/usuarios/storage";
+import { getUsuariosActivosEmpresa } from "@/lib/usuarios/empresa";
 import type { ConfigGlobal } from "@/lib/config/types";
 import type { Usuario } from "@/lib/usuarios/types";
 import {
@@ -754,6 +755,30 @@ function DashComercial({
     void getEtapas().then(setEtapasCrmCatalog);
   }, []);
 
+  // Mapa uuid→nombre de usuarios reales de la empresa (para resolver vendedor_usuario_id).
+  const [vendedorNombrePorId, setVendedorNombrePorId] = useState<Record<string, string>>({});
+  useEffect(() => {
+    void getUsuariosActivosEmpresa().then((us) => {
+      const m: Record<string, string> = {};
+      for (const u of us) if (u.id && u.nombre) m[u.id] = u.nombre;
+      setVendedorNombrePorId(m);
+    });
+  }, []);
+
+  /**
+   * Vendedor real del cliente: 1) `vendedor_asignado` (texto, elegido en el alta);
+   * 2) `vendedor_usuario_id` → nombre real del usuario; 3) "Sin asignar".
+   */
+  const resolverVendedorCliente = useMemo(() => {
+    return (c: ClienteRaw): string => {
+      const texto = c.vendedor_asignado?.trim();
+      if (texto) return texto;
+      const porId = c.vendedor_usuario_id ? vendedorNombrePorId[c.vendedor_usuario_id] : undefined;
+      if (porId && porId.trim()) return porId.trim();
+      return "Sin asignar";
+    };
+  }, [vendedorNombrePorId]);
+
   const ncPorFactura = useMemo(() => buildMontoNcAprobadaPorFacturaId(notasCredito), [notasCredito]);
 
   const isSupervisor = usuario?.nivel === "supervisor";
@@ -832,42 +857,47 @@ function DashComercial({
       .slice(0, 5);
   }, [prospectosFilt]);
 
-  const topPlanesVendidos = useMemo(() => {
-    const ganadosPeriodo = prospectosFilt.filter(
-      (p) => normalizeEtapaCodigo(p.etapa) === "GANADO" && enRango(p.fecha_actualizacion, desde, hasta)
-    );
-    const porPlan: Record<string, number> = {};
-    for (const p of ganadosPeriodo) {
-      const planes = (p.servicio ?? "").split(",").map((s) => s.trim()).filter(Boolean);
-      for (const plan of planes.length ? planes : ["Otros"]) {
-        const key = plan || "Otros";
-        porPlan[key] = (porPlan[key] ?? 0) + 1;
-      }
-    }
-    return Object.entries(porPlan)
-      .map(([label, value]) => ({ label, value }))
-      .sort((a, b) => b.value - a.value)
-      .slice(0, 5);
-  }, [prospectosFilt, desde, hasta]);
+  /** Clientes nuevos del período (alta = clientes.created_at en rango). Base de las cards comerciales por cliente. */
+  const clientesNuevosPeriodo = useMemo(
+    () => clientes.filter((c) => enRango(c.created_at, desde, hasta)),
+    [clientes, desde, hasta]
+  );
 
+  /**
+   * Card "Clientes ganados por vendedor": clientes nuevos del período agrupados por su
+   * vendedor REAL (vendedor_asignado → vendedor_usuario_id→nombre → "Sin asignar").
+   * Antes agrupaba por `crm_prospectos.responsable` (casi siempre vacío → todo "Sin asignar").
+   */
   const rendimiento = useMemo(() => {
     const map: Record<string, number> = {};
-    prospectosFilt
-      .filter(
-        (p) => normalizeEtapaCodigo(p.etapa) === "GANADO" && enRango(p.fecha_actualizacion, desde, hasta)
-      )
-      .forEach((p) => {
-        const v = p.responsable ?? "Sin asignar";
-        map[v] = (map[v] ?? 0) + 1;
-      });
+    for (const c of clientesNuevosPeriodo) {
+      const v = resolverVendedorCliente(c);
+      map[v] = (map[v] ?? 0) + 1;
+    }
     return Object.entries(map)
       .map(([label, value]) => ({ label, value }))
       .sort((a, b) => b.value - a.value);
-  }, [prospectosFilt, desde, hasta]);
+  }, [clientesNuevosPeriodo, resolverVendedorCliente]);
+
+  /**
+   * Card "Clientes nuevos por tipo": altas del período por `tipo_servicio_cliente`,
+   * con etiquetas del catálogo (saas→SaaS, otro→Contable, web→Web, marketing→Marketing,
+   * branding→Branding) y null/"" → "Sin tipo". Reemplaza "Top planes vendidos".
+   */
+  const clientesNuevosPorTipo = useMemo(() => {
+    const map: Record<string, number> = {};
+    for (const c of clientesNuevosPeriodo) {
+      const raw = (c.tipo_servicio_cliente ?? "").trim();
+      const label = raw ? etiquetaVisibleTipoServicio(raw, mapNombreTipoServicio) : "Sin tipo";
+      map[label] = (map[label] ?? 0) + 1;
+    }
+    return Object.entries(map)
+      .map(([label, value]) => ({ label, value }))
+      .sort((a, b) => b.value - a.value);
+  }, [clientesNuevosPeriodo, mapNombreTipoServicio]);
 
   const filasClientesPeriodo = useMemo(() => {
-    const nuevos = clientes.filter((c) => enRango(c.created_at, desde, hasta));
-    return nuevos
+    return clientesNuevosPeriodo
       .map((c) => {
         const { monto, fuente } = valorComercialClienteEnPeriodo(
           c.id,
@@ -877,6 +907,7 @@ function DashComercial({
           desde,
           hasta
         );
+        const vend = resolverVendedorCliente(c);
         return {
           id: String(c.id),
           nombre: c.empresa ?? c.nombre_contacto,
@@ -884,11 +915,11 @@ function DashComercial({
           planServicio: etiquetaPlanServicioCliente(c, mapNombreTipoServicio),
           monto,
           fuente,
-          vendedor: c.vendedor_asignado?.trim() || "—",
+          vendedor: vend === "Sin asignar" ? "—" : vend,
         };
       })
       .sort((a, b) => new Date(b.fechaAlta).getTime() - new Date(a.fechaAlta).getTime());
-  }, [clientes, facturas, ncPorFactura, suscripciones, desde, hasta, mapNombreTipoServicio]);
+  }, [clientesNuevosPeriodo, facturas, ncPorFactura, suscripciones, desde, hasta, mapNombreTipoServicio, resolverVendedorCliente]);
 
   const totalValorClientesNuevos = filasClientesPeriodo.reduce((s, r) => s + r.monto, 0);
   const nClientesNuevos = filasClientesPeriodo.length;
@@ -973,11 +1004,16 @@ function DashComercial({
           {panelBar}
           <h3 className={titleClass} style={titleStyle}>
             {panelDot}
-            Top planes vendidos · período seleccionado
+            Clientes nuevos por tipo
           </h3>
         </div>
+        <p className="mt-1 pl-3 text-[11px] text-slate-500">Distribución de altas en el período seleccionado</p>
         <div className="mt-5">
-          <HBarChart data={topPlanesVendidos} color="bg-[#4FAEB2]" tone="zentra" />
+          {clientesNuevosPorTipo.length === 0 ? (
+            <p className="text-center text-sm text-slate-500">Sin altas en el período</p>
+          ) : (
+            <HBarChart data={clientesNuevosPorTipo} color="bg-[#4FAEB2]" tone="zentra" />
+          )}
         </div>
       </motion.div>
 
