@@ -175,17 +175,16 @@ export async function assignConversationPg(
   let discardedPause = 0;
   let discardedOffline = 0;
   let discardedOmnicanal = 0;
-  const agents: { id: string; max_conversations: number; priority_in_queue: number }[] = [];
+  type AgentPick = { id: string; max_conversations: number; priority_in_queue: number };
+  /** Pool READY+habilitado (sin exigir online): base del fallback. */
+  const agentsReady: AgentPick[] = [];
+  /** Subconjunto que además está online por heartbeat reciente: prioridad de asignación. */
+  const agentsOnline: AgentPick[] = [];
   for (const ar of agentRows) {
     const status = String(ar.operational_status ?? "").trim();
     if (status !== "ready") {
       discardedPause++;
       if (assignDbg) console.info(`[assignConversationPg] discard pause agent=${idShort(ar.id)}`);
-      continue;
-    }
-    if (!isAgentSessionOnline(ar.last_heartbeat_at)) {
-      discardedOffline++;
-      if (assignDbg) console.info(`[assignConversationPg] discard offline agent=${idShort(ar.id)}`);
       continue;
     }
     const uCur = String(ar.usuario_id ?? "").trim();
@@ -194,14 +193,20 @@ export async function assignConversationPg(
       if (assignDbg) console.info(`[assignConversationPg] discard omnicanal_disabled agent=${idShort(ar.id)}`);
       continue;
     }
-    agents.push({
+    const entry: AgentPick = {
       id: ar.id,
       max_conversations: ar.max_conversations,
       priority_in_queue: ar.priority_in_queue,
-    });
+    };
+    agentsReady.push(entry);
+    if (isAgentSessionOnline(ar.last_heartbeat_at)) {
+      agentsOnline.push(entry);
+    } else {
+      discardedOffline++;
+    }
   }
 
-  if (agents.length === 0) {
+  if (agentsReady.length === 0) {
     const ts = new Date().toISOString();
     await pool.query(
       `UPDATE ${convT}
@@ -225,7 +230,7 @@ export async function assignConversationPg(
     return { ok: true, assigned: false, reason: "no_agent" };
   }
 
-  const agentIds = agents.map((a) => a.id);
+  const agentIds = agentsReady.map((a) => a.id);
   const loadRes = await pool.query(
     `SELECT assigned_agent_id::text AS id, count(*)::int AS c
      FROM ${convT}
@@ -238,16 +243,29 @@ export async function assignConversationPg(
     loadById.set(String((row as { id: string }).id), Number((row as { c: number }).c));
   }
 
-  const eligible = agents.filter((a) => {
-    const load = loadById.get(a.id) ?? 0;
-    const cap = Math.max(1, a.max_conversations ?? 5);
-    if (load >= cap) {
-      if (assignDbg) console.info(`[assignConversationPg] discard load agent=${idShort(a.id)} load=${load} cap=${cap}`);
-      return false;
-    }
-    return true;
-  });
-  if (eligible.length === 0) {
+  const underCap = (arr: AgentPick[]) =>
+    arr.filter((a) => {
+      const load = loadById.get(a.id) ?? 0;
+      const cap = Math.max(1, a.max_conversations ?? 5);
+      if (load >= cap) {
+        if (assignDbg) console.info(`[assignConversationPg] discard load agent=${idShort(a.id)} load=${load} cap=${cap}`);
+        return false;
+      }
+      return true;
+    });
+
+  const eligibleOnline = underCap(agentsOnline);
+  const eligibleReady = underCap(agentsReady);
+
+  // Prioridad: agentes online; si no hay online bajo cap, FALLBACK a ready (aunque no tengan el inbox abierto).
+  let eligible: AgentPick[];
+  let usedFallback = false;
+  if (eligibleOnline.length > 0) {
+    eligible = eligibleOnline;
+  } else if (eligibleReady.length > 0) {
+    eligible = eligibleReady;
+    usedFallback = true;
+  } else {
     const ts = new Date().toISOString();
     await pool.query(
       `UPDATE ${convT}
@@ -261,7 +279,8 @@ export async function assignConversationPg(
     console.info("[assignConversationPg] no_agent_all_at_capacity", {
       conversation_id: cid,
       queue_id: queue.id,
-      candidates_ready_online: agents.length,
+      ready_total: agentsReady.length,
+      online_total: agentsOnline.length,
     });
     return { ok: true, assigned: false, reason: "no_agent" };
   }
@@ -297,13 +316,28 @@ export async function assignConversationPg(
   }
 
   let best: (typeof eligible)[0];
+  let pickReason: string;
   if (sameAdvisorPick) {
     best = sameAdvisorPick;
+    pickReason = "same_advisor_window";
   } else if (distributionStrategy === "round_robin") {
     best = pickRoundRobin(eligible, parseAssignmentState(queue.assignment_state));
+    pickReason = "round_robin";
   } else {
     best = pickLeastLoad(eligible, loadById);
+    pickReason = "least_load";
   }
+
+  console.info("[assignConversationPg] assigned", {
+    conversation_id: cid,
+    queue_id: queue.id,
+    agent_id: idShort(best.id),
+    strategy: distributionStrategy || "least_load",
+    pick_reason: pickReason,
+    used_fallback_offline_ready: usedFallback,
+    online_candidates: eligibleOnline.length,
+    ready_candidates: eligibleReady.length,
+  });
 
   const ts = new Date().toISOString();
   await pool.query(

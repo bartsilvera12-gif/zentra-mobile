@@ -63,6 +63,53 @@ export async function loadEligibleAgentsForQueue(
     .map(({ id, max_conversations, priority_in_queue }) => ({ id, max_conversations, priority_in_queue }));
 }
 
+/**
+ * Igual que `loadEligibleAgentsForQueue` pero SIN exigir heartbeat online.
+ * Base del FALLBACK: agentes ready + habilitados de la cola aunque no tengan el inbox abierto.
+ */
+export async function loadReadyAgentsForQueue(
+  supabase: SupabaseAdmin,
+  empresaId: string,
+  queueId: string
+): Promise<EligibleAgentRow[]> {
+  const { data, error } = await supabase
+    .from("chat_agents")
+    .select("id, max_conversations, priority_in_queue, usuario_id")
+    .eq("empresa_id", empresaId)
+    .eq("queue_id", queueId)
+    .eq("is_active", true)
+    .eq("receives_new_chats", true)
+    .eq("operational_status", "ready");
+  if (error) throw new Error(error.message);
+  const rows = (data ?? []) as (EligibleAgentRow & { usuario_id?: string })[];
+
+  const uids = [...new Set(rows.map((r) => String(r.usuario_id ?? "").trim()).filter(Boolean))];
+  let enabledUsuario = new Set(uids);
+  if (uids.length > 0) {
+    const { data: prefs, error: pErr } = await supabase
+      .from("chat_usuario_omnicanal")
+      .select("usuario_id, omnicanal_agent_enabled")
+      .eq("empresa_id", empresaId)
+      .in("usuario_id", uids);
+    if (pErr) {
+      const m = (pErr.message ?? "").toLowerCase();
+      if (!m.includes("does not exist") && !m.includes("schema cache") && !m.includes("could not find")) {
+        throw new Error(pErr.message);
+      }
+    } else {
+      enabledUsuario = new Set(
+        (prefs ?? [])
+          .filter((p) => (p as { omnicanal_agent_enabled?: boolean }).omnicanal_agent_enabled === true)
+          .map((p) => String((p as { usuario_id: string }).usuario_id))
+      );
+    }
+  }
+
+  return rows
+    .filter((r) => enabledUsuario.has(String(r.usuario_id ?? "").trim()))
+    .map(({ id, max_conversations, priority_in_queue }) => ({ id, max_conversations, priority_in_queue }));
+}
+
 export async function countActiveConversationsByAgent(
   supabase: SupabaseAdmin,
   empresaId: string,

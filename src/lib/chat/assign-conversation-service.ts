@@ -14,6 +14,7 @@ import {
   countActiveConversationsByAgent,
   filterAgentsUnderCap,
   loadEligibleAgentsForQueue,
+  loadReadyAgentsForQueue,
 } from "@/lib/chat/routing-eligible-agents";
 import { insertChatRoutingEvent, updateContactLastRouted } from "@/lib/chat/routing-audit";
 
@@ -175,9 +176,11 @@ export async function assignConversation(
     return { ok: true, assigned: false, reason: "manual_pull" };
   }
 
-  let agents: EligibleAgent[] = [];
+  let onlineAgents: EligibleAgent[] = [];
+  let readyAgents: EligibleAgent[] = [];
   try {
-    agents = await loadEligibleAgentsForQueue(supabase, empresaId, queue.id);
+    onlineAgents = await loadEligibleAgentsForQueue(supabase, empresaId, queue.id);
+    readyAgents = await loadReadyAgentsForQueue(supabase, empresaId, queue.id);
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Error agentes" };
   }
@@ -187,13 +190,17 @@ export async function assignConversation(
     loadById = await countActiveConversationsByAgent(
       supabase,
       empresaId,
-      agents.map((a) => a.id)
+      readyAgents.map((a) => a.id)
     );
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Error carga" };
   }
 
-  const eligible = filterAgentsUnderCap(agents, loadById);
+  // Prioridad: agentes online; si no hay online bajo cap, FALLBACK a ready (sin exigir inbox abierto).
+  const eligibleOnline = filterAgentsUnderCap(onlineAgents, loadById);
+  const eligibleReady = filterAgentsUnderCap(readyAgents, loadById);
+  const usedFallback = eligibleOnline.length === 0 && eligibleReady.length > 0;
+  const eligible = eligibleOnline.length > 0 ? eligibleOnline : eligibleReady;
 
   /** Misma asesor: ancla = última asignación persistida en el contacto para este canal (last_routed_at). */
   let sameAdvisorPick: EligibleAgent | null = null;
@@ -307,7 +314,18 @@ export async function assignConversation(
       strategy: distributionStrategy,
       to_agent_id: best.id,
       same_advisor: Boolean(sameAdvisorPick),
+      used_fallback_offline_ready: usedFallback,
     },
+  });
+
+  console.info("[assignConversation] assigned", {
+    conversation_id: cid,
+    queue_id: queue.id,
+    agent_id: best.id.slice(0, 8),
+    strategy: distributionStrategy || "least_load",
+    used_fallback_offline_ready: usedFallback,
+    online_candidates: eligibleOnline.length,
+    ready_candidates: eligibleReady.length,
   });
 
   return { ok: true, assigned: true, agent_id: best.id, queue_id: queue.id };
