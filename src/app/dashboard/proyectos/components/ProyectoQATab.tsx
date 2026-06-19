@@ -873,7 +873,7 @@ function EtapaCard(props: EtapaCardProps) {
   const full = progreso.total > 0 && progreso.done === progreso.total;
 
   return (
-    <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition-shadow hover:shadow-md">
+    <div className="rounded-2xl border border-slate-200 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition-shadow hover:shadow-md">
       <div className="group flex items-center gap-2 px-4 py-3">
         <button
           type="button"
@@ -924,7 +924,7 @@ function EtapaCard(props: EtapaCardProps) {
       </div>
 
       {abierta ? (
-        <div className="border-t border-slate-100 bg-slate-50/50 px-2 py-2">
+        <div className="rounded-b-2xl border-t border-slate-100 bg-slate-50/50 px-2 py-2">
           {items.length === 0 ? (
             <p className="px-3 py-2 text-xs text-slate-400">Sin ítems todavía. Agregá uno abajo ↓</p>
           ) : (
@@ -1100,7 +1100,7 @@ function ItemRow(props: ItemRowProps) {
               <IconMore />
             </button>
             {menuAbiertoId === `i:${it.id}` ? (
-              <div className="absolute right-0 top-8 z-20 w-40 overflow-hidden rounded-xl border border-slate-200 bg-white py-1 text-sm shadow-lg">
+              <div className="absolute right-0 top-full z-30 mt-1 w-40 overflow-hidden rounded-xl border border-slate-200 bg-white py-1 text-sm shadow-lg">
                 <button type="button" onClick={(e) => { e.stopPropagation(); setMenuAbiertoId(null); onRenombrar(); }} className="block w-full px-3 py-1.5 text-left text-slate-700 hover:bg-slate-50">
                   Editar texto
                 </button>
