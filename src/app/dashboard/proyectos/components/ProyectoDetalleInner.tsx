@@ -11,6 +11,7 @@ import {
   type ProyectoModuloCatalogo as ModuloCatalogo,
 } from "@/app/dashboard/proyectos/components/ProyectoModuloSelector";
 import { FancySelect } from "@/app/dashboard/proyectos/components/FancySelect";
+import ProyectoQATab from "@/app/dashboard/proyectos/components/ProyectoQATab";
 import {
   PROYECTO_DATOS_BRIEF_FIELDS,
   applyBriefFormToExisting,
@@ -66,6 +67,7 @@ const TAB_IDS = [
   "resumen",
   "datos",
   "tareas",
+  "qa",
   "comentarios",
   "archivos",
   "cambios",
@@ -77,6 +79,7 @@ const TAB_LABELS: Record<TabId, string> = {
   resumen: "Resumen",
   datos: "Datos",
   tareas: "Tareas",
+  qa: "QA",
   comentarios: "Comentarios",
   archivos: "Archivos",
   cambios: "Cambios",
@@ -1892,6 +1895,10 @@ export default function ProyectoDetalleInner({
               </ul>
             </div>
           </div>
+        ) : null}
+
+        {tab === "qa" ? (
+          <ProyectoQATab projectId={projectId} dataSchema={dataSchema} usuarios={usuarios} />
         ) : null}
 
         {tab === "comentarios" ? (
