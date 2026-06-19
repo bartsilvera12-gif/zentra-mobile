@@ -116,6 +116,25 @@ const IconPlus = ({ className = "h-4 w-4" }: IconProps) => (
   </svg>
 );
 
+const IconKanban = ({ className = "h-4 w-4" }: IconProps) => (
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true">
+    <rect x="3" y="3" width="5" height="15" rx="1" />
+    <rect x="9.5" y="3" width="5" height="10" rx="1" />
+    <rect x="16" y="3" width="5" height="13" rx="1" />
+  </svg>
+);
+
+const IconList = ({ className = "h-4 w-4" }: IconProps) => (
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true">
+    <line x1="8" y1="6" x2="21" y2="6" />
+    <line x1="8" y1="12" x2="21" y2="12" />
+    <line x1="8" y1="18" x2="21" y2="18" />
+    <line x1="3" y1="6" x2="3.01" y2="6" />
+    <line x1="3" y1="12" x2="3.01" y2="12" />
+    <line x1="3" y1="18" x2="3.01" y2="18" />
+  </svg>
+);
+
 const IconEdit = ({ className = "h-3.5 w-3.5" }: IconProps) => (
   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true">
     <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
@@ -764,12 +783,114 @@ function TopProductosWidget({
 
 // ── Página principal ──────────────────────────────────────────────────────────
 
+// ── Vista Lista (tabla de filas, estilo módulo Clientes) ──────────────────────
+
+function ProspectoLista({
+  prospectos,
+  etapas,
+  onMoverEtapa,
+  onEdit,
+}: {
+  prospectos: Prospecto[];
+  etapas: EtapaCrm[];
+  onMoverEtapa: (id: string, etapaCodigo: string) => void;
+  onEdit: (id: string) => void;
+}) {
+  const etapaSelectOptions = etapas.map((e) => ({ value: e.codigo, label: e.nombre }));
+  const rows = prospectos
+    .slice()
+    .sort((a, b) => new Date(b.fecha_creacion).getTime() - new Date(a.fecha_creacion).getTime());
+
+  return (
+    <div className="min-h-0 flex-1 overflow-auto rounded-2xl border border-slate-200 bg-white">
+      <table className="w-full border-collapse text-sm">
+        <thead className="sticky top-0 z-10 bg-slate-50/95 backdrop-blur">
+          <tr className="text-left text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+            <th className="px-4 py-3 font-semibold">Empresa / Nombre</th>
+            <th className="px-4 py-3 font-semibold">Contacto</th>
+            <th className="px-4 py-3 font-semibold">Teléfono</th>
+            <th className="px-4 py-3 font-semibold">Servicio</th>
+            <th className="px-4 py-3 text-right font-semibold">Valor</th>
+            <th className="px-4 py-3 font-semibold">Etapa</th>
+            <th className="px-4 py-3 font-semibold">Responsable</th>
+            <th className="px-4 py-3 font-semibold">Fecha</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.length === 0 ? (
+            <tr>
+              <td colSpan={8} className="px-4 py-12 text-center text-slate-400">
+                Sin prospectos
+              </td>
+            </tr>
+          ) : (
+            rows.map((p) => (
+              <tr
+                key={p.id}
+                onClick={() => onEdit(p.id)}
+                className="cursor-pointer border-t border-slate-100 transition-colors hover:bg-slate-50/70"
+              >
+                <td className="px-4 py-2.5">
+                  <div className="max-w-[16rem] truncate font-semibold text-slate-900">{p.empresa}</div>
+                  <div className="font-mono text-[11px] text-slate-400">{p.numero_control}</div>
+                </td>
+                <td className="max-w-[12rem] truncate px-4 py-2.5 text-slate-600">{p.contacto || "—"}</td>
+                <td className="px-4 py-2.5 font-mono text-slate-600 tabular-nums">{p.telefono || "—"}</td>
+                <td className="max-w-[14rem] truncate px-4 py-2.5 text-slate-600">{p.servicio || "—"}</td>
+                <td className="px-4 py-2.5 text-right font-semibold text-slate-800 tabular-nums">
+                  Gs. {p.valor_estimado.toLocaleString("es-PY")}
+                </td>
+                <td className="px-4 py-2.5" onClick={(e) => e.stopPropagation()}>
+                  <div className="min-w-[9rem]">
+                    <FancySelect
+                      size="sm"
+                      ariaLabel="Cambiar etapa del prospecto"
+                      value={p.etapa}
+                      onChange={(v) => onMoverEtapa(p.id, v)}
+                      options={etapaSelectOptions}
+                    />
+                  </div>
+                </td>
+                <td className="px-4 py-2.5">
+                  {p.responsable ? (
+                    <div className="flex items-center gap-1.5">
+                      <Avatar name={p.responsable} size="xs" />
+                      <span className="max-w-[8rem] truncate text-[11px] text-slate-600">{p.responsable}</span>
+                    </div>
+                  ) : (
+                    <span className="text-[11px] italic text-slate-400">Sin responsable</span>
+                  )}
+                </td>
+                <td className="px-4 py-2.5 text-[11px] text-slate-500 tabular-nums">
+                  {formatFecha(p.fecha_creacion)}
+                </td>
+              </tr>
+            ))
+          )}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 export default function CrmPage() {
   const [prospectos, setProspectos] = useState<Prospecto[]>([]);
   const [etapas, setEtapas] = useState<EtapaCrm[]>([]);
   const [dragOverEtapa, setDragOverEtapa] = useState<string | null>(null);
   const [nuevoOpen, setNuevoOpen] = useState(false);
   const [editandoId, setEditandoId] = useState<string | null>(null);
+  /** Vista del pipeline: "kanban" (cards por etapa) | "lista" (tabla de filas). Persiste por navegador. */
+  const [vista, setVista] = useState<"kanban" | "lista">(() => {
+    if (typeof window === "undefined") return "kanban";
+    return window.localStorage.getItem("crm:vista") === "lista" ? "lista" : "kanban";
+  });
+  useEffect(() => {
+    try {
+      window.localStorage.setItem("crm:vista", vista);
+    } catch {
+      /* ignore */
+    }
+  }, [vista]);
   const dragIdRef = useRef<string | null>(null);
 
   function recargar() {
@@ -882,14 +1003,43 @@ export default function CrmPage() {
             Pipeline comercial · {prospectos.length} oportunidades
           </p>
         </div>
-        <button
-          type="button"
-          onClick={() => setNuevoOpen(true)}
-          className="inline-flex shrink-0 items-center gap-2 rounded-xl bg-[#4FAEB2] px-4 py-2.5 text-sm font-semibold text-white shadow-sm shadow-[#4FAEB2]/20 transition-colors hover:bg-[#3F8E91]"
-        >
-          <IconPlus className="h-4 w-4" />
-          Nuevo prospecto
-        </button>
+        <div className="flex shrink-0 items-center gap-2">
+          {/* Toggle de vista: Kanban (cards) | Lista (tabla de filas) */}
+          <div className="flex items-center gap-0.5 rounded-xl border border-slate-200 bg-slate-100/80 p-0.5">
+            <button
+              type="button"
+              onClick={() => setVista("kanban")}
+              aria-pressed={vista === "kanban"}
+              title="Vista Kanban (cards por etapa)"
+              className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-semibold transition-colors ${
+                vista === "kanban" ? "bg-white text-[#3F8E91] shadow-sm" : "text-slate-500 hover:text-slate-700"
+              }`}
+            >
+              <IconKanban className="h-3.5 w-3.5" />
+              Kanban
+            </button>
+            <button
+              type="button"
+              onClick={() => setVista("lista")}
+              aria-pressed={vista === "lista"}
+              title="Vista Lista (tabla de filas)"
+              className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-semibold transition-colors ${
+                vista === "lista" ? "bg-white text-[#3F8E91] shadow-sm" : "text-slate-500 hover:text-slate-700"
+              }`}
+            >
+              <IconList className="h-3.5 w-3.5" />
+              Lista
+            </button>
+          </div>
+          <button
+            type="button"
+            onClick={() => setNuevoOpen(true)}
+            className="inline-flex shrink-0 items-center gap-2 rounded-xl bg-[#4FAEB2] px-4 py-2.5 text-sm font-semibold text-white shadow-sm shadow-[#4FAEB2]/20 transition-colors hover:bg-[#3F8E91]"
+          >
+            <IconPlus className="h-4 w-4" />
+            Nuevo prospecto
+          </button>
+        </div>
       </div>
 
       {/* KPIs premium */}
@@ -925,29 +1075,38 @@ export default function CrmPage() {
         />
       </div>
 
-      {/* Kanban */}
-      <div className="-mx-1 min-h-0 flex-1 overflow-x-auto px-1 pb-2">
-        <div className="flex h-full min-w-max items-start gap-3">
-          {etapas.map((etapa) => (
-            <Columna
-              key={etapa.id}
-              etapa={etapa}
-              prospectos={porEtapa(etapa.codigo)}
-              etapas={etapas}
-              isDragOver={dragOverEtapa === etapa.codigo}
-              onDragOver={(e) => {
-                e.preventDefault();
-                setDragOverEtapa(etapa.codigo);
-              }}
-              onDragLeave={() => setDragOverEtapa(null)}
-              onDrop={(e) => handleDrop(e, etapa.codigo)}
-              onDragStart={handleDragStart}
-              onMoverEtapa={handleMoverEtapa}
-              onEdit={(id) => setEditandoId(id)}
-            />
-          ))}
+      {/* Pipeline: Kanban (cards) o Lista (tabla) según la vista elegida */}
+      {vista === "kanban" ? (
+        <div className="-mx-1 min-h-0 flex-1 overflow-x-auto px-1 pb-2">
+          <div className="flex h-full min-w-max items-start gap-3">
+            {etapas.map((etapa) => (
+              <Columna
+                key={etapa.id}
+                etapa={etapa}
+                prospectos={porEtapa(etapa.codigo)}
+                etapas={etapas}
+                isDragOver={dragOverEtapa === etapa.codigo}
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  setDragOverEtapa(etapa.codigo);
+                }}
+                onDragLeave={() => setDragOverEtapa(null)}
+                onDrop={(e) => handleDrop(e, etapa.codigo)}
+                onDragStart={handleDragStart}
+                onMoverEtapa={handleMoverEtapa}
+                onEdit={(id) => setEditandoId(id)}
+              />
+            ))}
+          </div>
         </div>
-      </div>
+      ) : (
+        <ProspectoLista
+          prospectos={prospectos}
+          etapas={etapas}
+          onMoverEtapa={handleMoverEtapa}
+          onEdit={(id) => setEditandoId(id)}
+        />
+      )}
 
       <ProspectoNuevoModal
         open={nuevoOpen}
