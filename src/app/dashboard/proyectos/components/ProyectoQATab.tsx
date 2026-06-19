@@ -151,6 +151,7 @@ export default function ProyectoQATab({ projectId, dataSchema, usuarios }: Props
   const [nuevoGrupoOpen, setNuevoGrupoOpen] = useState(false);
   const [nuevoGrupoNombre, setNuevoGrupoNombre] = useState("");
   const [clonarOpen, setClonarOpen] = useState(false);
+  const enviandoRef = useRef(false);
 
   const usuariosMap: UsuarioMap = useMemo(() => {
     const m: UsuarioMap = {};
@@ -269,18 +270,23 @@ export default function ProyectoQATab({ projectId, dataSchema, usuarios }: Props
 
   async function crearGrupo() {
     const n = nuevoGrupoNombre.trim();
-    if (!n) return;
-    const res = await call(`/api/proyectos/${projectId}/qa/grupos`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ nombre: n }),
-    });
-    if (res) {
-      setNuevoGrupoNombre("");
-      setNuevoGrupoOpen(false);
-      await cargar();
-      const nuevoId = (res as { id?: string }).id;
-      if (nuevoId) setGrupoActivoId(nuevoId);
+    if (!n || enviandoRef.current) return;
+    enviandoRef.current = true;
+    try {
+      const res = await call(`/api/proyectos/${projectId}/qa/grupos`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ nombre: n }),
+      });
+      if (res) {
+        setNuevoGrupoNombre("");
+        setNuevoGrupoOpen(false);
+        await cargar();
+        const nuevoId = (res as { id?: string }).id;
+        if (nuevoId) setGrupoActivoId(nuevoId);
+      }
+    } finally {
+      enviandoRef.current = false;
     }
   }
 
@@ -302,13 +308,18 @@ export default function ProyectoQATab({ projectId, dataSchema, usuarios }: Props
   }
 
   async function crearEtapa(grupoId: string, nombre: string) {
-    if (!nombre.trim()) return;
-    await call(`/api/proyectos/${projectId}/qa/etapas`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ grupo_id: grupoId, nombre: nombre.trim() }),
-    });
-    await cargar();
+    if (!nombre.trim() || enviandoRef.current) return;
+    enviandoRef.current = true;
+    try {
+      await call(`/api/proyectos/${projectId}/qa/etapas`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ grupo_id: grupoId, nombre: nombre.trim() }),
+      });
+      await cargar();
+    } finally {
+      enviandoRef.current = false;
+    }
   }
 
   async function renombrarEtapa(e: Etapa) {
@@ -329,13 +340,18 @@ export default function ProyectoQATab({ projectId, dataSchema, usuarios }: Props
   }
 
   async function crearItem(etapaId: string, texto: string) {
-    if (!texto.trim()) return;
-    await call(`/api/proyectos/${projectId}/qa/items`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ etapa_id: etapaId, texto: texto.trim() }),
-    });
-    await cargar();
+    if (!texto.trim() || enviandoRef.current) return;
+    enviandoRef.current = true;
+    try {
+      await call(`/api/proyectos/${projectId}/qa/items`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ etapa_id: etapaId, texto: texto.trim() }),
+      });
+      await cargar();
+    } finally {
+      enviandoRef.current = false;
+    }
   }
 
   async function togglItem(it: Item) {
