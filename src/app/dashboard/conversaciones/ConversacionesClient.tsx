@@ -428,10 +428,11 @@ export function ConversacionesClient({
       /* ignore */
     }
   }, [headerCollapsed]);
-  /** Texto del buscador (input). Se debouncea a `debouncedQ` y se envía al backend (búsqueda global). */
-  const [listSearch, setListSearch] = useState("");
+  /** Texto del buscador (input). Se debouncea a `debouncedQ` y se envía al backend (búsqueda global).
+   *  Se puede prellenar con `?buscar=` (deep-link desde otros módulos, p. ej. teléfono del CRM). */
+  const [listSearch, setListSearch] = useState(() => searchParams?.get("buscar")?.trim() ?? "");
   /** Término de búsqueda server-side (debounced 300ms). */
-  const [debouncedQ, setDebouncedQ] = useState("");
+  const [debouncedQ, setDebouncedQ] = useState(() => searchParams?.get("buscar")?.trim() ?? "");
   /** Ventana creciente: cuántas conversaciones pedir (50, +50 con "Cargar más"). */
   const [listLimit, setListLimit] = useState(50);
   const debouncedQRef = useRef("");

@@ -785,6 +785,45 @@ function TopProductosWidget({
 
 // ── Vista Lista (tabla de filas, estilo módulo Clientes) ──────────────────────
 
+/** Celda de teléfono: número clickeable (abre la conversación filtrada por ese número) + botón copiar. */
+function PhoneCell({ telefono }: { telefono?: string }) {
+  const [copied, setCopied] = useState(false);
+  const raw = (telefono ?? "").trim();
+  if (!raw) return <span className="text-slate-400">—</span>;
+  const digits = raw.replace(/\D/g, "");
+  return (
+    <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+      <Link
+        href={`/dashboard/conversaciones?buscar=${encodeURIComponent(digits || raw)}`}
+        className="font-mono text-slate-600 tabular-nums underline-offset-2 hover:text-[#3F8E91] hover:underline"
+        title="Abrir conversación de este contacto"
+      >
+        {raw}
+      </Link>
+      <button
+        type="button"
+        title={copied ? "Copiado" : "Copiar número"}
+        aria-label="Copiar número"
+        onClick={async (e) => {
+          e.stopPropagation();
+          try {
+            await navigator.clipboard.writeText(raw);
+            setCopied(true);
+            setTimeout(() => setCopied(false), 1200);
+          } catch {
+            /* ignore */
+          }
+        }}
+        className={`shrink-0 transition-colors ${copied ? "text-emerald-600" : "text-slate-400 hover:text-[#3F8E91]"}`}
+      >
+        {copied ? <IconCheck className="h-3.5 w-3.5" /> : <IconCopy className="h-3.5 w-3.5" />}
+      </button>
+    </div>
+  );
+}
+
+type ListPageSize = 25 | 50 | 100 | "todos";
+
 function ProspectoLista({
   prospectos,
   etapas,
@@ -796,79 +835,165 @@ function ProspectoLista({
   onMoverEtapa: (id: string, etapaCodigo: string) => void;
   onEdit: (id: string) => void;
 }) {
+  const [pageSize, setPageSize] = useState<ListPageSize>(25);
   const etapaSelectOptions = etapas.map((e) => ({ value: e.codigo, label: e.nombre }));
-  const rows = prospectos
+  const ordered = prospectos
     .slice()
     .sort((a, b) => new Date(b.fecha_creacion).getTime() - new Date(a.fecha_creacion).getTime());
+  const rows = pageSize === "todos" ? ordered : ordered.slice(0, pageSize);
 
   return (
-    <div className="min-h-0 flex-1 overflow-auto rounded-2xl border border-slate-200 bg-white">
-      <table className="w-full border-collapse text-sm">
-        <thead className="sticky top-0 z-10 bg-slate-50/95 backdrop-blur">
-          <tr className="text-left text-[10px] font-semibold uppercase tracking-wide text-slate-500">
-            <th className="px-4 py-3 font-semibold">Empresa / Nombre</th>
-            <th className="px-4 py-3 font-semibold">Contacto</th>
-            <th className="px-4 py-3 font-semibold">Teléfono</th>
-            <th className="px-4 py-3 font-semibold">Servicio</th>
-            <th className="px-4 py-3 text-right font-semibold">Valor</th>
-            <th className="px-4 py-3 font-semibold">Etapa</th>
-            <th className="px-4 py-3 font-semibold">Responsable</th>
-            <th className="px-4 py-3 font-semibold">Fecha</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.length === 0 ? (
-            <tr>
-              <td colSpan={8} className="px-4 py-12 text-center text-slate-400">
-                Sin prospectos
-              </td>
+    <div className="flex min-h-0 flex-1 flex-col gap-2">
+      <div className="flex items-center justify-between gap-2 text-[11px] text-slate-500">
+        <span>
+          Mostrando <strong className="text-slate-700">{rows.length}</strong> de {ordered.length}
+        </span>
+        <label className="flex items-center gap-1.5">
+          <span>Registros:</span>
+          <select
+            value={String(pageSize)}
+            onChange={(e) =>
+              setPageSize(e.target.value === "todos" ? "todos" : (Number(e.target.value) as ListPageSize))
+            }
+            className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs font-medium text-slate-700 outline-none focus:border-[#4FAEB2] focus:ring-2 focus:ring-[#4FAEB2]/20"
+            aria-label="Cantidad de registros a mostrar"
+          >
+            <option value="25">25</option>
+            <option value="50">50</option>
+            <option value="100">100</option>
+            <option value="todos">Todos</option>
+          </select>
+        </label>
+      </div>
+      <div className="min-h-0 flex-1 overflow-auto rounded-2xl border border-slate-200 bg-white">
+        <table className="w-full border-collapse text-sm">
+          <thead className="sticky top-0 z-10 bg-slate-50/95 backdrop-blur">
+            <tr className="text-left text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+              <th className="px-4 py-3 font-semibold">Contacto</th>
+              <th className="px-4 py-3 font-semibold">Teléfono</th>
+              <th className="px-4 py-3 font-semibold">Servicio</th>
+              <th className="px-4 py-3 text-right font-semibold">Valor</th>
+              <th className="px-4 py-3 font-semibold">Etapa</th>
+              <th className="px-4 py-3 font-semibold">Responsable</th>
+              <th className="px-4 py-3 font-semibold">Fecha</th>
             </tr>
-          ) : (
-            rows.map((p) => (
-              <tr
-                key={p.id}
-                onClick={() => onEdit(p.id)}
-                className="cursor-pointer border-t border-slate-100 transition-colors hover:bg-slate-50/70"
-              >
-                <td className="px-4 py-2.5">
-                  <div className="max-w-[16rem] truncate font-semibold text-slate-900">{p.empresa}</div>
-                  <div className="font-mono text-[11px] text-slate-400">{p.numero_control}</div>
-                </td>
-                <td className="max-w-[12rem] truncate px-4 py-2.5 text-slate-600">{p.contacto || "—"}</td>
-                <td className="px-4 py-2.5 font-mono text-slate-600 tabular-nums">{p.telefono || "—"}</td>
-                <td className="max-w-[14rem] truncate px-4 py-2.5 text-slate-600">{p.servicio || "—"}</td>
-                <td className="px-4 py-2.5 text-right font-semibold text-slate-800 tabular-nums">
-                  Gs. {p.valor_estimado.toLocaleString("es-PY")}
-                </td>
-                <td className="px-4 py-2.5" onClick={(e) => e.stopPropagation()}>
-                  <div className="min-w-[9rem]">
-                    <FancySelect
-                      size="sm"
-                      ariaLabel="Cambiar etapa del prospecto"
-                      value={p.etapa}
-                      onChange={(v) => onMoverEtapa(p.id, v)}
-                      options={etapaSelectOptions}
-                    />
-                  </div>
-                </td>
-                <td className="px-4 py-2.5">
-                  {p.responsable ? (
-                    <div className="flex items-center gap-1.5">
-                      <Avatar name={p.responsable} size="xs" />
-                      <span className="max-w-[8rem] truncate text-[11px] text-slate-600">{p.responsable}</span>
-                    </div>
-                  ) : (
-                    <span className="text-[11px] italic text-slate-400">Sin responsable</span>
-                  )}
-                </td>
-                <td className="px-4 py-2.5 text-[11px] text-slate-500 tabular-nums">
-                  {formatFecha(p.fecha_creacion)}
+          </thead>
+          <tbody>
+            {rows.length === 0 ? (
+              <tr>
+                <td colSpan={7} className="px-4 py-12 text-center text-slate-400">
+                  Sin prospectos
                 </td>
               </tr>
-            ))
-          )}
-        </tbody>
-      </table>
+            ) : (
+              rows.map((p) => (
+                <tr
+                  key={p.id}
+                  onClick={() => onEdit(p.id)}
+                  className="cursor-pointer border-t border-slate-100 transition-colors hover:bg-slate-50/70"
+                >
+                  <td className="px-4 py-2.5">
+                    <div className="max-w-[14rem] truncate font-semibold text-slate-900">
+                      {p.contacto || p.empresa || "—"}
+                    </div>
+                    <div className="font-mono text-[11px] text-slate-400">{p.numero_control}</div>
+                  </td>
+                  <td className="px-4 py-2.5">
+                    <PhoneCell telefono={p.telefono} />
+                  </td>
+                  <td className="max-w-[14rem] truncate px-4 py-2.5 text-slate-600">{p.servicio || "—"}</td>
+                  <td className="px-4 py-2.5 text-right font-semibold text-slate-800 tabular-nums">
+                    Gs. {p.valor_estimado.toLocaleString("es-PY")}
+                  </td>
+                  <td className="px-4 py-2.5" onClick={(e) => e.stopPropagation()}>
+                    <div className="min-w-[9rem]">
+                      <FancySelect
+                        size="sm"
+                        ariaLabel="Cambiar etapa del prospecto"
+                        value={p.etapa}
+                        onChange={(v) => onMoverEtapa(p.id, v)}
+                        options={etapaSelectOptions}
+                      />
+                    </div>
+                  </td>
+                  <td className="px-4 py-2.5">
+                    {p.responsable ? (
+                      <div className="flex items-center gap-1.5">
+                        <Avatar name={p.responsable} size="xs" />
+                        <span className="max-w-[8rem] truncate text-[11px] text-slate-600">{p.responsable}</span>
+                      </div>
+                    ) : (
+                      <span className="text-[11px] italic text-slate-400">Sin responsable</span>
+                    )}
+                  </td>
+                  <td className="px-4 py-2.5 text-[11px] text-slate-500 tabular-nums">
+                    {formatFecha(p.fecha_creacion)}
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+// ── Scroll horizontal del Kanban con flechas al pasar el cursor por los costados ──
+function KanbanScroller({ children }: { children: React.ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const dirRef = useRef<-1 | 0 | 1>(0);
+  const rafRef = useRef<number | null>(null);
+  const [hint, setHint] = useState<-1 | 0 | 1>(0);
+
+  const loop = () => {
+    const el = ref.current;
+    if (el && dirRef.current !== 0) {
+      el.scrollLeft += dirRef.current * 16;
+      rafRef.current = requestAnimationFrame(loop);
+    } else {
+      rafRef.current = null;
+    }
+  };
+  const setDir = (d: -1 | 0 | 1) => {
+    if (d === dirRef.current) return;
+    dirRef.current = d;
+    setHint(d);
+    if (d !== 0 && rafRef.current == null) rafRef.current = requestAnimationFrame(loop);
+  };
+  const onMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    const el = ref.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    const x = e.clientX - r.left;
+    const band = 72;
+    const canL = el.scrollLeft > 2;
+    const canR = el.scrollLeft < el.scrollWidth - el.clientWidth - 2;
+    if (x < band && canL) setDir(-1);
+    else if (x > r.width - band && canR) setDir(1);
+    else setDir(0);
+  };
+  useEffect(() => () => { if (rafRef.current != null) cancelAnimationFrame(rafRef.current); }, []);
+
+  const arrow = (dir: "left" | "right") => (
+    <span className="flex h-14 w-14 items-center justify-center rounded-full bg-white/75 text-[#3F8E91] shadow-lg ring-1 ring-[#4FAEB2]/30 backdrop-blur">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="h-7 w-7" aria-hidden="true">
+        {dir === "left" ? <polyline points="15 18 9 12 15 6" /> : <polyline points="9 18 15 12 9 6" />}
+      </svg>
+    </span>
+  );
+
+  return (
+    <div className="relative -mx-1 min-h-0 flex-1 px-1 pb-2">
+      <div ref={ref} onMouseMove={onMove} onMouseLeave={() => setDir(0)} className="h-full overflow-x-auto">
+        {children}
+      </div>
+      <div className={`pointer-events-none absolute inset-y-0 left-0 flex w-16 items-center justify-start pl-1 transition-opacity duration-150 ${hint === -1 ? "opacity-100" : "opacity-0"}`}>
+        {arrow("left")}
+      </div>
+      <div className={`pointer-events-none absolute inset-y-0 right-0 flex w-16 items-center justify-end pr-1 transition-opacity duration-150 ${hint === 1 ? "opacity-100" : "opacity-0"}`}>
+        {arrow("right")}
+      </div>
     </div>
   );
 }
@@ -1077,7 +1202,7 @@ export default function CrmPage() {
 
       {/* Pipeline: Kanban (cards) o Lista (tabla) según la vista elegida */}
       {vista === "kanban" ? (
-        <div className="-mx-1 min-h-0 flex-1 overflow-x-auto px-1 pb-2">
+        <KanbanScroller>
           <div className="flex h-full min-w-max items-start gap-3">
             {etapas.map((etapa) => (
               <Columna
@@ -1098,7 +1223,7 @@ export default function CrmPage() {
               />
             ))}
           </div>
-        </div>
+        </KanbanScroller>
       ) : (
         <ProspectoLista
           prospectos={prospectos}
