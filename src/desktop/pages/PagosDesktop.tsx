@@ -175,28 +175,37 @@ export default function PagosPage() {
     [facturas, clientes]
   );
 
+  // Pendientes filtra SOLO por fecha_vencimiento: el rango "hasta 30/06"
+  // debe excluir facturas con vencimiento en julio, aunque su emisión sea de junio.
   const pendientesPorFecha = useMemo(() => {
     if (!rangoFechas) return pendientesBase;
-    return pendientesBase.filter(
-      (f) =>
-        fechaEnRangoCalendario(f.fecha) ||
-        fechaEnRangoCalendario(f.fecha_vencimiento)
-    );
+    return pendientesBase.filter((f) => fechaEnRangoCalendario(f.fecha_vencimiento));
   }, [pendientesBase, rangoFechas, fechaEnRangoCalendario]);
 
   const pendientesVista = useMemo(() => {
-    if (filtroTipoCliente === "") return pendientesPorFecha;
+    const cmp = (a: Factura, b: Factura) => {
+      const av = (a.fecha_vencimiento ?? "").localeCompare(b.fecha_vencimiento ?? "");
+      if (av !== 0) return av;
+      const ae = (a.fecha ?? "").localeCompare(b.fecha ?? "");
+      if (ae !== 0) return ae;
+      return (a.numero_factura ?? "").localeCompare(b.numero_factura ?? "");
+    };
+    if (filtroTipoCliente === "") return [...pendientesPorFecha].sort(cmp);
     if (filtroTipoCliente === "__sin__") {
-      return pendientesPorFecha.filter((f) => {
-        const c = clientes.find((x) => String(x.id) === String(f.cliente_id));
-        return !c || !(c.tipo_servicio_cliente ?? "").trim();
-      });
+      return pendientesPorFecha
+        .filter((f) => {
+          const c = clientes.find((x) => String(x.id) === String(f.cliente_id));
+          return !c || !(c.tipo_servicio_cliente ?? "").trim();
+        })
+        .sort(cmp);
     }
     const slug = filtroTipoCliente.toLowerCase();
-    return pendientesPorFecha.filter((f) => {
-      const c = clientes.find((x) => String(x.id) === String(f.cliente_id));
-      return (c?.tipo_servicio_cliente ?? "").trim().toLowerCase() === slug;
-    });
+    return pendientesPorFecha
+      .filter((f) => {
+        const c = clientes.find((x) => String(x.id) === String(f.cliente_id));
+        return (c?.tipo_servicio_cliente ?? "").trim().toLowerCase() === slug;
+      })
+      .sort(cmp);
   }, [pendientesPorFecha, filtroTipoCliente, clientes]);
 
   const cobradosPorFecha = useMemo(() => {
@@ -353,11 +362,16 @@ export default function PagosPage() {
           </h3>
         </div>
         <p className="mt-1 pl-3 text-[11px] text-slate-500">
-          Mismo criterio de fechas que el dashboard. Los totales se recalculan con la vista visible.
+          {tab === "pendientes"
+            ? "El rango filtra por fecha de vencimiento de la factura."
+            : "El rango filtra por fecha de pago registrada."}{" "}
+          Los totales se recalculan con la vista visible.
         </p>
         <div className="mt-4 flex flex-wrap items-end gap-3">
           <div className="min-w-[10rem]">
-            <label className={LABEL_CLS}>Desde</label>
+            <label className={LABEL_CLS}>
+              Desde {tab === "pendientes" ? "(vencimiento)" : "(fecha de pago)"}
+            </label>
             <input
               type="date"
               value={filtroDesde}
@@ -366,7 +380,9 @@ export default function PagosPage() {
             />
           </div>
           <div className="min-w-[10rem]">
-            <label className={LABEL_CLS}>Hasta</label>
+            <label className={LABEL_CLS}>
+              Hasta {tab === "pendientes" ? "(vencimiento)" : "(fecha de pago)"}
+            </label>
             <input
               type="date"
               value={filtroHasta}
@@ -435,7 +451,7 @@ export default function PagosPage() {
             />
           ) : rangoFechas && pendientesPorFecha.length === 0 ? (
             <EmptyState
-              title="Ninguna factura con emisión o vencimiento en el rango"
+              title="Ninguna factura con vencimiento en el rango"
               cta={
                 <button
                   type="button"
