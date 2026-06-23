@@ -274,16 +274,21 @@ function Kpi({
   value,
   sub,
   accent = "neutral",
+  onClick,
 }: {
   label: string;
   value: string | number;
   sub?: string;
   accent?: "neutral" | "featured" | "warning" | "success";
+  onClick?: () => void;
 }) {
-  const wrapCls =
+  const baseWrap =
     accent === "featured"
       ? "relative overflow-hidden rounded-2xl border border-[#4FAEB2]/55 bg-gradient-to-br from-white via-white to-[#4FAEB2]/8 p-4 shadow-[0_4px_18px_rgba(79,174,178,0.08)]"
       : "rounded-2xl border border-slate-200 bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]";
+  const wrapCls = onClick
+    ? `${baseWrap} cursor-pointer text-left transition-shadow hover:shadow-md hover:border-[#4FAEB2]/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#4FAEB2]/60`
+    : baseWrap;
   const valueCls =
     accent === "featured"
       ? "text-[#3F8E91]"
@@ -292,8 +297,8 @@ function Kpi({
         : accent === "success"
           ? "text-emerald-700"
           : "text-slate-900";
-  return (
-    <div className={wrapCls}>
+  const content = (
+    <>
       {accent === "featured" ? (
         <span
           aria-hidden="true"
@@ -305,8 +310,21 @@ function Kpi({
         {value}
       </p>
       {sub ? <p className="mt-1 text-[11px] text-slate-500">{sub}</p> : null}
-    </div>
+      {onClick ? (
+        <p className="mt-1.5 text-[10px] font-semibold uppercase tracking-[0.1em] text-[#3F8E91]">
+          Ver detalle →
+        </p>
+      ) : null}
+    </>
   );
+  if (onClick) {
+    return (
+      <button type="button" onClick={onClick} className={`${wrapCls} block w-full`}>
+        {content}
+      </button>
+    );
+  }
+  return <div className={wrapCls}>{content}</div>;
 }
 
 // ── ScaleProgress (paleta turquesa) ──────────────────────────────────────────
@@ -489,6 +507,183 @@ function motivoExclusionLabel(ln: Linea): string {
   }
   if (ln.origen === "factura") return "Factura marcada no comisionable";
   return "No es venta nueva (cliente recurrente / suscripción)";
+}
+
+function motivoExclusionTag(ln: Linea): { label: string; tone: "manual" | "factura" | "auto" } {
+  if (ln.origen === "override_excluir") return { label: "Manual", tone: "manual" };
+  if (ln.origen === "factura") return { label: "Factura", tone: "factura" };
+  return { label: "Auto", tone: "auto" };
+}
+
+type ExcluidaConVendedor = Linea & { _vendedorNombre: string; _vendedorId: string };
+
+function LineasExcluidasDrawer({
+  rows,
+  meta,
+  onClose,
+}: {
+  rows: VendedorRow[];
+  meta: PreviewMeta | null | undefined;
+  onClose: () => void;
+}) {
+  const excluidas: ExcluidaConVendedor[] = useMemo(() => {
+    const out: ExcluidaConVendedor[] = [];
+    for (const v of rows) {
+      for (const ln of v.lineas) {
+        if (ln.comisiona === false) {
+          out.push({ ...ln, _vendedorNombre: v.vendedor_nombre, _vendedorId: v.vendedor_usuario_id });
+        }
+      }
+    }
+    out.sort((a, b) => (a.fecha ?? "").localeCompare(b.fecha ?? ""));
+    return out;
+  }, [rows]);
+
+  const totalMonto = useMemo(
+    () => excluidas.reduce((sum, ln) => sum + (Number(ln.monto_base) || 0), 0),
+    [excluidas]
+  );
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-stretch justify-end">
+      {/* backdrop */}
+      <button
+        type="button"
+        aria-label="Cerrar"
+        onClick={onClose}
+        className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm"
+      />
+      {/* panel */}
+      <aside
+        role="dialog"
+        aria-modal="true"
+        aria-label="Detalle de líneas excluidas"
+        className="relative z-10 flex h-full w-full max-w-3xl flex-col overflow-hidden border-l border-slate-200 bg-white shadow-2xl"
+      >
+        <header className="flex items-start justify-between gap-3 border-b border-slate-200 px-6 py-4">
+          <div>
+            <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-amber-700">
+              Resumen · Líneas excluidas
+            </p>
+            <h2 className="mt-1 text-lg font-semibold tracking-tight text-slate-900">
+              {excluidas.length} línea{excluidas.length === 1 ? "" : "s"} no comisiona
+              {excluidas.length === 1 ? "" : "n"} este período
+            </h2>
+            <p className="mt-1 text-xs text-slate-500">
+              {meta?.periodo ?? "—"}
+              {meta?.fecha_inicio_local ? (
+                <span className="tabular-nums text-slate-400">
+                  {" "}
+                  · {meta.fecha_inicio_local} → {meta.fecha_fin_local}
+                </span>
+              ) : null}
+              <span className="block text-[11px] text-slate-400">
+                Total monto excluido: ₲ {fmtMoney(totalMonto)} · No incluye movimientos sin vendedor (se cuentan aparte).
+              </span>
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-lg border border-slate-200 bg-white p-1.5 text-slate-500 transition-colors hover:border-slate-300 hover:text-slate-700"
+            aria-label="Cerrar panel"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </header>
+
+        <div className="flex-1 overflow-auto">
+          {excluidas.length === 0 ? (
+            <div className="px-6 py-12 text-center text-sm text-slate-500">
+              No hay líneas excluidas en este período.
+            </div>
+          ) : (
+            <table className="w-full text-sm">
+              <thead className="sticky top-0 z-10 bg-amber-50/95 backdrop-blur">
+                <tr className="border-b border-amber-200">
+                  {[
+                    { h: "Fecha", right: false },
+                    { h: "Cliente / Factura", right: false },
+                    { h: "Concepto", right: false },
+                    { h: "Monto", right: true },
+                    { h: "Vendedor", right: false },
+                    { h: "Motivo", right: false },
+                    { h: "Origen", right: false },
+                  ].map(({ h, right }) => (
+                    <th
+                      key={h}
+                      className={`px-4 py-2.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-amber-800 whitespace-nowrap ${
+                        right ? "text-right" : "text-left"
+                      }`}
+                    >
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-amber-100/70">
+                {excluidas.map((ln, i) => {
+                  const tag = motivoExclusionTag(ln);
+                  const tagCls =
+                    tag.tone === "manual"
+                      ? "border-rose-200 bg-rose-50 text-rose-700"
+                      : tag.tone === "factura"
+                        ? "border-sky-200 bg-sky-50 text-sky-700"
+                        : "border-amber-200 bg-amber-50 text-amber-800";
+                  return (
+                    <tr key={`${ln.pago_id ?? ""}-${ln.factura_id ?? ""}-${i}`} className="hover:bg-amber-50/40">
+                      <td className="px-4 py-3 text-xs tabular-nums text-slate-600 whitespace-nowrap">
+                        {formatDate(ln.fecha)}
+                      </td>
+                      <td className="px-4 py-3">
+                        <p className="text-sm font-medium text-slate-800">{ln.cliente_label}</p>
+                        {ln.numero_factura ? (
+                          <p className="text-[10px] text-slate-400">{ln.numero_factura}</p>
+                        ) : null}
+                      </td>
+                      <td className="px-4 py-3 text-xs text-slate-600 whitespace-nowrap">
+                        {MOVIMIENTO_LABEL[ln.tipo] ?? ln.tipo}
+                      </td>
+                      <td className="px-4 py-3 text-right text-sm font-semibold tabular-nums text-slate-900 whitespace-nowrap">
+                        ₲ {fmtMoney(ln.monto_base)}
+                      </td>
+                      <td className="px-4 py-3 text-xs text-slate-600">{ln._vendedorNombre}</td>
+                      <td className="px-4 py-3 text-xs text-slate-700">
+                        {motivoExclusionLabel(ln)}
+                        {ln.override_por ? (
+                          <span className="block text-[10px] text-slate-400">{ln.override_por}</span>
+                        ) : null}
+                      </td>
+                      <td className="px-4 py-3">
+                        <span
+                          className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${tagCls}`}
+                        >
+                          {tag.label}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
+        </div>
+
+        <footer className="border-t border-slate-200 bg-slate-50 px-6 py-3 text-[11px] text-slate-500">
+          Las líneas sin vendedor asignado no se cuentan acá; aparecen en la card{" "}
+          <span className="font-semibold text-slate-700">Movimientos sin vendedor</span>.
+        </footer>
+      </aside>
+    </div>
+  );
 }
 
 function ExcluidosToggle({
@@ -894,7 +1089,9 @@ function renderAdminView({
   baseLabel,
   onReload,
   overrideCtx,
+  onShowExcluidas,
 }: {
+  onShowExcluidas?: () => void;
   meta: PreviewMeta | null | undefined;
   kpis: PreviewKpis | null | undefined;
   rows: VendedorRow[];
@@ -1027,6 +1224,9 @@ function renderAdminView({
               value={kpis.lineas_excluidas ?? 0}
               sub="No comisionan este período"
               accent={(kpis.lineas_excluidas ?? 0) > 0 ? "warning" : "neutral"}
+              onClick={
+                (kpis.lineas_excluidas ?? 0) > 0 && onShowExcluidas ? onShowExcluidas : undefined
+              }
             />
             <Kpi
               label="Líneas incluidas manual"
@@ -1202,6 +1402,7 @@ export default function ComisionesPage() {
     { ln: Linea; decision: "incluir" | "excluir"; periodoYm: string } | null
   >(null);
   const [busyPagoId, setBusyPagoId] = useState<string | null>(null);
+  const [excludedDrawerOpen, setExcludedDrawerOpen] = useState(false);
 
   const load = useCallback(async (opts?: { mes?: string }) => {
     setLoading(true);
@@ -1404,6 +1605,7 @@ export default function ComisionesPage() {
         baseLabel,
         onReload: () => void load({ mes: periodoYm }),
         overrideCtx,
+        onShowExcluidas: () => setExcludedDrawerOpen(true),
       })}
       {overrideModal ? (
         <OverrideModal
@@ -1412,6 +1614,13 @@ export default function ComisionesPage() {
           busy={busyPagoId != null}
           onCancel={() => setOverrideModal(null)}
           onConfirm={(motivo) => void confirmOverride(motivo)}
+        />
+      ) : null}
+      {excludedDrawerOpen ? (
+        <LineasExcluidasDrawer
+          rows={rows}
+          meta={meta}
+          onClose={() => setExcludedDrawerOpen(false)}
         />
       ) : null}
     </>

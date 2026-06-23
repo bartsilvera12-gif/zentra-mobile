@@ -1,9 +1,13 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { ArrowUpRight, Percent, TrendingUp } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { ArrowUpRight, Percent, TrendingUp, X } from "lucide-react";
 import Link from "next/link";
-import { useComisionesPreview, type ComisionVendedorRow } from "@/shared/hooks/useComisiones";
+import {
+  useComisionesPreview,
+  type ComisionLinea,
+  type ComisionVendedorRow,
+} from "@/shared/hooks/useComisiones";
 
 /**
  * Vista mobile de Comisiones — preview del periodo.
@@ -15,10 +19,12 @@ import { useComisionesPreview, type ComisionVendedorRow } from "@/shared/hooks/u
 export default function ComisionesMobile() {
   const [mes, setMes] = useState<string | undefined>(undefined);
   const { data, isLoading, error } = useComisionesPreview(mes);
+  const [showExcluidas, setShowExcluidas] = useState(false);
 
   const opciones = useMemo(() => buildMesesOpciones(), []);
   const periodoMes = data?.meta?.periodo_mes ?? mes ?? opciones[0].value;
   const esVendedor = data?.meta?.is_vendedor_view === true;
+  const nExcluidas = data?.kpis?.lineas_excluidas ?? 0;
 
   return (
     <div className="mx-auto max-w-md p-4 pb-24">
@@ -72,13 +78,31 @@ export default function ComisionesMobile() {
             {data.kpis.vendedores_con_comision} vendedor(es)
           </p>
           <p className="mt-0.5 text-[11px] text-slate-500">
-            Cobrado total {formatGs(data.kpis.revenue_cobrado_total ?? data.kpis.cobrado_periodo_total)} ·{" "}
-            {data.kpis.lineas_excluidas ?? 0} excluida(s)
-            {(data.kpis.lineas_incluidas_manual ?? 0) > 0
-              ? ` · ${data.kpis.lineas_incluidas_manual} incluida(s) manual`
-              : ""}
+            Cobrado total {formatGs(data.kpis.revenue_cobrado_total ?? data.kpis.cobrado_periodo_total)}
           </p>
+          <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[11px]">
+            {nExcluidas > 0 ? (
+              <button
+                type="button"
+                onClick={() => setShowExcluidas(true)}
+                className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 font-semibold text-amber-800 hover:bg-amber-100"
+              >
+                {nExcluidas} excluida{nExcluidas === 1 ? "" : "s"} →
+              </button>
+            ) : (
+              <span className="text-slate-400">0 excluidas</span>
+            )}
+            {(data.kpis.lineas_incluidas_manual ?? 0) > 0 ? (
+              <span className="rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 font-medium text-sky-700">
+                {data.kpis.lineas_incluidas_manual} incluida(s) manual
+              </span>
+            ) : null}
+          </div>
         </div>
+      ) : null}
+
+      {showExcluidas && data ? (
+        <ExcluidasSheet rows={data.por_vendedor} onClose={() => setShowExcluidas(false)} />
       ) : null}
 
       {/* Lista de vendedores */}
@@ -201,4 +225,122 @@ function formatGs(n: number): string {
 function formatPct(n: number | null | undefined): string {
   if (n == null || !Number.isFinite(n)) return "—";
   return `${(n * 100).toFixed(1)}%`;
+}
+
+function formatDateShort(iso: string | null): string {
+  if (!iso) return "—";
+  const ymd = iso.slice(0, 10);
+  const [y, m, d] = ymd.split("-");
+  if (!y || !m || !d) return iso;
+  return `${d}/${m}`;
+}
+
+function motivoExclusion(ln: ComisionLinea): string {
+  if (ln.origen === "override_excluir") {
+    return ln.override_motivo?.trim() ? ln.override_motivo : "Excluido manualmente";
+  }
+  if (ln.origen === "factura") return "Factura marcada no comisionable";
+  return "No es venta nueva (cliente recurrente / suscripción)";
+}
+
+type ExcluidaMobile = ComisionLinea & { _vendedor: string };
+
+function ExcluidasSheet({
+  rows,
+  onClose,
+}: {
+  rows: ComisionVendedorRow[];
+  onClose: () => void;
+}) {
+  const excluidas: ExcluidaMobile[] = useMemo(() => {
+    const out: ExcluidaMobile[] = [];
+    for (const v of rows) {
+      for (const ln of v.lineas) {
+        if (ln.comisiona === false) out.push({ ...ln, _vendedor: v.vendedor_nombre });
+      }
+    }
+    out.sort((a, b) => (a.fecha ?? "").localeCompare(b.fecha ?? ""));
+    return out;
+  }, [rows]);
+
+  const total = excluidas.reduce((s, ln) => s + (Number(ln.monto_base) || 0), 0);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  return (
+    <div className="fixed inset-0 z-50 flex flex-col justify-end">
+      <button
+        type="button"
+        aria-label="Cerrar"
+        onClick={onClose}
+        className="absolute inset-0 bg-slate-900/40"
+      />
+      <div className="relative z-10 flex max-h-[88vh] flex-col overflow-hidden rounded-t-2xl border-t border-slate-200 bg-white shadow-2xl">
+        <div className="flex items-start justify-between gap-3 border-b border-slate-200 px-4 py-3">
+          <div>
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-amber-700">
+              Líneas excluidas
+            </p>
+            <h2 className="mt-0.5 text-base font-bold tracking-tight text-slate-900">
+              {excluidas.length} no comisiona{excluidas.length === 1 ? "" : "n"}
+            </h2>
+            <p className="mt-0.5 text-[11px] text-slate-500">
+              Total monto excluido: {formatGs(total)}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-lg border border-slate-200 p-1.5 text-slate-500"
+            aria-label="Cerrar"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+        <div className="flex-1 overflow-auto p-3">
+          {excluidas.length === 0 ? (
+            <p className="px-2 py-8 text-center text-sm text-slate-500">
+              No hay líneas excluidas en este período.
+            </p>
+          ) : (
+            <ul className="space-y-2">
+              {excluidas.map((ln, i) => (
+                <li
+                  key={`${ln.pago_id ?? ""}-${ln.factura_id ?? ""}-${i}`}
+                  className="rounded-xl border border-amber-200/70 bg-amber-50/40 p-3"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-semibold text-slate-900">
+                        {ln.cliente_label}
+                      </p>
+                      <p className="text-[11px] text-slate-500">
+                        {ln.numero_factura ?? "Sin comprobante"} · {formatDateShort(ln.fecha)} ·{" "}
+                        {ln._vendedor}
+                      </p>
+                    </div>
+                    <p className="shrink-0 text-sm font-bold tabular-nums text-slate-900">
+                      {formatGs(ln.monto_base)}
+                    </p>
+                  </div>
+                  <p className="mt-1.5 text-[11px] font-medium text-amber-800">
+                    {motivoExclusion(ln)}
+                  </p>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+        <p className="border-t border-slate-200 bg-slate-50 px-4 py-2 text-[10px] text-slate-500">
+          Movimientos sin vendedor se cuentan aparte.
+        </p>
+      </div>
+    </div>
+  );
 }

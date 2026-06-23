@@ -48,3 +48,6 @@ e2e-super-admin*.png
 
 # Asistente: SQL de corpus generado (regenerable con scripts/assistant-ingest.ts)
 *.generated.sql
+
+# Auditorías locales (scripts scratch + CSV con datos sensibles, no commitear)
+/tmp/
