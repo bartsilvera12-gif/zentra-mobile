@@ -1,22 +1,10 @@
-import { getDeviceTypeFromRequest } from "@/shared/device/server";
-import { fetchDashboardMobileSummary } from "@/lib/dashboard/mobile-summary";
-import DashboardDesktop from "@/desktop/pages/DashboardDesktop";
-import DashboardMobile from "@/mobile/pages/DashboardMobile";
+import { redirect } from "next/navigation";
 
 /**
- * Home / Dashboard.
- *
- * Optimización: para mobile, pre-fetchamos los KPIs server-side y los pasamos como
- * `initialData` al cliente. SWR los muestra ANTES de hidratar — sin skeleton flash.
- * Desktop sigue intacto, monta su componente client como antes.
+ * Home. La app está acotada al módulo de Conversaciones — siempre redirige.
+ * El middleware ya hace lo mismo a nivel edge, pero conservamos el redirect
+ * de RSC como red de seguridad.
  */
-export default async function Page() {
-  const device = await getDeviceTypeFromRequest();
-  if (device === "mobile") {
-    // Pre-warm: server fetch antes del primer paint. Si falla, el cliente se cae
-    // al fetch normal (SWR muestra skeleton). Sin bloquear el render por errores.
-    const initialData = await fetchDashboardMobileSummary(null).catch(() => null);
-    return <DashboardMobile initialData={initialData ?? undefined} />;
-  }
-  return <DashboardDesktop />;
+export default function Page() {
+  redirect("/dashboard/conversaciones");
 }

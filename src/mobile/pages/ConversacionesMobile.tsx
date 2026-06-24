@@ -2,7 +2,22 @@
 
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, MessageCircle, Search, Send } from "lucide-react";
+import {
+  ArrowLeft,
+  Bell,
+  BellOff,
+  Camera,
+  CheckCheck,
+  MessageCircle,
+  MoreVertical,
+  Paperclip,
+  Phone,
+  Search,
+  Send,
+  Smile,
+  Video,
+  X,
+} from "lucide-react";
 import {
   sendMobileMessage,
   useMobileInbox,
@@ -10,36 +25,84 @@ import {
   type MobileChatConversation,
   type MobileChatMessage,
 } from "@/shared/hooks/useChatMobile";
+import {
+  getNotificationPermission,
+  requestNotificationPermission,
+  useChatNotifications,
+} from "@/shared/hooks/useChatNotifications";
 
 /**
- * Conversaciones mobile — vista funcional.
+ * Conversaciones — UI mobile nativa, estilo WhatsApp.
  *
- * Modo único de página: con query `?id=X` muestra el detalle del chat (mensajes
- * + composer). Sin query muestra la lista del inbox. Esto evita rutas dinámicas
- * separadas y mantiene el back-stack natural del browser/PWA.
- *
- * Limitaciones conocidas:
- *  - Solo recibe/envía TEXTO. Adjuntos (imágenes, audio) quedan para una iteración futura.
- *  - Polling cada 10s (mensajes) y 30s (inbox). No es realtime puro pero alcanza
- *    para la mayoría de los casos en movimiento.
- *  - No asigna ni transfiere conversaciones — eso queda para desktop.
+ * Una sola ruta (`?id=X` cambia entre lista y chat) para preservar el back-stack
+ * del browser/PWA. La pantalla del chat se monta con un slide horizontal sutil.
  */
+
+// ── Paleta Neura (toma del sidebar y primary del ERP) ───────────────────────
+const WA = {
+  headerBg: "#0B3A3D",      // var(--zentra-sidebar) — teal corporativo
+  headerAccent: "#7DCFD2",  // var(--zentra-sidebar-accent) — mint para hover sutil
+  tickBlue: "#0EA5E9",      // var(--primary) — check leído en azul de marca
+  sentBg: "#E0F2FE",        // var(--primary-light) — burbuja propia en azul claro
+  recvBg: "#FFFFFF",        // recibida en blanco puro
+  chatBg: "#F8FAFC",        // var(--background) — fondo slate-50
+  accent: "#0EA5E9",        // var(--primary) — FAB enviar / badge no leído
+  accentHover: "#0284C7",   // var(--primary-hover)
+  textMain: "#0F172A",      // var(--foreground)
+  textMuted: "#475569",     // var(--foreground-muted)
+  divider: "#E2E8F0",       // var(--border)
+};
+
 export default function ConversacionesMobile() {
   const sp = useSearchParams();
   const router = useRouter();
   const selectedId = sp.get("id");
 
-  if (selectedId) {
-    return <ChatDetail conversationId={selectedId} onBack={() => router.push("/dashboard/conversaciones")} />;
-  }
-  return <InboxList />;
+  // Hook de notificaciones. Comparte SWR key con InboxScreen — no duplica fetch.
+  const { conversations } = useMobileInbox();
+  useChatNotifications({ conversations, activeConversationId: selectedId });
+
+  return (
+    <div className="relative h-full w-full overflow-hidden">
+      <div
+        className={`absolute inset-0 transition-transform duration-200 ease-out ${
+          selectedId ? "-translate-x-4 opacity-0 pointer-events-none" : "translate-x-0 opacity-100"
+        }`}
+      >
+        <InboxScreen />
+      </div>
+      <div
+        className={`absolute inset-0 transition-transform duration-200 ease-out ${
+          selectedId ? "translate-x-0 opacity-100" : "translate-x-full opacity-0 pointer-events-none"
+        }`}
+      >
+        {selectedId ? (
+          <ChatScreen
+            conversationId={selectedId}
+            onBack={() => router.push("/dashboard/conversaciones")}
+          />
+        ) : null}
+      </div>
+    </div>
+  );
 }
 
-// ── Lista (inbox) ───────────────────────────────────────────────────────────
+// ── Inbox ───────────────────────────────────────────────────────────────────
 
-function InboxList() {
+function InboxScreen() {
   const { conversations, isLoading, error } = useMobileInbox();
+  const [searchOpen, setSearchOpen] = useState(false);
   const [query, setQuery] = useState("");
+  const [notifPerm, setNotifPerm] = useState<NotificationPermission | "unsupported">("default");
+
+  useEffect(() => {
+    setNotifPerm(getNotificationPermission());
+  }, []);
+
+  const askNotif = useCallback(async () => {
+    const next = await requestNotificationPermission();
+    setNotifPerm(next);
+  }, []);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -51,107 +114,201 @@ function InboxList() {
     });
   }, [conversations, query]);
 
-  const totalUnread = useMemo(
-    () => conversations.reduce((s, c) => s + (c.unread_count ?? 0), 0),
-    [conversations]
-  );
-
   return (
-    <div className="mx-auto max-w-md p-4 pb-24">
-      <header className="mb-3">
-        <h1 className="text-xl font-bold tracking-tight text-slate-900">Conversaciones</h1>
-        <p className="mt-0.5 text-xs text-slate-500">
-          {conversations.length === 0
-            ? "Sin conversaciones."
-            : totalUnread > 0
-              ? `${conversations.length} chats · ${totalUnread} mensajes sin leer`
-              : `${conversations.length} chats`}
-        </p>
+    <section className="flex h-full flex-col bg-white">
+      {/* Header */}
+      <header
+        className="shrink-0 text-white"
+        style={{
+          background: WA.headerBg,
+          paddingTop: "env(safe-area-inset-top)",
+        }}
+      >
+        {searchOpen ? (
+          <div className="flex items-center gap-1 px-2 py-2">
+            <button
+              type="button"
+              onClick={() => {
+                setSearchOpen(false);
+                setQuery("");
+              }}
+              aria-label="Cerrar búsqueda"
+              className="flex h-10 w-10 items-center justify-center rounded-full text-white/90 active:bg-white/10"
+            >
+              <ArrowLeft className="h-5 w-5" />
+            </button>
+            <input
+              autoFocus
+              type="search"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Buscar…"
+              className="flex-1 bg-transparent px-2 text-base text-white placeholder:text-white/60 focus:outline-none"
+            />
+            {query ? (
+              <button
+                type="button"
+                onClick={() => setQuery("")}
+                aria-label="Limpiar"
+                className="flex h-10 w-10 items-center justify-center rounded-full text-white/90 active:bg-white/10"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            ) : null}
+          </div>
+        ) : (
+          <div className="flex items-center justify-between px-4 py-3">
+            <h1 className="text-[22px] font-semibold tracking-tight">Chats</h1>
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => setSearchOpen(true)}
+                aria-label="Buscar"
+                className="flex h-10 w-10 items-center justify-center rounded-full text-white/95 active:bg-white/10"
+              >
+                <Search className="h-5 w-5" />
+              </button>
+              {notifPerm !== "unsupported" ? (
+                <button
+                  type="button"
+                  onClick={notifPerm === "granted" ? undefined : askNotif}
+                  aria-label={
+                    notifPerm === "granted"
+                      ? "Notificaciones activadas"
+                      : notifPerm === "denied"
+                        ? "Notificaciones bloqueadas en el navegador"
+                        : "Activar notificaciones"
+                  }
+                  title={
+                    notifPerm === "granted"
+                      ? "Notificaciones activadas"
+                      : notifPerm === "denied"
+                        ? "Permiso denegado — habilitalo desde la configuración del navegador"
+                        : "Activar notificaciones"
+                  }
+                  className={`flex h-10 w-10 items-center justify-center rounded-full active:bg-white/10 ${
+                    notifPerm === "granted" ? "text-white/95" : "text-white/70"
+                  }`}
+                >
+                  {notifPerm === "denied" ? (
+                    <BellOff className="h-5 w-5" />
+                  ) : (
+                    <Bell className="h-5 w-5" />
+                  )}
+                </button>
+              ) : null}
+              <button
+                type="button"
+                aria-label="Más opciones"
+                className="flex h-10 w-10 items-center justify-center rounded-full text-white/95 active:bg-white/10"
+              >
+                <MoreVertical className="h-5 w-5" />
+              </button>
+            </div>
+          </div>
+        )}
       </header>
 
-      <div className="relative mb-3">
-        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-        <input
-          type="search"
-          placeholder="Buscar por nombre, teléfono o mensaje"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          className="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-10 pr-3 text-sm text-slate-800 placeholder:text-slate-400 focus:border-[#0EA5E9]/40 focus:outline-none focus:ring-2 focus:ring-[#0EA5E9]/30"
-        />
+      {/* Lista */}
+      <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain">
+        {error ? (
+          <div className="m-4 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+            No se pudo cargar el inbox.
+          </div>
+        ) : isLoading && conversations.length === 0 ? (
+          <SkeletonList />
+        ) : filtered.length === 0 ? (
+          <EmptyInbox hayBusqueda={!!query.trim()} />
+        ) : (
+          <ul className="divide-y divide-[color:var(--wa-divider)] [--wa-divider:#E9EDEF]">
+            {filtered.map((c) => (
+              <ConversationRow key={c.id} conv={c} />
+            ))}
+          </ul>
+        )}
       </div>
-
-      {error ? (
-        <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
-          No se pudo cargar el inbox.
-        </div>
-      ) : null}
-
-      {isLoading && conversations.length === 0 ? (
-        <SkeletonList />
-      ) : filtered.length === 0 ? (
-        <EmptyInbox hayBusqueda={!!query.trim()} />
-      ) : (
-        <ul className="space-y-2">
-          {filtered.map((c) => (
-            <ConversationCard key={c.id} conv={c} />
-          ))}
-        </ul>
-      )}
-    </div>
+    </section>
   );
 }
 
-function ConversationCard({ conv }: { conv: MobileChatConversation }) {
-  const nombre = conv.contact_nombre?.trim() || conv.contact_telefono?.trim() || "Sin contacto";
-  const inicial = nombre.charAt(0).toUpperCase();
+function ConversationRow({ conv }: { conv: MobileChatConversation }) {
+  const nombre =
+    conv.contact_nombre?.trim() || conv.contact_telefono?.trim() || "Sin contacto";
   const unread = conv.unread_count > 0;
+  const avatarColor = colorFromString(nombre);
+  const inicial = nombre.charAt(0).toUpperCase();
+
   return (
     <li>
       <a
         href={`/dashboard/conversaciones?id=${encodeURIComponent(conv.id)}`}
-        className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white p-3 shadow-[0_1px_2px_rgba(15,23,42,0.03)] transition-transform active:scale-[0.99]"
+        className="flex items-center gap-3 px-3 py-2.5 active:bg-slate-100"
       >
-        <div className="relative shrink-0">
-          <div className="flex h-11 w-11 items-center justify-center rounded-full bg-[#0EA5E9]/10 text-base font-bold text-[#0EA5E9]">
-            {inicial}
-          </div>
-          {unread ? (
-            <span
-              aria-label={`${conv.unread_count} sin leer`}
-              className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-[#0EA5E9] px-1 text-[10px] font-bold text-white ring-2 ring-white"
-            >
-              {conv.unread_count > 99 ? "99+" : conv.unread_count}
-            </span>
-          ) : null}
+        <div
+          className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full text-base font-semibold text-white"
+          style={{ background: avatarColor }}
+          aria-hidden
+        >
+          {inicial}
         </div>
+
         <div className="min-w-0 flex-1">
           <div className="flex items-baseline justify-between gap-2">
-            <p className={`truncate text-sm ${unread ? "font-bold text-slate-900" : "font-semibold text-slate-800"}`}>
+            <p
+              className="truncate text-[16px] leading-tight"
+              style={{
+                color: WA.textMain,
+                fontWeight: unread ? 600 : 500,
+              }}
+            >
               {nombre}
             </p>
             {conv.last_message_at ? (
-              <span className="shrink-0 text-[10px] tabular-nums text-slate-400">
+              <span
+                className="shrink-0 text-[12px] tabular-nums"
+                style={{
+                  color: unread ? WA.accent : WA.textMuted,
+                  fontWeight: unread ? 600 : 400,
+                }}
+              >
                 {formatRelative(conv.last_message_at)}
               </span>
             ) : null}
           </div>
-          <p className={`truncate text-[12px] ${unread ? "text-slate-700" : "text-slate-500"}`}>
-            {conv.last_message_preview ?? "Sin mensajes"}
-          </p>
-          {conv.channel_name ? (
-            <p className="mt-0.5 text-[10px] uppercase tracking-wider text-slate-400">
-              {conv.channel_name}
+          <div className="mt-0.5 flex items-center justify-between gap-2">
+            <p
+              className="truncate text-[14px] leading-snug"
+              style={{ color: unread ? WA.textMain : WA.textMuted }}
+            >
+              {conv.last_message_preview ?? (
+                <span className="italic text-slate-400">Sin mensajes</span>
+              )}
             </p>
-          ) : null}
+            {unread ? (
+              <span
+                aria-label={`${conv.unread_count} sin leer`}
+                className="ml-2 flex h-[18px] min-w-[18px] shrink-0 items-center justify-center rounded-full px-1.5 text-[11px] font-bold text-white"
+                style={{ background: WA.accent }}
+              >
+                {conv.unread_count > 99 ? "99+" : conv.unread_count}
+              </span>
+            ) : null}
+          </div>
         </div>
       </a>
     </li>
   );
 }
 
-// ── Detalle (chat individual) ───────────────────────────────────────────────
+// ── Chat ────────────────────────────────────────────────────────────────────
 
-function ChatDetail({ conversationId, onBack }: { conversationId: string; onBack: () => void }) {
+function ChatScreen({
+  conversationId,
+  onBack,
+}: {
+  conversationId: string;
+  onBack: () => void;
+}) {
   const { messages, isLoading, mutate } = useMobileMessages(conversationId);
   const { conversations } = useMobileInbox();
   const conv = useMemo(
@@ -163,12 +320,21 @@ function ChatDetail({ conversationId, onBack }: { conversationId: string; onBack
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const taRef = useRef<HTMLTextAreaElement>(null);
 
   // Auto-scroll al fondo cuando llegan mensajes nuevos.
   useEffect(() => {
     const el = scrollRef.current;
     if (el) el.scrollTop = el.scrollHeight;
   }, [messages.length]);
+
+  // Auto-resize del textarea (1–5 líneas).
+  useEffect(() => {
+    const el = taRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, 5 * 22)}px`;
+  }, [text]);
 
   const send = useCallback(async () => {
     const t = text.trim();
@@ -185,151 +351,348 @@ function ChatDetail({ conversationId, onBack }: { conversationId: string; onBack
     setSending(false);
   }, [text, sending, conversationId, mutate]);
 
-  const nombre = conv?.contact_nombre?.trim() || conv?.contact_telefono?.trim() || "Conversación";
+  const nombre =
+    conv?.contact_nombre?.trim() || conv?.contact_telefono?.trim() || "Conversación";
+  const avatarColor = colorFromString(nombre);
+  const inicial = nombre.charAt(0).toUpperCase();
+  const hasText = text.trim().length > 0;
+
+  // Mensajes agrupados por día (separadores tipo WhatsApp).
+  const grouped = useMemo(() => groupByDay(messages), [messages]);
 
   return (
-    <div className="flex h-full flex-col">
-      {/* Header con back */}
-      <header className="sticky top-0 z-10 flex shrink-0 items-center gap-2 border-b border-slate-200 bg-white/95 px-2 py-2 backdrop-blur-sm">
-        <button
-          type="button"
-          onClick={onBack}
-          aria-label="Volver"
-          className="flex h-11 w-11 items-center justify-center rounded-lg text-slate-600 transition-colors hover:bg-slate-50"
-        >
-          <ArrowLeft className="h-5 w-5" />
-        </button>
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-semibold text-slate-900">{nombre}</p>
-          {conv?.channel_name ? (
-            <p className="truncate text-[11px] text-slate-500">{conv.channel_name}</p>
-          ) : null}
+    <section className="flex h-full flex-col" style={{ background: WA.chatBg }}>
+      {/* Header chat */}
+      <header
+        className="shrink-0 text-white shadow-[0_1px_3px_rgba(0,0,0,0.1)]"
+        style={{
+          background: WA.headerBg,
+          paddingTop: "env(safe-area-inset-top)",
+        }}
+      >
+        <div className="flex items-center gap-1 px-1 py-1.5">
+          <button
+            type="button"
+            onClick={onBack}
+            aria-label="Volver"
+            className="flex h-10 w-10 items-center justify-center rounded-full text-white/95 active:bg-white/10"
+          >
+            <ArrowLeft className="h-5 w-5" />
+          </button>
+          <button
+            type="button"
+            className="flex min-w-0 flex-1 items-center gap-2.5 rounded-full px-1 py-1 text-left active:bg-white/10"
+          >
+            <div
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sm font-semibold text-white"
+              style={{ background: avatarColor }}
+              aria-hidden
+            >
+              {inicial}
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-[16px] font-semibold leading-tight">{nombre}</p>
+              <p className="truncate text-[12px] leading-tight text-white/75">
+                {conv?.channel_name ?? "en línea"}
+              </p>
+            </div>
+          </button>
+          <button
+            type="button"
+            aria-label="Videollamada"
+            className="flex h-10 w-10 items-center justify-center rounded-full text-white/95 active:bg-white/10"
+          >
+            <Video className="h-5 w-5" />
+          </button>
+          <button
+            type="button"
+            aria-label="Llamada"
+            className="flex h-10 w-10 items-center justify-center rounded-full text-white/95 active:bg-white/10"
+          >
+            <Phone className="h-5 w-5" />
+          </button>
+          <button
+            type="button"
+            aria-label="Más"
+            className="flex h-10 w-10 items-center justify-center rounded-full text-white/95 active:bg-white/10"
+          >
+            <MoreVertical className="h-5 w-5" />
+          </button>
         </div>
       </header>
 
       {/* Mensajes */}
-      <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto bg-slate-50 px-3 py-3">
+      <div
+        ref={scrollRef}
+        className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-2.5 py-3"
+        style={{
+          backgroundColor: WA.chatBg,
+          backgroundImage: CHAT_PATTERN,
+          backgroundRepeat: "repeat",
+          backgroundSize: "360px 360px",
+        }}
+      >
         {isLoading && messages.length === 0 ? (
-          <div className="space-y-2">
-            {Array.from({ length: 6 }).map((_, i) => (
-              <div
-                key={i}
-                className={`flex ${i % 2 === 0 ? "justify-start" : "justify-end"}`}
-              >
-                <div className="h-8 w-40 animate-pulse rounded-2xl bg-slate-200" />
-              </div>
-            ))}
-          </div>
+          <SkeletonBubbles />
         ) : messages.length === 0 ? (
           <div className="flex h-full items-center justify-center">
-            <p className="text-sm text-slate-400">Sin mensajes todavía</p>
+            <div className="rounded-xl bg-white/80 px-3 py-1.5 text-[12px] text-slate-500 shadow-sm">
+              Sin mensajes todavía
+            </div>
           </div>
         ) : (
-          <ul className="space-y-1.5">
-            {messages.map((m) => (
-              <MessageBubble key={m.id} message={m} />
-            ))}
+          <ul className="space-y-0.5">
+            {grouped.map((item, i) =>
+              item.type === "day" ? (
+                <li key={`d-${i}`} className="my-2 flex justify-center">
+                  <span
+                    className="rounded-md px-2.5 py-1 text-[11.5px] font-medium shadow-sm"
+                    style={{ background: "#FFFFFF", color: WA.textMuted, border: `1px solid ${WA.divider}` }}
+                  >
+                    {item.label}
+                  </span>
+                </li>
+              ) : (
+                <MessageBubble key={item.message.id} message={item.message} />
+              )
+            )}
           </ul>
         )}
       </div>
 
-      {/* Error de envío */}
+      {/* Error envío */}
       {error ? (
-        <div className="border-t border-red-100 bg-red-50 px-3 py-2 text-xs text-red-700">{error}</div>
+        <div
+          className="shrink-0 border-t border-red-100 bg-red-50 px-3 py-2 text-[12px] text-red-700"
+          role="alert"
+        >
+          {error}
+        </div>
       ) : null}
 
       {/* Composer */}
       <div
-        className="shrink-0 border-t border-slate-200 bg-white px-2 py-2"
-        style={{ paddingBottom: "calc(env(safe-area-inset-bottom) + 8px)" }}
+        className="shrink-0"
+        style={{
+          background: WA.chatBg,
+          paddingBottom: "calc(env(safe-area-inset-bottom) + 6px)",
+        }}
       >
-        <div className="flex items-end gap-2">
-          <textarea
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                void send();
-              }
-            }}
-            rows={1}
-            placeholder="Escribí un mensaje…"
-            className="max-h-32 min-h-[44px] flex-1 resize-none rounded-xl border border-slate-200 px-3 py-2.5 text-base text-slate-800 placeholder:text-slate-400 focus:border-[#0EA5E9]/40 focus:outline-none focus:ring-2 focus:ring-[#0EA5E9]/30"
-          />
+        <div className="flex items-end gap-1.5 px-1.5 pt-1.5">
+          <div className="flex flex-1 items-end gap-1 rounded-3xl bg-white px-2 py-1 shadow-sm">
+            <button
+              type="button"
+              aria-label="Emoji"
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[#54656F] active:bg-slate-100"
+            >
+              <Smile className="h-[22px] w-[22px]" />
+            </button>
+            <textarea
+              ref={taRef}
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  void send();
+                }
+              }}
+              rows={1}
+              placeholder="Mensaje"
+              className="min-h-[36px] flex-1 resize-none border-0 bg-transparent px-1 py-2 text-[16px] leading-[22px] text-[#111B21] placeholder:text-[#667781] focus:outline-none"
+              style={{ maxHeight: 22 * 5 }}
+            />
+            {!hasText ? (
+              <>
+                <button
+                  type="button"
+                  aria-label="Adjuntar"
+                  className="flex h-9 w-9 shrink-0 -rotate-45 items-center justify-center rounded-full text-[#54656F] active:bg-slate-100"
+                >
+                  <Paperclip className="h-[22px] w-[22px]" />
+                </button>
+                <button
+                  type="button"
+                  aria-label="Cámara"
+                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[#54656F] active:bg-slate-100"
+                >
+                  <Camera className="h-[22px] w-[22px]" />
+                </button>
+              </>
+            ) : null}
+          </div>
           <button
             type="button"
             onClick={() => void send()}
-            disabled={sending || !text.trim()}
-            aria-label="Enviar"
-            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#0EA5E9] text-white shadow-sm transition-colors disabled:cursor-not-allowed disabled:opacity-40 active:bg-[#0284C7]"
+            disabled={sending || !hasText}
+            aria-label={hasText ? "Enviar" : "Audio"}
+            className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full text-white shadow-sm transition-transform active:scale-95 disabled:opacity-60"
+            style={{ background: WA.accent }}
           >
-            <Send className="h-4 w-4" />
+            {hasText ? (
+              <Send className="h-[20px] w-[20px] translate-x-[1px]" />
+            ) : (
+              <MicIcon />
+            )}
           </button>
         </div>
       </div>
-    </div>
+    </section>
   );
 }
 
 function MessageBubble({ message }: { message: MobileChatMessage }) {
   const fromMe = message.from_me;
   const ts = formatHora(message.created_at);
-  const isText = message.message_type === "text" || !message.message_type;
+  const kind = (message.message_type || "text").toLowerCase();
+  const isText = kind === "text" || !message.message_type;
   const content = message.content ?? "";
+  const mediaUrl = extractMediaUrl(message);
+  const showImage = (kind === "image" || kind === "sticker") && !!mediaUrl;
 
   return (
-    <li className={`flex ${fromMe ? "justify-end" : "justify-start"}`}>
+    <li
+      className={`flex ${fromMe ? "justify-end" : "justify-start"} px-0.5`}
+    >
       <div
-        className={`max-w-[80%] rounded-2xl px-3 py-2 text-sm shadow-[0_1px_1px_rgba(15,23,42,0.04)] ${
-          fromMe
-            ? "rounded-br-sm bg-[#0EA5E9] text-white"
-            : "rounded-bl-sm bg-white text-slate-800"
+        className={`relative max-w-[82%] overflow-hidden rounded-lg shadow-[0_1px_0.5px_rgba(0,0,0,0.13)] ${
+          fromMe ? "wa-tail-right" : "wa-tail-left"
         }`}
+        style={{
+          background: fromMe ? WA.sentBg : WA.recvBg,
+          color: WA.textMain,
+        }}
       >
-        {isText ? (
-          <p className="whitespace-pre-wrap break-words">{content}</p>
+        {showImage ? (
+          <div className="relative">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={mediaUrl!}
+              alt={content || "Imagen"}
+              className="block max-h-72 w-full bg-slate-100 object-cover"
+              loading="lazy"
+            />
+            {content && content !== "[imagen]" ? (
+              <p className="px-2 pb-1 pt-1.5 pr-[60px] text-[14.5px] leading-[19px]">
+                {content}
+              </p>
+            ) : (
+              <div className="h-5" />
+            )}
+          </div>
+        ) : isText ? (
+          <p className="whitespace-pre-wrap break-words px-2 pb-1 pt-1.5 pr-[60px] text-[14.5px] leading-[19px]">
+            {content}
+          </p>
         ) : (
-          <p className="italic opacity-80">
-            [{message.message_type}] {content || "Mensaje no soportado en mobile"}
+          <p
+            className="px-2 pb-1 pt-1.5 pr-[60px] text-[14.5px] italic"
+            style={{ color: WA.textMuted }}
+          >
+            {labelForMediaKind(kind)} {content && content !== `[${kind}]` ? content : ""}
           </p>
         )}
-        <p
-          className={`mt-0.5 text-right text-[10px] tabular-nums ${
-            fromMe ? "text-white/70" : "text-slate-400"
-          }`}
+        <span
+          className="absolute bottom-[3px] right-[8px] flex items-center gap-0.5 text-[11px]"
+          style={{
+            color: WA.textMuted,
+            textShadow: showImage ? "0 0 4px rgba(255,255,255,0.9)" : undefined,
+          }}
         >
           {ts}
-        </p>
+          {fromMe ? (
+            <CheckCheck className="h-[14px] w-[14px]" style={{ color: WA.tickBlue }} />
+          ) : null}
+        </span>
       </div>
+      <BubbleTailStyles />
     </li>
   );
 }
 
-// ── Estados vacíos / skeleton ───────────────────────────────────────────────
+/** Extrae un URL de media del `raw_payload` cuando el webhook ya lo guardó. */
+function extractMediaUrl(m: MobileChatMessage): string | null {
+  const p = m.raw_payload as Record<string, unknown> | null | undefined;
+  if (!p || typeof p !== "object") return null;
+  // Candidatas comunes según cómo Meta/WhatsApp pueblan el payload:
+  const candidates = [
+    (p as { media_url?: unknown }).media_url,
+    (p as { url?: unknown }).url,
+    ((p as { image?: { url?: unknown } }).image ?? {}).url,
+    ((p as { sticker?: { url?: unknown } }).sticker ?? {}).url,
+  ];
+  for (const c of candidates) {
+    if (typeof c === "string" && /^https?:\/\//i.test(c)) return c;
+  }
+  return null;
+}
+
+function labelForMediaKind(kind: string): string {
+  switch (kind) {
+    case "image": return "📷 Imagen";
+    case "video": return "🎬 Video";
+    case "audio": return "🎙️ Audio";
+    case "document": return "📎 Documento";
+    case "sticker": return "🌟 Sticker";
+    case "location": return "📍 Ubicación";
+    default: return `[${kind}]`;
+  }
+}
+
+// Estilos globales para las "colas" de las burbujas. Inyectados una sola vez
+// gracias a una clave estática — Next deduplica.
+function BubbleTailStyles() {
+  return (
+    <style jsx global>{`
+      .wa-tail-right::after,
+      .wa-tail-left::after {
+        content: "";
+        position: absolute;
+        bottom: 0;
+        width: 8px;
+        height: 13px;
+        background-repeat: no-repeat;
+      }
+      .wa-tail-right::after {
+        right: -7px;
+        background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 13'><path d='M0,0 L8,0 L0,13 Z' fill='%23E0F2FE'/></svg>");
+      }
+      .wa-tail-left::after {
+        left: -7px;
+        background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 13'><path d='M8,0 L0,0 L8,13 Z' fill='%23FFFFFF'/></svg>");
+      }
+    `}</style>
+  );
+}
+
+// ── Estados vacíos / skeletons ──────────────────────────────────────────────
 
 function EmptyInbox({ hayBusqueda }: { hayBusqueda: boolean }) {
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-6 text-center">
-      <MessageCircle className="mx-auto h-8 w-8 text-slate-300" />
-      <p className="mt-2 text-sm font-medium text-slate-700">
-        {hayBusqueda ? "Sin resultados" : "Sin conversaciones abiertas"}
+    <div className="flex h-full flex-col items-center justify-center px-8 text-center">
+      <div className="flex h-16 w-16 items-center justify-center rounded-full bg-slate-100">
+        <MessageCircle className="h-8 w-8 text-slate-400" />
+      </div>
+      <p className="mt-4 text-[15px] font-semibold text-slate-800">
+        {hayBusqueda ? "Sin resultados" : "Sin conversaciones"}
       </p>
-      {!hayBusqueda ? (
-        <p className="mt-1 text-xs text-slate-500">Las nuevas conversaciones aparecerán acá.</p>
-      ) : null}
+      <p className="mt-1 text-[13px] text-slate-500">
+        {hayBusqueda
+          ? "Probá con otro nombre o número."
+          : "Cuando llegue un mensaje nuevo lo vas a ver acá."}
+      </p>
     </div>
   );
 }
 
 function SkeletonList() {
   return (
-    <ul className="space-y-2">
-      {Array.from({ length: 6 }).map((_, i) => (
-        <li key={i} className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white p-3">
-          <div className="h-11 w-11 shrink-0 animate-pulse rounded-full bg-slate-100" />
-          <div className="min-w-0 flex-1 space-y-1.5">
-            <div className="h-3.5 w-2/3 animate-pulse rounded bg-slate-100" />
+    <ul className="divide-y divide-slate-100">
+      {Array.from({ length: 8 }).map((_, i) => (
+        <li key={i} className="flex items-center gap-3 px-3 py-3">
+          <div className="h-12 w-12 shrink-0 animate-pulse rounded-full bg-slate-200" />
+          <div className="min-w-0 flex-1 space-y-2">
+            <div className="h-3.5 w-2/5 animate-pulse rounded bg-slate-200" />
             <div className="h-3 w-3/4 animate-pulse rounded bg-slate-100" />
           </div>
         </li>
@@ -338,20 +701,80 @@ function SkeletonList() {
   );
 }
 
-// ── helpers ──────────────────────────────────────────────────────────────────
+function SkeletonBubbles() {
+  return (
+    <ul className="space-y-2">
+      {[0, 1, 0, 1, 1, 0].map((side, i) => (
+        <li key={i} className={`flex ${side === 0 ? "justify-start" : "justify-end"}`}>
+          <div
+            className="h-8 animate-pulse rounded-lg"
+            style={{
+              width: 90 + ((i * 37) % 130),
+              background: side === 0 ? "rgba(255,255,255,0.7)" : "rgba(224,242,254,0.8)",
+            }}
+          />
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+// ── Icono micrófono custom (más fiel a WhatsApp que el de lucide) ────────────
+
+function MicIcon() {
+  return (
+    <svg
+      width="22"
+      height="22"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <rect x="9" y="3" width="6" height="11" rx="3" />
+      <path d="M5 11a7 7 0 0 0 14 0" />
+      <line x1="12" y1="18" x2="12" y2="22" />
+      <line x1="9" y1="22" x2="15" y2="22" />
+    </svg>
+  );
+}
+
+// ── Helpers ─────────────────────────────────────────────────────────────────
 
 function formatRelative(iso: string): string {
   if (!iso) return "";
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "";
   const now = new Date();
-  const diffMin = Math.floor((now.getTime() - d.getTime()) / 60_000);
-  if (diffMin < 1) return "ahora";
-  if (diffMin < 60) return `${diffMin}m`;
-  const diffH = Math.floor(diffMin / 60);
-  if (diffH < 24) return `${diffH}h`;
+  const sameDay =
+    d.getFullYear() === now.getFullYear() &&
+    d.getMonth() === now.getMonth() &&
+    d.getDate() === now.getDate();
+  if (sameDay) {
+    return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+  }
+  const y = new Date(now);
+  y.setDate(y.getDate() - 1);
+  const isYesterday =
+    d.getFullYear() === y.getFullYear() &&
+    d.getMonth() === y.getMonth() &&
+    d.getDate() === y.getDate();
+  if (isYesterday) return "ayer";
+
+  const diffDays = Math.floor((now.getTime() - d.getTime()) / 86_400_000);
+  if (diffDays < 7) {
+    return d.toLocaleDateString("es-PY", { weekday: "short" });
+  }
   const sameYear = d.getFullYear() === now.getFullYear();
-  return d.toLocaleDateString("es-PY", sameYear ? { day: "2-digit", month: "short" } : { day: "2-digit", month: "short", year: "2-digit" });
+  return d.toLocaleDateString(
+    "es-PY",
+    sameYear
+      ? { day: "2-digit", month: "2-digit" }
+      : { day: "2-digit", month: "2-digit", year: "2-digit" }
+  );
 }
 
 function formatHora(iso: string): string {
@@ -360,3 +783,68 @@ function formatHora(iso: string): string {
   if (Number.isNaN(d.getTime())) return "";
   return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 }
+
+function colorFromString(s: string): string {
+  // Paleta tonal alineada con Neura: variaciones de teal/azul/slate del sidebar
+  // y el primary, sin rainbow saturado.
+  const PALETTE = [
+    "#0B3A3D", "#104A4E", "#0F766E", "#0E7490", "#0369A1",
+    "#0284C7", "#0EA5E9", "#1E3A8A", "#334155", "#475569",
+    "#7DCFD2", "#14B8A6", "#0891B2", "#1D4ED8", "#64748B",
+  ];
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+  return PALETTE[h % PALETTE.length];
+}
+
+type GroupItem =
+  | { type: "day"; label: string }
+  | { type: "msg"; message: MobileChatMessage };
+
+function groupByDay(messages: MobileChatMessage[]): GroupItem[] {
+  const out: GroupItem[] = [];
+  let lastKey = "";
+  for (const m of messages) {
+    const d = new Date(m.created_at);
+    if (Number.isNaN(d.getTime())) {
+      out.push({ type: "msg", message: m });
+      continue;
+    }
+    const key = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+    if (key !== lastKey) {
+      out.push({ type: "day", label: dayLabel(d) });
+      lastKey = key;
+    }
+    out.push({ type: "msg", message: m });
+  }
+  return out;
+}
+
+function dayLabel(d: Date): string {
+  const now = new Date();
+  const sameDay =
+    d.getFullYear() === now.getFullYear() &&
+    d.getMonth() === now.getMonth() &&
+    d.getDate() === now.getDate();
+  if (sameDay) return "HOY";
+  const y = new Date(now);
+  y.setDate(y.getDate() - 1);
+  const isY =
+    d.getFullYear() === y.getFullYear() &&
+    d.getMonth() === y.getMonth() &&
+    d.getDate() === y.getDate();
+  if (isY) return "AYER";
+  const diff = Math.floor((now.getTime() - d.getTime()) / 86_400_000);
+  if (diff < 7) {
+    return d.toLocaleDateString("es-PY", { weekday: "long" }).toUpperCase();
+  }
+  return d
+    .toLocaleDateString("es-PY", { day: "2-digit", month: "long", year: "numeric" })
+    .toUpperCase();
+}
+
+// Patrón sutil de fondo del chat (puntos diagonales muy suaves) — data URI inline
+// para no depender de un asset y no agregar request HTTP.
+const CHAT_PATTERN =
+  "url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='180' height='180' viewBox='0 0 180 180'><g fill='%23000000' fill-opacity='0.03'><circle cx='15' cy='15' r='1.2'/><circle cx='60' cy='40' r='1.2'/><circle cx='120' cy='25' r='1.2'/><circle cx='165' cy='70' r='1.2'/><circle cx='40' cy='95' r='1.2'/><circle cx='95' cy='115' r='1.2'/><circle cx='140' cy='140' r='1.2'/><circle cx='25' cy='160' r='1.2'/><circle cx='75' cy='170' r='1.2'/></g></svg>\")";
+

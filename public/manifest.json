@@ -1,0 +1,14 @@
+{
+  "name": "Neura Chats",
+  "short_name": "Chats",
+  "description": "Inbox de conversaciones Neura.",
+  "start_url": "/dashboard/conversaciones",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#F8FAFC",
+  "theme_color": "#0B3A3D",
+  "icons": [
+    { "src": "/icon.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}

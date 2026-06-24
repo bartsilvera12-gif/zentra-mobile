@@ -16,7 +16,42 @@ import { DEVICE_COOKIE_NAME, isMobileUserAgent } from "@/shared/device/detect";
  *   - no necesitan refrescar tokens — la próxima navegación real los refresca.
  * Sin este skip, una pantalla con 10 links visibles disparaba 10 auth-refresh ocultos.
  */
+/**
+ * Rutas que el shell de "solo conversaciones" deja pasar. Todo lo demás se
+ * redirige al inbox de chats — la app fue reducida a ese único módulo.
+ */
+const CHAT_ROUTE = "/dashboard/conversaciones";
+const ALLOWED_PREFIXES = [
+  CHAT_ROUTE,
+  "/login",
+  "/api/", // backend endpoints (chat, auth, webhooks)
+  "/_next/",
+  "/favicon.ico",
+  "/icon.png",
+  "/manifest.json",
+  "/sw.js",
+];
+
+function shouldRedirectToChat(pathname: string): boolean {
+  if (pathname === "/") return true;
+  for (const p of ALLOWED_PREFIXES) {
+    if (pathname === p || pathname.startsWith(p)) return false;
+  }
+  return true;
+}
+
 export async function middleware(request: NextRequest) {
+  const pathname = request.nextUrl.pathname;
+
+  // Aislar la app a /dashboard/conversaciones. Cualquier otra pantalla redirige
+  // sin gastar fetches del módulo destino.
+  if (shouldRedirectToChat(pathname)) {
+    const url = request.nextUrl.clone();
+    url.pathname = CHAT_ROUTE;
+    url.search = "";
+    return NextResponse.redirect(url);
+  }
+
   let supabaseResponse = NextResponse.next({ request });
 
   // Seteo de cookie de device: solo si no existe todavía, para no pisar la corrección
