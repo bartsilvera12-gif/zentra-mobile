@@ -1,12 +1,27 @@
+import { Suspense } from "react";
+import ConversacionesMobile from "@/mobile/pages/ConversacionesMobile";
+
 /**
  * Inbox de conversaciones — única pantalla de la app.
  *
- * Renderiza el cliente rediseñado (`ConversacionesMobile`) en cualquier
- * dispositivo. Ya no hay branching desktop/mobile ni bootstrap pesado del
- * inbox legacy: el cliente trae sus propios datos vía hooks.
+ * Server Component que envuelve el cliente rediseñado en Suspense. El cliente
+ * usa `useSearchParams()` (para el `?id=X` que conmuta entre lista y chat) y
+ * Next 16 exige que su padre prerenderable sea un Server Component con un
+ * boundary Suspense; sin esto el build falla con "missing-suspense-with-csr-
+ * bailout".
  */
-import ConversacionesMobile from "@/mobile/pages/ConversacionesMobile";
+export const dynamic = "force-dynamic";
 
 export default function ConversacionesInboxPage() {
-  return <ConversacionesMobile />;
+  return (
+    <Suspense
+      fallback={
+        <div className="flex h-full items-center justify-center text-sm text-slate-400">
+          Cargando conversaciones…
+        </div>
+      }
+    >
+      <ConversacionesMobile />
+    </Suspense>
+  );
 }

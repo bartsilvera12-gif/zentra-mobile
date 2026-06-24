@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Plus_Jakarta_Sans, Geist_Mono } from "next/font/google";
 import SWRPersistedProvider from "../shared/swr/SWRPersistedProvider";
 import { ThemeProvider } from "../components/ThemeProvider";
@@ -22,12 +22,16 @@ export const metadata: Metadata = {
   title: "Neura Chats",
   description: "Inbox de conversaciones Neura.",
   manifest: "/manifest.json",
-  themeColor: "#0B3A3D",
   appleWebApp: {
     capable: true,
     title: "Neura Chats",
     statusBarStyle: "black-translucent",
   },
+};
+
+// Next 16 movió `themeColor` (y los demás viewport opts) fuera de `metadata`.
+export const viewport: Viewport = {
+  themeColor: "#0B3A3D",
 };
 
 export default function RootLayout({
