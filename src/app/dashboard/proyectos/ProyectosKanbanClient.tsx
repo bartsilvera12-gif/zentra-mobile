@@ -228,6 +228,312 @@ function saasModuleCountLabel(p: ProyectoCard): string | null {
   return count === 1 ? "1 módulo" : `${count} módulos`;
 }
 
+/**
+ * Scroll horizontal del Kanban al pasar el cursor por los costados.
+ * Replica el patrón usado en CRM Funnel: muestra una flecha guía y desplaza
+ * con requestAnimationFrame mientras el cursor permanece en la franja.
+ * Conserva overflow-y porque las columnas pueden superar el alto disponible.
+ */
+function KanbanScroller({ children, className = "" }: { children: ReactNode; className?: string }) {
+  const ref = useRef<HTMLDivElement | null>(null);
+  const dirRef = useRef<-1 | 0 | 1>(0);
+  const rafRef = useRef<number | null>(null);
+  const [hint, setHint] = useState<-1 | 0 | 1>(0);
+
+  const loop = useCallback(() => {
+    const el = ref.current;
+    if (el && dirRef.current !== 0) {
+      el.scrollLeft += dirRef.current * 16;
+      rafRef.current = requestAnimationFrame(loop);
+    } else {
+      rafRef.current = null;
+    }
+  }, []);
+
+  const setDir = useCallback(
+    (d: -1 | 0 | 1) => {
+      if (d === dirRef.current) return;
+      dirRef.current = d;
+      setHint(d);
+      if (d !== 0 && rafRef.current == null) rafRef.current = requestAnimationFrame(loop);
+    },
+    [loop]
+  );
+
+  const onMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    const el = ref.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    const x = e.clientX - r.left;
+    const band = 72;
+    const canL = el.scrollLeft > 2;
+    const canR = el.scrollLeft < el.scrollWidth - el.clientWidth - 2;
+    if (x < band && canL) setDir(-1);
+    else if (x > r.width - band && canR) setDir(1);
+    else setDir(0);
+  };
+
+  useEffect(
+    () => () => {
+      if (rafRef.current != null) cancelAnimationFrame(rafRef.current);
+    },
+    []
+  );
+
+  const arrow = (dir: "left" | "right") => (
+    <span className="flex h-14 w-14 items-center justify-center rounded-full bg-white/75 text-[#3F8E91] shadow-lg ring-1 ring-[#4FAEB2]/30 backdrop-blur">
+      <svg
+        xmlns="http://www.w3.org/2000/svg"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        className="h-7 w-7"
+        aria-hidden="true"
+      >
+        {dir === "left" ? <polyline points="15 18 9 12 15 6" /> : <polyline points="9 18 15 12 9 6" />}
+      </svg>
+    </span>
+  );
+
+  return (
+    <div className={`relative ${className}`}>
+      <div
+        ref={ref}
+        onMouseMove={onMove}
+        onMouseLeave={() => setDir(0)}
+        className="max-h-[calc(100vh-260px)] min-h-[520px] overflow-auto rounded-xl pb-4"
+      >
+        {children}
+      </div>
+      <div
+        className={`pointer-events-none absolute inset-y-0 left-0 flex w-16 items-center justify-start pl-1 transition-opacity duration-150 ${
+          hint === -1 ? "opacity-100" : "opacity-0"
+        }`}
+      >
+        {arrow("left")}
+      </div>
+      <div
+        className={`pointer-events-none absolute inset-y-0 right-0 flex w-16 items-center justify-end pr-1 transition-opacity duration-150 ${
+          hint === 1 ? "opacity-100" : "opacity-0"
+        }`}
+      >
+        {arrow("right")}
+      </div>
+    </div>
+  );
+}
+
+const IconKanban = ({ className = "h-3.5 w-3.5" }: { className?: string }) => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    className={className}
+    aria-hidden="true"
+  >
+    <rect x="3" y="3" width="5" height="15" rx="1" />
+    <rect x="9.5" y="3" width="5" height="10" rx="1" />
+    <rect x="16" y="3" width="5" height="13" rx="1" />
+  </svg>
+);
+
+const IconList = ({ className = "h-3.5 w-3.5" }: { className?: string }) => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    className={className}
+    aria-hidden="true"
+  >
+    <line x1="8" y1="6" x2="21" y2="6" />
+    <line x1="8" y1="12" x2="21" y2="12" />
+    <line x1="8" y1="18" x2="21" y2="18" />
+    <line x1="3" y1="6" x2="3.01" y2="6" />
+    <line x1="3" y1="12" x2="3.01" y2="12" />
+    <line x1="3" y1="18" x2="3.01" y2="18" />
+  </svg>
+);
+
+type ListPageSize = 25 | 50 | 100 | "todos";
+
+/**
+ * Vista Lista (tabla) para Proyectos. Equivalente al ProspectoLista del CRM
+ * Funnel: respeta los filtros del header (vienen ya aplicados desde la API)
+ * y permite mover de estado con el mismo FancySelect que las cards.
+ */
+function ProyectosLista({
+  proyectos,
+  estados,
+  estadoActivoIds,
+  prioridadByCodigo,
+  onOpen,
+  onMove,
+  movingProjectId,
+}: {
+  proyectos: ProyectoCard[];
+  estados: EstadoRow[];
+  estadoActivoIds: Set<string>;
+  prioridadByCodigo: Map<string, PrioridadConfig>;
+  onOpen: (id: string) => void;
+  onMove: (proyectoId: string, estadoId: string) => void;
+  movingProjectId: string | null;
+}) {
+  const [pageSize, setPageSize] = useState<ListPageSize>(25);
+
+  const ordered = proyectos
+    .slice()
+    .sort((a, b) => {
+      const ta = a.last_activity_at ? new Date(a.last_activity_at).getTime() : 0;
+      const tb = b.last_activity_at ? new Date(b.last_activity_at).getTime() : 0;
+      return tb - ta;
+    });
+  const rows = pageSize === "todos" ? ordered : ordered.slice(0, pageSize);
+
+  const estadoOptions = estados.map((e) => ({ value: e.id, label: e.nombre }));
+
+  return (
+    <div className="flex min-h-0 flex-1 flex-col gap-2">
+      <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-500">
+        <span>
+          Mostrando <strong className="text-slate-700">{rows.length}</strong> de {ordered.length}
+        </span>
+        <label className="flex items-center gap-1.5">
+          <span>Registros:</span>
+          <select
+            value={String(pageSize)}
+            onChange={(e) =>
+              setPageSize(e.target.value === "todos" ? "todos" : (Number(e.target.value) as ListPageSize))
+            }
+            className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs font-medium text-slate-700 outline-none focus:border-[#4FAEB2] focus:ring-2 focus:ring-[#4FAEB2]/20"
+            aria-label="Cantidad de registros a mostrar"
+          >
+            <option value="25">25</option>
+            <option value="50">50</option>
+            <option value="100">100</option>
+            <option value="todos">Todos</option>
+          </select>
+        </label>
+      </div>
+      <div className="min-h-0 flex-1 overflow-auto rounded-2xl border border-slate-200 bg-white">
+        <table className="w-full border-collapse text-sm">
+          <thead className="sticky top-0 z-10 bg-slate-50/95 backdrop-blur">
+            <tr className="text-left text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+              <th className="px-4 py-3 font-semibold">Proyecto</th>
+              <th className="px-4 py-3 font-semibold">Cliente</th>
+              <th className="px-4 py-3 font-semibold">Tipo</th>
+              <th className="px-4 py-3 font-semibold">Prioridad</th>
+              <th className="px-4 py-3 font-semibold">Estado</th>
+              <th className="px-4 py-3 font-semibold">Comercial</th>
+              <th className="px-4 py-3 font-semibold">Técnico</th>
+              <th className="px-4 py-3 font-semibold">SLA</th>
+              <th className="px-4 py-3 font-semibold">Actividad</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.length === 0 ? (
+              <tr>
+                <td colSpan={9} className="px-4 py-12 text-center text-slate-400">
+                  Sin proyectos
+                </td>
+              </tr>
+            ) : (
+              rows.map((p) => {
+                const prio = prioridadByCodigo.get(p.prioridad);
+                const styles = getPriorityCardStyles(p.prioridad);
+                const cli =
+                  (p.cliente?.empresa || "").trim() ||
+                  (p.cliente?.nombre_contacto || "").trim() ||
+                  "—";
+                const slaVencido = p.sla_estado_actual?.vencido === true;
+                return (
+                  <tr
+                    key={p.id}
+                    onClick={() => onOpen(p.id)}
+                    className={`cursor-pointer border-t border-slate-100 transition-colors hover:bg-slate-50/70 ${
+                      movingProjectId === p.id ? "bg-sky-50/40" : ""
+                    }`}
+                  >
+                    <td className="px-4 py-2.5">
+                      <div className="max-w-[18rem] truncate font-semibold text-slate-900">{p.titulo}</div>
+                      {p.bloqueado ? (
+                        <div className="mt-0.5 inline-flex items-center rounded-full border border-rose-200 bg-rose-50 px-1.5 py-0.5 text-[10px] font-medium text-rose-700">
+                          Bloqueado
+                        </div>
+                      ) : null}
+                    </td>
+                    <td className="max-w-[14rem] truncate px-4 py-2.5 text-slate-600">{cli}</td>
+                    <td className="px-4 py-2.5 text-slate-600">{p.proyecto_tipo?.nombre ?? "—"}</td>
+                    <td className="px-4 py-2.5">
+                      <span
+                        className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold ${styles.badgeClass}`}
+                      >
+                        {prio?.nombre ?? prioridadFallbackLabel(p.prioridad)}
+                      </span>
+                    </td>
+                    <td className="px-4 py-2.5" onClick={(e) => e.stopPropagation()}>
+                      <div className="min-w-[10rem]">
+                        <FancySelect
+                          size="sm"
+                          ariaLabel="Mover a otro estado"
+                          value={p.estado_id}
+                          onChange={(v) => onMove(p.id, v)}
+                          options={[
+                            ...(!estadoActivoIds.has(p.estado_id)
+                              ? [
+                                  {
+                                    value: p.estado_id,
+                                    label: "Estado actual oculto / no usado",
+                                    disabled: true,
+                                  },
+                                ]
+                              : []),
+                            ...estadoOptions,
+                          ]}
+                        />
+                      </div>
+                    </td>
+                    <td className="max-w-[10rem] truncate px-4 py-2.5 text-[12px] text-slate-600">
+                      {p.responsable_comercial?.nombre ?? "—"}
+                    </td>
+                    <td className="max-w-[10rem] truncate px-4 py-2.5 text-[12px] text-slate-600">
+                      {p.responsable_tecnico?.nombre ?? "—"}
+                    </td>
+                    <td className="px-4 py-2.5">
+                      <span
+                        className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium ${
+                          slaVencido
+                            ? "border-rose-200 bg-rose-50 text-rose-700"
+                            : "border-slate-200 bg-slate-50 text-slate-600"
+                        }`}
+                      >
+                        {slaEstadoLabel(p)}
+                      </span>
+                    </td>
+                    <td className="px-4 py-2.5 text-[11px] text-slate-500 tabular-nums">
+                      {fmtDateTime(p.last_activity_at)}
+                    </td>
+                  </tr>
+                );
+              })
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 export default function ProyectosKanbanClient({ dataSchema }: { dataSchema: string }) {
   const [estados, setEstados] = useState<EstadoRow[]>([]);
   const [proyectos, setProyectos] = useState<ProyectoCard[]>([]);
@@ -246,6 +552,19 @@ export default function ProyectosKanbanClient({ dataSchema }: { dataSchema: stri
   const [userOpts, setUserOpts] = useState<{ id: string; nombre?: string }[]>([]);
   const [modalProjectId, setModalProjectId] = useState<string | null>(null);
   const [nuevoModalOpen, setNuevoModalOpen] = useState(false);
+
+  /** Vista del tablero: "kanban" (cards por estado) | "lista" (tabla). Persiste por navegador. */
+  const [vista, setVista] = useState<"kanban" | "lista">(() => {
+    if (typeof window === "undefined") return "kanban";
+    return window.localStorage.getItem("proyectos:vista") === "lista" ? "lista" : "kanban";
+  });
+  useEffect(() => {
+    try {
+      window.localStorage.setItem("proyectos:vista", vista);
+    } catch {
+      /* ignore */
+    }
+  }, [vista]);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
@@ -486,26 +805,55 @@ export default function ProyectosKanbanClient({ dataSchema }: { dataSchema: stri
           <h1 className="mt-1 text-2xl font-semibold tracking-tight text-slate-900">Proyectos</h1>
           <p className="text-sm text-slate-500">Kanban configurable por empresa — producción, clientes y SLA.</p>
         </div>
-        <button
-          type="button"
-          onClick={() => setNuevoModalOpen(true)}
-          className="inline-flex items-center gap-2 rounded-xl bg-[#4FAEB2] px-4 py-2.5 text-sm font-semibold text-white shadow-sm shadow-[#4FAEB2]/20 transition-colors hover:bg-[#3F8E91]"
-        >
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2.5"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            className="h-4 w-4"
-            aria-hidden="true"
+        <div className="flex shrink-0 items-center gap-2">
+          {/* Toggle de vista: Kanban (cards) | Lista (tabla). Mismo patrón que CRM Funnel. */}
+          <div className="flex items-center gap-0.5 rounded-xl border border-slate-200 bg-slate-100/80 p-0.5">
+            <button
+              type="button"
+              onClick={() => setVista("kanban")}
+              aria-pressed={vista === "kanban"}
+              title="Vista Kanban (cards por estado)"
+              className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-semibold transition-colors ${
+                vista === "kanban" ? "bg-white text-[#3F8E91] shadow-sm" : "text-slate-500 hover:text-slate-700"
+              }`}
+            >
+              <IconKanban />
+              Kanban
+            </button>
+            <button
+              type="button"
+              onClick={() => setVista("lista")}
+              aria-pressed={vista === "lista"}
+              title="Vista Lista (tabla de filas)"
+              className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-semibold transition-colors ${
+                vista === "lista" ? "bg-white text-[#3F8E91] shadow-sm" : "text-slate-500 hover:text-slate-700"
+              }`}
+            >
+              <IconList />
+              Lista
+            </button>
+          </div>
+          <button
+            type="button"
+            onClick={() => setNuevoModalOpen(true)}
+            className="inline-flex items-center gap-2 rounded-xl bg-[#4FAEB2] px-4 py-2.5 text-sm font-semibold text-white shadow-sm shadow-[#4FAEB2]/20 transition-colors hover:bg-[#3F8E91]"
           >
-            <path d="M12 5v14M5 12h14" />
-          </svg>
-          Nuevo proyecto
-        </button>
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="h-4 w-4"
+              aria-hidden="true"
+            >
+              <path d="M12 5v14M5 12h14" />
+            </svg>
+            Nuevo proyecto
+          </button>
+        </div>
       </div>
 
       {err ? <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">{err}</div> : null}
@@ -625,8 +973,19 @@ export default function ProyectosKanbanClient({ dataSchema }: { dataSchema: stri
         ) : null}
       </div>
 
+      {vista === "lista" ? (
+        <ProyectosLista
+          proyectos={proyectos}
+          estados={estados}
+          estadoActivoIds={estadoActivoIds}
+          prioridadByCodigo={prioridadByCodigo}
+          onOpen={setModalProjectId}
+          onMove={(proyectoId, estadoId) => void cambiarEstado(proyectoId, estadoId)}
+          movingProjectId={movingProjectId}
+        />
+      ) : (
       <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
-        <div className="max-h-[calc(100vh-260px)] min-h-[520px] overflow-auto rounded-xl pb-4">
+        <KanbanScroller>
           <div className="flex min-h-full gap-4">
             {kanbanColumns.map((col) => {
               const items = byColumn.get(col.id) ?? [];
@@ -665,7 +1024,7 @@ export default function ProyectosKanbanClient({ dataSchema }: { dataSchema: stri
               );
             })}
           </div>
-        </div>
+        </KanbanScroller>
         <DragOverlay>
           {activeDragProject ? (
             <ProjectCardView
@@ -680,10 +1039,13 @@ export default function ProyectosKanbanClient({ dataSchema }: { dataSchema: stri
           ) : null}
         </DragOverlay>
       </DndContext>
+      )}
 
-      <p className="text-center text-xs text-slate-400">
-        Arrastrá tarjetas entre columnas activas o usá el selector “Mover a” como alternativa.
-      </p>
+      {vista === "kanban" ? (
+        <p className="text-center text-xs text-slate-400">
+          Arrastrá tarjetas entre columnas activas o usá el selector “Mover a” como alternativa.
+        </p>
+      ) : null}
 
       <ProyectoDetalleModal
         projectId={modalProjectId}
