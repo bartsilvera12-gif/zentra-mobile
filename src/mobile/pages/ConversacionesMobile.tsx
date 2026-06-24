@@ -1,7 +1,9 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useSWRConfig } from "swr";
 import {
   ArrowLeft,
   Bell,
@@ -20,6 +22,7 @@ import {
   X,
 } from "lucide-react";
 import {
+  markMobileConversationRead,
   sendMobileMedia,
   sendMobileMessage,
   useMobileInbox,
@@ -242,8 +245,10 @@ function ConversationRow({ conv }: { conv: MobileChatConversation }) {
 
   return (
     <li>
-      <a
+      <Link
         href={`/dashboard/conversaciones?id=${encodeURIComponent(conv.id)}`}
+        prefetch={false}
+        scroll={false}
         className="flex items-center gap-3 px-3 py-2.5 active:bg-slate-100"
       >
         <div
@@ -297,7 +302,7 @@ function ConversationRow({ conv }: { conv: MobileChatConversation }) {
             ) : null}
           </div>
         </div>
-      </a>
+      </Link>
     </li>
   );
 }
@@ -312,11 +317,36 @@ function ChatScreen({
   onBack: () => void;
 }) {
   const { messages, isLoading, mutate } = useMobileMessages(conversationId);
-  const { conversations } = useMobileInbox();
+  const { conversations, mutate: mutateInbox } = useMobileInbox();
+  const swr = useSWRConfig();
   const conv = useMemo(
     () => conversations.find((c) => c.id === conversationId),
     [conversations, conversationId]
   );
+
+  // Marca como leído al entrar al chat. (a) Update optimista del cache del inbox
+  // para que el badge desaparezca al instante; (b) llamada al server action que
+  // pone unread_count=0 en la DB; (c) re-revalidación silenciosa por si la DB
+  // devuelve otro valor.
+  useEffect(() => {
+    if (!conversationId) return;
+    const clearLocally = (data: { conversations: MobileChatConversation[] } | undefined) => {
+      if (!data) return data;
+      const updated = data.conversations.map((c) =>
+        c.id === conversationId && (c.unread_count ?? 0) > 0
+          ? { ...c, unread_count: 0 }
+          : c
+      );
+      return { conversations: updated };
+    };
+    // Pisamos ambos cache-keys (open vs all) sin revalidar — UI inmediata.
+    swr.mutate("chat:mobile-inbox:1", clearLocally, { revalidate: false });
+    swr.mutate("chat:mobile-inbox:0", clearLocally, { revalidate: false });
+    // Persistir en backend. Si falla, re-revalidamos para sincronizar.
+    void markMobileConversationRead(conversationId).then((res) => {
+      if (!res.ok) void mutateInbox();
+    });
+  }, [conversationId, swr, mutateInbox]);
 
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);

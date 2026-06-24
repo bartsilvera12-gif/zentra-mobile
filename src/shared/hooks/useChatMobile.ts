@@ -118,6 +118,26 @@ export async function sendMobileMessage(opts: {
   }
 }
 
+/** Marca la conversación como leída (unread_count = 0) en el backend. */
+export async function markMobileConversationRead(
+  conversationId: string
+): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const res = await fetchWithSupabaseSession("/api/chat/mark-read", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ conversation_id: conversationId }),
+    });
+    if (!res.ok) {
+      const t = await res.text();
+      return { ok: false, error: t || `Error ${res.status}` };
+    }
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Error de red" };
+  }
+}
+
 /**
  * Envía un archivo (imagen, audio, video, documento) usando /api/chat/send-media.
  * El tipo se infiere del MIME del archivo en el backend.
