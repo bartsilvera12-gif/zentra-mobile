@@ -40,8 +40,19 @@ self.addEventListener("push", (event) => {
           ? `/dashboard/conversaciones?id=${encodeURIComponent(payload.conversationId)}`
           : "/dashboard/conversaciones"),
     },
-    // En Android suena/vibra automáticamente si el usuario tiene volumen.
-    vibrate: [60, 30, 60],
+    // silent:false explícito — el OS (Android/Chrome desktop) reproduce el
+    // sonido por defecto del canal de notificaciones del navegador o PWA.
+    // En iOS PWA 16.4+ idem. La web NO puede forzar un sonido custom: lo
+    // controla el sistema operativo / la app contenedora (Brave/Chrome/Safari).
+    silent: false,
+    // Patrón de vibración: vib(120) – pausa(40) – vib(60) – pausa(40) – vib(60).
+    // Si el celular está en silencio igual vibra (a menos que también esté en
+    // "no molestar").
+    vibrate: [120, 40, 60, 40, 60],
+    // Mantener la noti visible hasta que el usuario la toque (sino algunos
+    // Android la autodescartan en 4-5 seg).
+    requireInteraction: false,
+    renotify: true,
   };
   event.waitUntil(self.registration.showNotification(title, options));
 });

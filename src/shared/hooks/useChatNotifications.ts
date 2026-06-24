@@ -103,6 +103,10 @@ async function notifyMany(
           icon: "/icon.png",
           badge: "/icon.png",
           data,
+          silent: false,
+          renotify: true,
+          // Vibración (Android). Si está en silencio igual vibra (salvo No Molestar).
+          vibrate: [120, 40, 60, 40, 60],
         } as NotificationOptions);
       } else {
         const n = new Notification(nombre, {
@@ -110,6 +114,7 @@ async function notifyMany(
           tag,
           icon: "/icon.png",
           data,
+          silent: false,
         });
         n.onclick = () => {
           window.focus();
@@ -201,7 +206,12 @@ export function getNotificationPermission(): NotificationPermission | "unsupport
   return Notification.permission;
 }
 
-/** Beep corto (WebAudio, sin archivos). Best-effort. */
+/**
+ * Sonido de notificación corto (~450ms). Tres notas en arpegio descendente
+ * (Sol5 → Mi5 → Do5) con envolvente suave para que suene a "ding" agradable y
+ * no a beep crudo. Best-effort: si el navegador bloquea autoplay (sin gesto
+ * previo del usuario) simplemente no suena, sin error.
+ */
 function playBeep() {
   try {
     const Ctx =
@@ -210,18 +220,34 @@ function playBeep() {
       (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
     if (!Ctx) return;
     const ctx = new Ctx();
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-    osc.type = "sine";
-    osc.frequency.value = 880;
-    gain.gain.setValueAtTime(0.0001, ctx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.18, ctx.currentTime + 0.01);
-    gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.22);
-    osc.start();
-    osc.stop(ctx.currentTime + 0.25);
-    osc.onended = () => ctx.close().catch(() => {});
+    // Acordes G5 (783.99) – E5 (659.25) – C5 (523.25) — tríada de C major
+    // descendente, lectura "campanita".
+    const notes = [
+      { freq: 783.99, start: 0.0, dur: 0.18 },
+      { freq: 659.25, start: 0.09, dur: 0.18 },
+      { freq: 523.25, start: 0.20, dur: 0.30 },
+    ];
+    const master = ctx.createGain();
+    master.gain.value = 0.22; // volumen general — discreto pero audible
+    master.connect(ctx.destination);
+    let endsAt = 0;
+    notes.forEach((n) => {
+      const t0 = ctx.currentTime + n.start;
+      const t1 = t0 + n.dur;
+      const osc = ctx.createOscillator();
+      const env = ctx.createGain();
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(n.freq, t0);
+      env.gain.setValueAtTime(0.0001, t0);
+      env.gain.exponentialRampToValueAtTime(1.0, t0 + 0.015);
+      env.gain.exponentialRampToValueAtTime(0.0001, t1);
+      osc.connect(env);
+      env.connect(master);
+      osc.start(t0);
+      osc.stop(t1 + 0.02);
+      endsAt = Math.max(endsAt, t1 + 0.05);
+    });
+    setTimeout(() => ctx.close().catch(() => {}), Math.ceil(endsAt * 1000) + 50);
   } catch {
     /* navegadores con autoplay policy estricta lo bloquean — ignorar */
   }
