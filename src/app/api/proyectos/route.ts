@@ -225,6 +225,7 @@ export async function POST(request: Request) {
       estadoNuevoId: estadoId,
       tipoSlaSnapshot: tipoSla,
       changedBy: auth.usuarioCatalogId,
+      responsableTecnicoId: (insert.responsable_tecnico_id as string | null) ?? null,
     });
 
     const enriched = await enrichProyectosRows(sb, empresaId, [row]);

@@ -36,8 +36,23 @@ export async function insertHistorialCambioEstado(input: {
   estadoNuevoId: string;
   tipoSlaSnapshot: string;
   changedBy: string | null;
+  /**
+   * Snapshot del técnico asignado al proyecto al momento del cambio de estado.
+   * Se usa para reportes históricos ("proyectos entregados por técnico") que
+   * no deben verse alterados si el técnico cambia después.
+   */
+  responsableTecnicoId?: string | null;
 }): Promise<void> {
-  const { sb, empresaId, proyectoId, estadoAnteriorId, estadoNuevoId, tipoSlaSnapshot, changedBy } = input;
+  const {
+    sb,
+    empresaId,
+    proyectoId,
+    estadoAnteriorId,
+    estadoNuevoId,
+    tipoSlaSnapshot,
+    changedBy,
+    responsableTecnicoId = null,
+  } = input;
   const { error } = await sb.from("proyecto_estado_historial").insert({
     empresa_id: empresaId,
     proyecto_id: proyectoId,
@@ -45,6 +60,7 @@ export async function insertHistorialCambioEstado(input: {
     estado_nuevo_id: estadoNuevoId,
     changed_by: changedBy,
     tipo_sla_snapshot: tipoSlaSnapshot,
+    responsable_tecnico_id: responsableTecnicoId,
   });
   if (error) throw new Error(error.message);
 }

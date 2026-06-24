@@ -29,7 +29,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
     const { data: proyecto, error: e1 } = await sb
       .from("proyectos")
-      .select("id, estado_id")
+      .select("id, estado_id, responsable_tecnico_id")
       .eq("empresa_id", empresaId)
       .eq("id", pid)
       .maybeSingle();
@@ -38,6 +38,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     if (!proyecto) return NextResponse.json(errorResponse("No encontrado"), { status: 404 });
 
     const anteriorId = (proyecto as { estado_id?: string }).estado_id ?? null;
+    const tecnicoSnapshot =
+      (proyecto as { responsable_tecnico_id?: string | null }).responsable_tecnico_id ?? null;
     if (anteriorId === nuevoEstadoId) {
       const { data: full } = await sb
         .from("proyectos")
@@ -88,6 +90,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       estadoNuevoId: nuevoEstadoId,
       tipoSlaSnapshot: tipoSla,
       changedBy: auth.usuarioCatalogId,
+      responsableTecnicoId: tecnicoSnapshot,
     });
 
     const { data: row } = await sb.from("proyectos").select("*").eq("empresa_id", empresaId).eq("id", pid);
