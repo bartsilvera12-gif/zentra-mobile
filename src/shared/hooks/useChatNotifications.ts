@@ -127,13 +127,72 @@ async function notifyMany(
 export async function requestNotificationPermission(): Promise<NotificationPermission> {
   if (typeof window === "undefined" || !("Notification" in window)) return "denied";
   if (Notification.permission === "granted" || Notification.permission === "denied") {
+    if (Notification.permission === "granted") void ensurePushSubscription();
     return Notification.permission;
   }
   try {
-    return await Notification.requestPermission();
+    const p = await Notification.requestPermission();
+    if (p === "granted") void ensurePushSubscription();
+    return p;
   } catch {
     return "denied";
   }
+}
+
+/**
+ * Si hay permiso + SW + VAPID public key en env, suscribe al Push Manager y
+ * envía la suscripción serializada al backend (/api/push/subscribe) para que
+ * el webhook pueda dispararle pushes cuando llegue un mensaje, incluso con la
+ * app cerrada.
+ *
+ * Idempotente: si ya hay una suscripción activa, igual la reenvía al backend
+ * (por si la fila se borró por inactividad). Silenciosa ante errores — la app
+ * sigue funcionando con foreground notifications.
+ */
+export async function ensurePushSubscription(): Promise<void> {
+  if (typeof window === "undefined") return;
+  if (!("serviceWorker" in navigator) || !("PushManager" in window)) return;
+  const vapid = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
+  if (!vapid) return;
+  try {
+    const reg = await navigator.serviceWorker.ready;
+    let sub = await reg.pushManager.getSubscription();
+    if (!sub) {
+      // El tipo `BufferSource` del DOM excluye `Uint8Array<ArrayBufferLike>` en
+      // TS 5.5+; .buffer es ArrayBuffer y satisface el contrato.
+      sub = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(vapid).buffer as ArrayBuffer,
+      });
+    }
+    const json = sub.toJSON() as {
+      endpoint?: string;
+      keys?: { p256dh?: string; auth?: string };
+    };
+    if (!json.endpoint || !json.keys?.p256dh || !json.keys?.auth) return;
+    await fetch("/api/push/subscribe", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({
+        endpoint: json.endpoint,
+        keys: { p256dh: json.keys.p256dh, auth: json.keys.auth },
+        userAgent: navigator.userAgent,
+      }),
+    }).catch(() => {});
+  } catch {
+    /* silencioso — el caller no necesita saber */
+  }
+}
+
+/** VAPID public key viene en base64-url; el PushManager exige Uint8Array. */
+function urlBase64ToUint8Array(base64Url: string): Uint8Array {
+  const padding = "=".repeat((4 - (base64Url.length % 4)) % 4);
+  const base64 = (base64Url + padding).replace(/-/g, "+").replace(/_/g, "/");
+  const raw = atob(base64);
+  const out = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i);
+  return out;
 }
 
 /** Devuelve el estado actual (granted / denied / default). */

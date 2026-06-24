@@ -19,13 +19,18 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Neura Chats",
-  description: "Inbox de conversaciones Neura.",
+  title: "Zentra Chat",
+  description: "Inbox de conversaciones Zentra.",
   manifest: "/manifest.json",
+  applicationName: "Zentra Chat",
   appleWebApp: {
     capable: true,
-    title: "Neura Chats",
+    title: "Zentra Chat",
     statusBarStyle: "black-translucent",
+  },
+  icons: {
+    icon: [{ url: "/icon.png", sizes: "512x512", type: "image/png" }],
+    apple: [{ url: "/icon.png", sizes: "512x512", type: "image/png" }],
   },
 };
 

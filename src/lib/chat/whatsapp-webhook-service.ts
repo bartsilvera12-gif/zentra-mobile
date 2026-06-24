@@ -47,6 +47,7 @@ import type {
 import { normalizeWaPhone } from "@/lib/chat/wa-phone";
 import { applySorteoReferralToActiveSession } from "@/lib/sorteos/referral-attribution";
 import { markCampaignReplyFromInbound } from "@/lib/campaigns/campaign-inbound-hook";
+import { notifyChatPushSubscribers } from "@/lib/push/notify-chat";
 import { executeCampaignButtonActionForMatchedRecipient } from "@/lib/campaigns/campaign-button-action-service";
 import {
   createServiceRoleClientWithDbSchema,
@@ -1443,6 +1444,25 @@ export async function processInboundWebhookValue(
         businessAutomationResult.sentAwayMessage && !interactiveInboundMetaId;
 
       console.info(logW, "conversation_updated_unread", { conversationId });
+
+      // Fire-and-forget: si hay PWAs suscriptas a Web Push, mandar la noti
+      // ahora que el inbound quedó persistido + el unread bumpeado. No
+      // bloqueamos el flujo del webhook — un fallo de push no debe afectar la
+      // ingesta del mensaje.
+      try {
+        const { content: pushPreview } = extractMessageBody(msg);
+        void notifyChatPushSubscribers({
+          empresaId,
+          conversationId,
+          contactName: displayName || from,
+          preview: pushPreview,
+        });
+      } catch (e) {
+        console.warn(logW, "push_dispatch_failed", {
+          conversationId,
+          err: e instanceof Error ? e.message : String(e),
+        });
+      }
 
       const { data: convDbAfterUnread } = await supabase
         .from("chat_conversations")
