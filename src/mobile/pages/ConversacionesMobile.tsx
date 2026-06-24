@@ -28,6 +28,7 @@ import {
   type MobileChatMessage,
 } from "@/shared/hooks/useChatMobile";
 import {
+  ensurePushSubscription,
   getNotificationPermission,
   requestNotificationPermission,
   useChatNotifications,
@@ -96,15 +97,64 @@ function InboxScreen() {
   const [searchOpen, setSearchOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [notifPerm, setNotifPerm] = useState<NotificationPermission | "unsupported">("default");
+  const [toast, setToast] = useState<{ kind: "ok" | "warn" | "err"; msg: string } | null>(null);
 
   useEffect(() => {
     setNotifPerm(getNotificationPermission());
   }, []);
 
-  const askNotif = useCallback(async () => {
+  const showToast = useCallback((kind: "ok" | "warn" | "err", msg: string) => {
+    setToast({ kind, msg });
+    setTimeout(() => setToast(null), 4500);
+  }, []);
+
+  /**
+   * Click de la campana — siempre hace algo y siempre da feedback visible.
+   *
+   *   - granted: re-sincroniza la suscripción Push contra el backend (en caso
+   *     de que la VAPID se haya cargado después del primer permiso) y muestra
+   *     "Notificaciones activas".
+   *   - denied: el browser ignora silenciosamente requestPermission(); le
+   *     decimos al usuario que tiene que reactivarlo desde la configuración
+   *     del navegador.
+   *   - default: pide permiso. Si lo da, suscribe + ok. Si lo niega, aviso.
+   */
+  const onTapBell = useCallback(async () => {
+    const perm = getNotificationPermission();
+    if (perm === "unsupported") {
+      showToast("err", "Este navegador no soporta notificaciones.");
+      return;
+    }
+    if (perm === "granted") {
+      await ensurePushSubscription();
+      setNotifPerm("granted");
+      showToast(
+        "ok",
+        "Notificaciones activas. Si no llegan estando cerrado, verificá VAPID en el servidor."
+      );
+      return;
+    }
+    if (perm === "denied") {
+      showToast(
+        "warn",
+        "Bloqueado por el navegador. Tocá el candado/⋮ al lado de la URL → Permisos → Notificaciones → Permitir."
+      );
+      return;
+    }
+    // default → pedir
     const next = await requestNotificationPermission();
     setNotifPerm(next);
-  }, []);
+    if (next === "granted") {
+      showToast("ok", "Notificaciones activadas. Te van a llegar mensajes nuevos.");
+    } else if (next === "denied") {
+      showToast(
+        "warn",
+        "Permiso denegado. Podés reactivarlo desde la configuración del navegador."
+      );
+    } else {
+      showToast("warn", "El navegador no mostró el prompt. Probá desde la configuración del sitio.");
+    }
+  }, [showToast]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -173,19 +223,12 @@ function InboxScreen() {
               {notifPerm !== "unsupported" ? (
                 <button
                   type="button"
-                  onClick={notifPerm === "granted" ? undefined : askNotif}
+                  onClick={() => void onTapBell()}
                   aria-label={
                     notifPerm === "granted"
-                      ? "Notificaciones activadas"
+                      ? "Notificaciones activadas (tocar para re-sincronizar)"
                       : notifPerm === "denied"
-                        ? "Notificaciones bloqueadas en el navegador"
-                        : "Activar notificaciones"
-                  }
-                  title={
-                    notifPerm === "granted"
-                      ? "Notificaciones activadas"
-                      : notifPerm === "denied"
-                        ? "Permiso denegado — habilitalo desde la configuración del navegador"
+                        ? "Notificaciones bloqueadas"
                         : "Activar notificaciones"
                   }
                   className={`flex h-10 w-10 items-center justify-center rounded-full active:bg-white/10 ${
@@ -203,6 +246,35 @@ function InboxScreen() {
           </div>
         )}
       </header>
+
+      {/* Toast del bell de notificaciones */}
+      {toast ? (
+        <div
+          role="status"
+          className="px-3 pt-2"
+          style={{ background: WA.chatBg }}
+        >
+          <div
+            className={`flex items-start gap-2 rounded-lg border px-3 py-2 text-[13px] leading-snug shadow-sm ${
+              toast.kind === "ok"
+                ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+                : toast.kind === "warn"
+                  ? "border-amber-200 bg-amber-50 text-amber-800"
+                  : "border-red-200 bg-red-50 text-red-800"
+            }`}
+          >
+            <span className="flex-1">{toast.msg}</span>
+            <button
+              type="button"
+              onClick={() => setToast(null)}
+              aria-label="Cerrar"
+              className="shrink-0 rounded p-0.5 text-current/70 active:bg-black/5"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+      ) : null}
 
       {/* Lista */}
       <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain">
