@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAuthWithRol } from "@/lib/middleware/auth";
-import { getChatServiceClientForEmpresa } from "@/app/api/chat/_chat-service-client";
+import { getPushDbClient } from "@/lib/push/push-db-client";
 
 /**
  * POST /api/push/unsubscribe
@@ -23,7 +23,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ ok: false, error: "endpoint requerido" }, { status: 400 });
     }
 
-    const supabase = await getChatServiceClientForEmpresa(auth.empresa_id);
+    const supabase = getPushDbClient();
     const { error } = await supabase
       .from("chat_push_subscriptions")
       .delete()

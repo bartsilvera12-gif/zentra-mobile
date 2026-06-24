@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAuthWithRol } from "@/lib/middleware/auth";
-import { getChatServiceClientForEmpresa } from "@/app/api/chat/_chat-service-client";
+import { getPushDbClient } from "@/lib/push/push-db-client";
 import { isPushEnabled } from "@/lib/push/web-push-server";
 
 /**
@@ -41,7 +41,7 @@ export async function GET(request: NextRequest) {
   let subscriptionsForEmpresa = 0;
   let dbError: string | null = null;
   try {
-    const supabase = await getChatServiceClientForEmpresa(auth.empresa_id);
+    const supabase = getPushDbClient();
     const { count, error } = await supabase
       .from("chat_push_subscriptions")
       .select("*", { count: "exact", head: true })

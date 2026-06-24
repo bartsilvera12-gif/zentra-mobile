@@ -1,5 +1,5 @@
 import "server-only";
-import { createServiceRoleClientForEmpresa } from "@/lib/supabase/empresa-data-schema";
+import { getPushDbClient } from "./push-db-client";
 import { sendPushFanout, isPushEnabled, type PushSubscriptionRecord } from "./web-push-server";
 
 /**
@@ -20,8 +20,7 @@ export async function notifyChatPushSubscribers(opts: {
 }): Promise<void> {
   try {
     if (!isPushEnabled()) return;
-    const supabase = await createServiceRoleClientForEmpresa(opts.empresaId).catch(() => null);
-    if (!supabase) return;
+    const supabase = getPushDbClient();
 
     const { data, error } = await supabase
       .from("chat_push_subscriptions")

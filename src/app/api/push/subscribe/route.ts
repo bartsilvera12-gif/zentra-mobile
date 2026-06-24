@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAuthWithRol } from "@/lib/middleware/auth";
-import { getChatServiceClientForEmpresa } from "@/app/api/chat/_chat-service-client";
+import { getPushDbClient } from "@/lib/push/push-db-client";
 
 /**
  * POST /api/push/subscribe
@@ -39,7 +39,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const supabase = await getChatServiceClientForEmpresa(auth.empresa_id);
+    const supabase = getPushDbClient();
     const usuarioId = auth.usuarioCatalogId ?? null;
 
     const { error } = await supabase
