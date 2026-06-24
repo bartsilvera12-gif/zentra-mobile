@@ -257,10 +257,13 @@ export default function ProyectoQATab({ projectId, dataSchema, usuarios }: Props
   }, [data.items]);
 
   // --- Acciones API ---
-  async function call(url: string, opts?: RequestInit) {
+  // Llama al endpoint sin re-fetch — la UI ya se actualizó optimísticamente.
+  // Si falla, ejecuta el rollback y muestra el error.
+  async function mutate(url: string, opts: RequestInit, rollback: () => void) {
     const res = await fetchWithSupabaseSession(url, opts);
     const j = (await res.json().catch(() => null)) as { success?: boolean; error?: string; data?: unknown } | null;
     if (!res.ok || !j?.success) {
+      rollback();
       setErr(j?.error ?? "Error");
       return null;
     }
@@ -272,18 +275,31 @@ export default function ProyectoQATab({ projectId, dataSchema, usuarios }: Props
     const n = nuevoGrupoNombre.trim();
     if (!n || enviandoRef.current) return;
     enviandoRef.current = true;
+    setNuevoGrupoNombre("");
+    setNuevoGrupoOpen(false);
+    const tempId = `tmp_${crypto.randomUUID()}`;
+    const optimista: Grupo = {
+      id: tempId,
+      nombre: n,
+      descripcion: null,
+      sort_order: (data.grupos[data.grupos.length - 1]?.sort_order ?? 0) + 10,
+      created_at: new Date().toISOString(),
+    };
+    setData((prev) => ({ ...prev, grupos: [...prev.grupos, optimista] }));
+    setGrupoActivoId(tempId);
     try {
-      const res = await call(`/api/proyectos/${projectId}/qa/grupos`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ nombre: n }),
-      });
-      if (res) {
-        setNuevoGrupoNombre("");
-        setNuevoGrupoOpen(false);
-        await cargar();
-        const nuevoId = (res as { id?: string }).id;
-        if (nuevoId) setGrupoActivoId(nuevoId);
+      const res = await mutate(
+        `/api/proyectos/${projectId}/qa/grupos`,
+        { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ nombre: n }) },
+        () => setData((prev) => ({ ...prev, grupos: prev.grupos.filter((g) => g.id !== tempId) }))
+      );
+      const nuevoId = (res as { id?: string } | null)?.id;
+      if (nuevoId) {
+        setData((prev) => ({
+          ...prev,
+          grupos: prev.grupos.map((g) => (g.id === tempId ? { ...g, id: nuevoId } : g)),
+        }));
+        setGrupoActivoId(nuevoId);
       }
     } finally {
       enviandoRef.current = false;
@@ -293,30 +309,69 @@ export default function ProyectoQATab({ projectId, dataSchema, usuarios }: Props
   async function renombrarGrupo(g: Grupo) {
     const n = window.prompt("Nuevo nombre del grupo:", g.nombre);
     if (!n || n.trim() === g.nombre) return;
-    await call(`/api/proyectos/${projectId}/qa/grupos/${g.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ nombre: n.trim() }),
-    });
-    await cargar();
+    const nuevo = n.trim();
+    const prev = g.nombre;
+    setData((d) => ({ ...d, grupos: d.grupos.map((x) => (x.id === g.id ? { ...x, nombre: nuevo } : x)) }));
+    await mutate(
+      `/api/proyectos/${projectId}/qa/grupos/${g.id}`,
+      { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ nombre: nuevo }) },
+      () => setData((d) => ({ ...d, grupos: d.grupos.map((x) => (x.id === g.id ? { ...x, nombre: prev } : x)) }))
+    );
   }
 
   async function eliminarGrupo(g: Grupo) {
     if (!window.confirm(`¿Eliminar el grupo "${g.nombre}" con todas sus etapas e ítems?`)) return;
-    await call(`/api/proyectos/${projectId}/qa/grupos/${g.id}`, { method: "DELETE" });
-    await cargar();
+    const snapshot = data;
+    setData((d) => ({
+      ...d,
+      grupos: d.grupos.filter((x) => x.id !== g.id),
+      etapas: d.etapas.filter((e) => e.grupo_id !== g.id),
+      items: d.items.filter((it) => !d.etapas.some((e) => e.grupo_id === g.id && e.id === it.etapa_id)),
+    }));
+    if (grupoActivoId === g.id) {
+      setGrupoActivoId(data.grupos.find((x) => x.id !== g.id)?.id ?? null);
+    }
+    await mutate(
+      `/api/proyectos/${projectId}/qa/grupos/${g.id}`,
+      { method: "DELETE" },
+      () => setData(snapshot)
+    );
   }
 
   async function crearEtapa(grupoId: string, nombre: string) {
     if (!nombre.trim() || enviandoRef.current) return;
     enviandoRef.current = true;
+    const tempId = `tmp_${crypto.randomUUID()}`;
+    const lastSort =
+      data.etapas.filter((e) => e.grupo_id === grupoId).slice(-1)[0]?.sort_order ?? 0;
+    const optimista: Etapa = {
+      id: tempId,
+      grupo_id: grupoId,
+      nombre: nombre.trim(),
+      descripcion: null,
+      sort_order: lastSort + 10,
+    };
+    setData((prev) => ({ ...prev, etapas: [...prev.etapas, optimista] }));
+    setEtapasAbiertas((prev) => new Set(prev).add(tempId));
     try {
-      await call(`/api/proyectos/${projectId}/qa/etapas`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ grupo_id: grupoId, nombre: nombre.trim() }),
-      });
-      await cargar();
+      const res = await mutate(
+        `/api/proyectos/${projectId}/qa/etapas`,
+        { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ grupo_id: grupoId, nombre: nombre.trim() }) },
+        () => setData((prev) => ({ ...prev, etapas: prev.etapas.filter((e) => e.id !== tempId) }))
+      );
+      const nuevoId = (res as { id?: string } | null)?.id;
+      if (nuevoId) {
+        setData((prev) => ({
+          ...prev,
+          etapas: prev.etapas.map((e) => (e.id === tempId ? { ...e, id: nuevoId } : e)),
+        }));
+        setEtapasAbiertas((prev) => {
+          const next = new Set(prev);
+          next.delete(tempId);
+          next.add(nuevoId);
+          return next;
+        });
+      }
     } finally {
       enviandoRef.current = false;
     }
@@ -325,75 +380,152 @@ export default function ProyectoQATab({ projectId, dataSchema, usuarios }: Props
   async function renombrarEtapa(e: Etapa) {
     const n = window.prompt("Nuevo nombre de la etapa:", e.nombre);
     if (!n || n.trim() === e.nombre) return;
-    await call(`/api/proyectos/${projectId}/qa/etapas/${e.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ nombre: n.trim() }),
-    });
-    await cargar();
+    const nuevo = n.trim();
+    const prev = e.nombre;
+    setData((d) => ({ ...d, etapas: d.etapas.map((x) => (x.id === e.id ? { ...x, nombre: nuevo } : x)) }));
+    await mutate(
+      `/api/proyectos/${projectId}/qa/etapas/${e.id}`,
+      { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ nombre: nuevo }) },
+      () => setData((d) => ({ ...d, etapas: d.etapas.map((x) => (x.id === e.id ? { ...x, nombre: prev } : x)) }))
+    );
   }
 
   async function eliminarEtapa(e: Etapa) {
     if (!window.confirm(`¿Eliminar la etapa "${e.nombre}" con todos sus ítems?`)) return;
-    await call(`/api/proyectos/${projectId}/qa/etapas/${e.id}`, { method: "DELETE" });
-    await cargar();
+    const snapshot = data;
+    setData((d) => ({
+      ...d,
+      etapas: d.etapas.filter((x) => x.id !== e.id),
+      items: d.items.filter((it) => it.etapa_id !== e.id),
+    }));
+    await mutate(
+      `/api/proyectos/${projectId}/qa/etapas/${e.id}`,
+      { method: "DELETE" },
+      () => setData(snapshot)
+    );
   }
 
   async function crearItem(etapaId: string, texto: string) {
     if (!texto.trim() || enviandoRef.current) return;
     enviandoRef.current = true;
+    const tempId = `tmp_${crypto.randomUUID()}`;
+    const lastSort =
+      data.items.filter((i) => i.etapa_id === etapaId).slice(-1)[0]?.sort_order ?? 0;
+    const optimista: Item = {
+      id: tempId,
+      etapa_id: etapaId,
+      texto: texto.trim(),
+      comentario: null,
+      sort_order: lastSort + 10,
+      completado: false,
+      completado_por: null,
+      completado_at: null,
+      created_at: new Date().toISOString(),
+    };
+    setData((prev) => ({ ...prev, items: [...prev.items, optimista] }));
     try {
-      await call(`/api/proyectos/${projectId}/qa/items`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ etapa_id: etapaId, texto: texto.trim() }),
-      });
-      await cargar();
+      const res = await mutate(
+        `/api/proyectos/${projectId}/qa/items`,
+        { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ etapa_id: etapaId, texto: texto.trim() }) },
+        () => setData((prev) => ({ ...prev, items: prev.items.filter((i) => i.id !== tempId) }))
+      );
+      const nuevoId = (res as { id?: string } | null)?.id;
+      if (nuevoId) {
+        setData((prev) => ({
+          ...prev,
+          items: prev.items.map((i) => (i.id === tempId ? { ...i, id: nuevoId } : i)),
+        }));
+      }
     } finally {
       enviandoRef.current = false;
     }
   }
 
   async function togglItem(it: Item) {
-    await call(`/api/proyectos/${projectId}/qa/items/${it.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ completado: !it.completado }),
-    });
-    await cargar();
+    if (it.id.startsWith("tmp_")) return; // Esperar al ID real
+    const nuevo = !it.completado;
+    const nowIso = new Date().toISOString();
+    setData((d) => ({
+      ...d,
+      items: d.items.map((x) =>
+        x.id === it.id
+          ? {
+              ...x,
+              completado: nuevo,
+              completado_at: nuevo ? nowIso : null,
+              completado_por: nuevo ? x.completado_por : null,
+            }
+          : x
+      ),
+    }));
+    await mutate(
+      `/api/proyectos/${projectId}/qa/items/${it.id}`,
+      { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ completado: nuevo }) },
+      () =>
+        setData((d) => ({
+          ...d,
+          items: d.items.map((x) => (x.id === it.id ? it : x)),
+        }))
+    );
   }
 
   async function renombrarItem(it: Item) {
     const n = window.prompt("Editar texto del ítem:", it.texto);
     if (!n || n.trim() === it.texto) return;
-    await call(`/api/proyectos/${projectId}/qa/items/${it.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ texto: n.trim() }),
-    });
-    await cargar();
+    const nuevo = n.trim();
+    const prev = it.texto;
+    setData((d) => ({ ...d, items: d.items.map((x) => (x.id === it.id ? { ...x, texto: nuevo } : x)) }));
+    await mutate(
+      `/api/proyectos/${projectId}/qa/items/${it.id}`,
+      { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ texto: nuevo }) },
+      () => setData((d) => ({ ...d, items: d.items.map((x) => (x.id === it.id ? { ...x, texto: prev } : x)) }))
+    );
   }
 
   async function guardarComentario(it: Item, comentario: string) {
-    await call(`/api/proyectos/${projectId}/qa/items/${it.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ comentario }),
-    });
-    await cargar();
+    if (it.id.startsWith("tmp_")) return;
+    const prev = it.comentario;
+    const nuevo = comentario.trim() === "" ? null : comentario;
+    if (prev === nuevo) return;
+    setData((d) => ({ ...d, items: d.items.map((x) => (x.id === it.id ? { ...x, comentario: nuevo } : x)) }));
+    await mutate(
+      `/api/proyectos/${projectId}/qa/items/${it.id}`,
+      { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ comentario: nuevo ?? "" }) },
+      () => setData((d) => ({ ...d, items: d.items.map((x) => (x.id === it.id ? { ...x, comentario: prev } : x)) }))
+    );
   }
 
   async function eliminarItem(it: Item) {
     if (!window.confirm("¿Eliminar este ítem?")) return;
-    await call(`/api/proyectos/${projectId}/qa/items/${it.id}`, { method: "DELETE" });
-    await cargar();
+    const snapshot = data;
+    setData((d) => ({
+      ...d,
+      items: d.items.filter((x) => x.id !== it.id),
+      archivos: d.archivos.filter((a) => a.item_id !== it.id),
+    }));
+    await mutate(
+      `/api/proyectos/${projectId}/qa/items/${it.id}`,
+      { method: "DELETE" },
+      () => setData(snapshot)
+    );
   }
 
   async function subirArchivoItem(it: Item, file: File) {
+    if (it.id.startsWith("tmp_")) return;
     const fd = new FormData();
     fd.append("file", file);
-    await call(`/api/proyectos/${projectId}/qa/items/${it.id}/archivos`, { method: "POST", body: fd });
-    await cargar();
+    const res = await fetchWithSupabaseSession(
+      `/api/proyectos/${projectId}/qa/items/${it.id}/archivos`,
+      { method: "POST", body: fd }
+    );
+    const j = (await res.json().catch(() => null)) as { success?: boolean; data?: Archivo; error?: string } | null;
+    if (!res.ok || !j?.success || !j.data) {
+      setErr(j?.error ?? "No se pudo subir el archivo");
+      return;
+    }
+    setErr(null);
+    const nuevo = j.data;
+    setData((d) => ({ ...d, archivos: [nuevo, ...d.archivos] }));
   }
 
   async function descargarArchivo(it: Item, a: Archivo) {
@@ -414,8 +546,13 @@ export default function ProyectoQATab({ projectId, dataSchema, usuarios }: Props
 
   async function eliminarArchivo(it: Item, a: Archivo) {
     if (!window.confirm(`¿Eliminar "${a.nombre}"?`)) return;
-    await call(`/api/proyectos/${projectId}/qa/items/${it.id}/archivos/${a.id}`, { method: "DELETE" });
-    await cargar();
+    const snapshot = data.archivos;
+    setData((d) => ({ ...d, archivos: d.archivos.filter((x) => x.id !== a.id) }));
+    await mutate(
+      `/api/proyectos/${projectId}/qa/items/${it.id}/archivos/${a.id}`,
+      { method: "DELETE" },
+      () => setData((d) => ({ ...d, archivos: snapshot }))
+    );
   }
 
   if (loading) {
