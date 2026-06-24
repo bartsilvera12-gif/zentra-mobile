@@ -15,10 +15,12 @@ import {
   Search,
   Send,
   Smile,
+  Trash2,
   Video,
   X,
 } from "lucide-react";
 import {
+  sendMobileMedia,
   sendMobileMessage,
   useMobileInbox,
   useMobileMessages,
@@ -322,6 +324,21 @@ function ChatScreen({
   const scrollRef = useRef<HTMLDivElement>(null);
   const taRef = useRef<HTMLTextAreaElement>(null);
 
+  // File pickers ocultos: uno general (paperclip) y uno para cámara (capture).
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
+
+  // Estado de grabación de audio.
+  const [recording, setRecording] = useState<{
+    state: "idle" | "recording";
+    startedAt: number;
+    elapsedSec: number;
+  }>({ state: "idle", startedAt: 0, elapsedSec: 0 });
+  const recorderRef = useRef<MediaRecorder | null>(null);
+  const recChunksRef = useRef<Blob[]>([]);
+  const recStreamRef = useRef<MediaStream | null>(null);
+  const recCancelledRef = useRef(false);
+
   // Auto-scroll al fondo cuando llegan mensajes nuevos.
   useEffect(() => {
     const el = scrollRef.current;
@@ -335,6 +352,27 @@ function ChatScreen({
     el.style.height = "auto";
     el.style.height = `${Math.min(el.scrollHeight, 5 * 22)}px`;
   }, [text]);
+
+  // Tick del cronómetro mientras se graba.
+  useEffect(() => {
+    if (recording.state !== "recording") return;
+    const id = setInterval(() => {
+      setRecording((r) =>
+        r.state === "recording"
+          ? { ...r, elapsedSec: Math.floor((Date.now() - r.startedAt) / 1000) }
+          : r
+      );
+    }, 250);
+    return () => clearInterval(id);
+  }, [recording.state]);
+
+  // Cleanup defensivo si el componente desmonta mientras se graba.
+  useEffect(() => {
+    return () => {
+      try { recorderRef.current?.stop(); } catch { /* ignore */ }
+      recStreamRef.current?.getTracks().forEach((t) => t.stop());
+    };
+  }, []);
 
   const send = useCallback(async () => {
     const t = text.trim();
@@ -350,6 +388,89 @@ function ChatScreen({
     }
     setSending(false);
   }, [text, sending, conversationId, mutate]);
+
+  const sendFile = useCallback(
+    async (file: File) => {
+      if (sending) return;
+      const maxMb = 15;
+      if (file.size > maxMb * 1024 * 1024) {
+        setError(`El archivo supera ${maxMb} MB.`);
+        return;
+      }
+      setSending(true);
+      setError(null);
+      const res = await sendMobileMedia({ conversationId, file });
+      if (!res.ok) {
+        setError(res.error ?? "No se pudo enviar el archivo.");
+      } else {
+        await mutate();
+      }
+      setSending(false);
+    },
+    [conversationId, sending, mutate]
+  );
+
+  const onPickFile = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const f = e.target.files?.[0];
+      e.target.value = ""; // permitir re-seleccionar el mismo archivo
+      if (f) void sendFile(f);
+    },
+    [sendFile]
+  );
+
+  const startRecording = useCallback(async () => {
+    if (recording.state === "recording" || sending) return;
+    setError(null);
+    if (typeof navigator === "undefined" || !navigator.mediaDevices?.getUserMedia) {
+      setError("Este navegador no soporta grabar audio.");
+      return;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mime = pickAudioMime();
+      const mr = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
+      recChunksRef.current = [];
+      recCancelledRef.current = false;
+      mr.ondataavailable = (ev) => {
+        if (ev.data && ev.data.size > 0) recChunksRef.current.push(ev.data);
+      };
+      mr.onstop = async () => {
+        const tracks = recStreamRef.current?.getTracks() ?? [];
+        tracks.forEach((t) => t.stop());
+        recStreamRef.current = null;
+        recorderRef.current = null;
+        if (recCancelledRef.current || recChunksRef.current.length === 0) {
+          setRecording({ state: "idle", startedAt: 0, elapsedSec: 0 });
+          return;
+        }
+        const type = mr.mimeType || "audio/webm";
+        const blob = new Blob(recChunksRef.current, { type });
+        const ext = guessAudioExt(type);
+        const filename = `audio-${Date.now()}.${ext}`;
+        setRecording({ state: "idle", startedAt: 0, elapsedSec: 0 });
+        await sendFile(new File([blob], filename, { type }));
+      };
+      recorderRef.current = mr;
+      recStreamRef.current = stream;
+      setRecording({ state: "recording", startedAt: Date.now(), elapsedSec: 0 });
+      mr.start();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "No se pudo acceder al micrófono.");
+    }
+  }, [recording.state, sending, sendFile]);
+
+  const stopAndSendRecording = useCallback(() => {
+    if (recording.state !== "recording") return;
+    recCancelledRef.current = false;
+    try { recorderRef.current?.stop(); } catch { /* ignore */ }
+  }, [recording.state]);
+
+  const cancelRecording = useCallback(() => {
+    if (recording.state !== "recording") return;
+    recCancelledRef.current = true;
+    try { recorderRef.current?.stop(); } catch { /* ignore */ }
+  }, [recording.state]);
 
   const nombre =
     conv?.contact_nombre?.trim() || conv?.contact_telefono?.trim() || "Conversación";
@@ -478,67 +599,177 @@ function ChatScreen({
           paddingBottom: "calc(env(safe-area-inset-bottom) + 6px)",
         }}
       >
-        <div className="flex items-end gap-1.5 px-1.5 pt-1.5">
-          <div className="flex flex-1 items-end gap-1 rounded-3xl bg-white px-2 py-1 shadow-sm">
+        {/* Inputs file ocultos (uno general, otro con captura de cámara). */}
+        <input
+          ref={fileInputRef}
+          type="file"
+          className="hidden"
+          accept="image/*,video/*,audio/*,application/pdf,application/zip,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/*"
+          onChange={onPickFile}
+        />
+        <input
+          ref={cameraInputRef}
+          type="file"
+          className="hidden"
+          accept="image/*"
+          capture="environment"
+          onChange={onPickFile}
+        />
+
+        {recording.state === "recording" ? (
+          <RecordingBar
+            elapsedSec={recording.elapsedSec}
+            onCancel={cancelRecording}
+            onSend={stopAndSendRecording}
+          />
+        ) : (
+          <div className="flex items-end gap-1.5 px-1.5 pt-1.5">
+            <div className="flex flex-1 items-end gap-1 rounded-3xl bg-white px-2 py-1 shadow-sm">
+              <button
+                type="button"
+                aria-label="Emoji"
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[#54656F] active:bg-slate-100"
+              >
+                <Smile className="h-[22px] w-[22px]" />
+              </button>
+              <textarea
+                ref={taRef}
+                value={text}
+                onChange={(e) => setText(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    void send();
+                  }
+                }}
+                rows={1}
+                placeholder={sending ? "Enviando…" : "Mensaje"}
+                disabled={sending}
+                className="min-h-[36px] flex-1 resize-none border-0 bg-transparent px-1 py-2 text-[16px] leading-[22px] text-[#111B21] placeholder:text-[#667781] focus:outline-none disabled:opacity-60"
+                style={{ maxHeight: 22 * 5 }}
+              />
+              {!hasText ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={sending}
+                    aria-label="Adjuntar archivo"
+                    title="Adjuntar archivo"
+                    className="flex h-9 w-9 shrink-0 -rotate-45 items-center justify-center rounded-full text-[#54656F] active:bg-slate-100 disabled:opacity-50"
+                  >
+                    <Paperclip className="h-[22px] w-[22px]" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => cameraInputRef.current?.click()}
+                    disabled={sending}
+                    aria-label="Tomar foto"
+                    title="Tomar foto"
+                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[#54656F] active:bg-slate-100 disabled:opacity-50"
+                  >
+                    <Camera className="h-[22px] w-[22px]" />
+                  </button>
+                </>
+              ) : null}
+            </div>
             <button
               type="button"
-              aria-label="Emoji"
-              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[#54656F] active:bg-slate-100"
+              onClick={hasText ? () => void send() : () => void startRecording()}
+              disabled={sending}
+              aria-label={hasText ? "Enviar" : "Grabar audio"}
+              title={hasText ? "Enviar" : "Grabar audio"}
+              className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full text-white shadow-sm transition-transform active:scale-95 disabled:opacity-60"
+              style={{ background: WA.accent }}
             >
-              <Smile className="h-[22px] w-[22px]" />
+              {hasText ? (
+                <Send className="h-[20px] w-[20px] translate-x-[1px]" />
+              ) : (
+                <MicIcon />
+              )}
             </button>
-            <textarea
-              ref={taRef}
-              value={text}
-              onChange={(e) => setText(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey) {
-                  e.preventDefault();
-                  void send();
-                }
-              }}
-              rows={1}
-              placeholder="Mensaje"
-              className="min-h-[36px] flex-1 resize-none border-0 bg-transparent px-1 py-2 text-[16px] leading-[22px] text-[#111B21] placeholder:text-[#667781] focus:outline-none"
-              style={{ maxHeight: 22 * 5 }}
-            />
-            {!hasText ? (
-              <>
-                <button
-                  type="button"
-                  aria-label="Adjuntar"
-                  className="flex h-9 w-9 shrink-0 -rotate-45 items-center justify-center rounded-full text-[#54656F] active:bg-slate-100"
-                >
-                  <Paperclip className="h-[22px] w-[22px]" />
-                </button>
-                <button
-                  type="button"
-                  aria-label="Cámara"
-                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[#54656F] active:bg-slate-100"
-                >
-                  <Camera className="h-[22px] w-[22px]" />
-                </button>
-              </>
-            ) : null}
           </div>
-          <button
-            type="button"
-            onClick={() => void send()}
-            disabled={sending || !hasText}
-            aria-label={hasText ? "Enviar" : "Audio"}
-            className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full text-white shadow-sm transition-transform active:scale-95 disabled:opacity-60"
-            style={{ background: WA.accent }}
-          >
-            {hasText ? (
-              <Send className="h-[20px] w-[20px] translate-x-[1px]" />
-            ) : (
-              <MicIcon />
-            )}
-          </button>
-        </div>
+        )}
       </div>
     </section>
   );
+}
+
+function RecordingBar({
+  elapsedSec,
+  onCancel,
+  onSend,
+}: {
+  elapsedSec: number;
+  onCancel: () => void;
+  onSend: () => void;
+}) {
+  const mm = String(Math.floor(elapsedSec / 60)).padStart(2, "0");
+  const ss = String(elapsedSec % 60).padStart(2, "0");
+  return (
+    <div className="flex items-center gap-2 px-2 pt-1.5">
+      <button
+        type="button"
+        onClick={onCancel}
+        aria-label="Cancelar grabación"
+        title="Cancelar"
+        className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-red-600 active:bg-red-50"
+      >
+        <Trash2 className="h-5 w-5" />
+      </button>
+      <div className="flex flex-1 items-center gap-2 rounded-3xl bg-white px-3 py-2 shadow-sm">
+        <span
+          aria-hidden
+          className="inline-block h-2.5 w-2.5 animate-pulse rounded-full"
+          style={{ background: "#DC2626" }}
+        />
+        <span className="text-[14px] font-medium tabular-nums" style={{ color: WA.textMain }}>
+          {mm}:{ss}
+        </span>
+        <span className="ml-2 truncate text-[13px]" style={{ color: WA.textMuted }}>
+          Grabando audio…
+        </span>
+      </div>
+      <button
+        type="button"
+        onClick={onSend}
+        aria-label="Enviar audio"
+        title="Enviar audio"
+        className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full text-white shadow-sm transition-transform active:scale-95"
+        style={{ background: WA.accent }}
+      >
+        <Send className="h-[20px] w-[20px] translate-x-[1px]" />
+      </button>
+    </div>
+  );
+}
+
+// Selecciona el primer MIME de audio que el navegador soporte. Empieza por opus
+// (mejor compresión y soportado en Android/Chrome/Firefox), cae a mp4/aac en
+// Safari iOS y, en último caso, deja que el navegador decida.
+function pickAudioMime(): string | null {
+  if (typeof window === "undefined" || typeof MediaRecorder === "undefined") return null;
+  const candidates = [
+    "audio/webm;codecs=opus",
+    "audio/webm",
+    "audio/mp4;codecs=mp4a.40.2",
+    "audio/mp4",
+    "audio/ogg;codecs=opus",
+  ];
+  for (const c of candidates) {
+    try {
+      if (MediaRecorder.isTypeSupported(c)) return c;
+    } catch { /* ignore */ }
+  }
+  return null;
+}
+
+function guessAudioExt(mime: string): string {
+  if (mime.includes("webm")) return "webm";
+  if (mime.includes("mp4")) return "m4a";
+  if (mime.includes("ogg")) return "ogg";
+  if (mime.includes("mpeg")) return "mp3";
+  return "bin";
 }
 
 function MessageBubble({ message }: { message: MobileChatMessage }) {
