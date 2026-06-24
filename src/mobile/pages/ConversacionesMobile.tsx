@@ -11,14 +11,11 @@ import {
   Camera,
   CheckCheck,
   MessageCircle,
-  MoreVertical,
   Paperclip,
-  Phone,
   Search,
   Send,
   Smile,
   Trash2,
-  Video,
   X,
 } from "lucide-react";
 import {
@@ -202,13 +199,6 @@ function InboxScreen() {
                   )}
                 </button>
               ) : null}
-              <button
-                type="button"
-                aria-label="Más opciones"
-                className="flex h-10 w-10 items-center justify-center rounded-full text-white/95 active:bg-white/10"
-              >
-                <MoreVertical className="h-5 w-5" />
-              </button>
             </div>
           </div>
         )}
@@ -358,6 +348,9 @@ function ChatScreen({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
 
+  // Picker de emojis.
+  const [emojiOpen, setEmojiOpen] = useState(false);
+
   // Estado de grabación de audio.
   const [recording, setRecording] = useState<{
     state: "idle" | "recording";
@@ -402,6 +395,23 @@ function ChatScreen({
       try { recorderRef.current?.stop(); } catch { /* ignore */ }
       recStreamRef.current?.getTracks().forEach((t) => t.stop());
     };
+  }, []);
+
+  // Inserta un emoji en la posición actual del cursor del textarea.
+  const insertEmoji = useCallback((emoji: string) => {
+    const ta = taRef.current;
+    setText((prev) => {
+      if (!ta) return prev + emoji;
+      const start = ta.selectionStart ?? prev.length;
+      const end = ta.selectionEnd ?? prev.length;
+      return prev.slice(0, start) + emoji + prev.slice(end);
+    });
+    requestAnimationFrame(() => {
+      if (!ta) return;
+      const newPos = (ta.selectionStart ?? 0) + emoji.length;
+      ta.focus();
+      try { ta.setSelectionRange(newPos, newPos); } catch { /* ignore */ }
+    });
   }, []);
 
   const send = useCallback(async () => {
@@ -513,62 +523,49 @@ function ChatScreen({
 
   return (
     <section className="flex h-full flex-col" style={{ background: WA.chatBg }}>
-      {/* Header chat */}
+      {/* Header chat — minimal: back + avatar + nombre/estado. Sin iconos de
+          videollamada/llamada/menú (ruido visual sin función real). */}
       <header
-        className="shrink-0 text-white shadow-[0_1px_3px_rgba(0,0,0,0.1)]"
+        className="shrink-0 text-white"
         style={{
           background: WA.headerBg,
           paddingTop: "env(safe-area-inset-top)",
+          paddingLeft: "env(safe-area-inset-left)",
+          paddingRight: "env(safe-area-inset-right)",
+          boxShadow: "0 1px 0 rgba(0,0,0,0.18)",
         }}
       >
-        <div className="flex items-center gap-1 px-1 py-1.5">
+        <div className="flex items-center gap-2 px-1 py-2">
           <button
             type="button"
             onClick={onBack}
             aria-label="Volver"
-            className="flex h-10 w-10 items-center justify-center rounded-full text-white/95 active:bg-white/10"
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-white/95 transition-colors active:bg-white/10"
           >
-            <ArrowLeft className="h-5 w-5" />
+            <ArrowLeft className="h-[22px] w-[22px]" />
           </button>
-          <button
-            type="button"
-            className="flex min-w-0 flex-1 items-center gap-2.5 rounded-full px-1 py-1 text-left active:bg-white/10"
-          >
+          <div className="flex min-w-0 flex-1 items-center gap-2.5">
             <div
-              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sm font-semibold text-white"
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[13px] font-semibold text-white ring-2 ring-white/15"
               style={{ background: avatarColor }}
               aria-hidden
             >
               {inicial}
             </div>
             <div className="min-w-0 flex-1">
-              <p className="truncate text-[16px] font-semibold leading-tight">{nombre}</p>
-              <p className="truncate text-[12px] leading-tight text-white/75">
-                {conv?.channel_name ?? "en línea"}
+              <p className="truncate text-[15.5px] font-semibold leading-tight tracking-tight">
+                {nombre}
+              </p>
+              <p className="mt-0.5 flex items-center gap-1.5 truncate text-[11.5px] leading-tight text-white/70">
+                <span
+                  aria-hidden
+                  className="inline-block h-1.5 w-1.5 rounded-full"
+                  style={{ background: "#4ADE80" }}
+                />
+                {conv?.channel_name ?? "Conversación"}
               </p>
             </div>
-          </button>
-          <button
-            type="button"
-            aria-label="Videollamada"
-            className="flex h-10 w-10 items-center justify-center rounded-full text-white/95 active:bg-white/10"
-          >
-            <Video className="h-5 w-5" />
-          </button>
-          <button
-            type="button"
-            aria-label="Llamada"
-            className="flex h-10 w-10 items-center justify-center rounded-full text-white/95 active:bg-white/10"
-          >
-            <Phone className="h-5 w-5" />
-          </button>
-          <button
-            type="button"
-            aria-label="Más"
-            className="flex h-10 w-10 items-center justify-center rounded-full text-white/95 active:bg-white/10"
-          >
-            <MoreVertical className="h-5 w-5" />
-          </button>
+          </div>
         </div>
       </header>
 
@@ -627,8 +624,18 @@ function ChatScreen({
         style={{
           background: WA.chatBg,
           paddingBottom: "calc(env(safe-area-inset-bottom) + 6px)",
+          paddingLeft: "env(safe-area-inset-left)",
+          paddingRight: "env(safe-area-inset-right)",
         }}
       >
+        {/* Picker de emojis (toggleable arriba del composer). */}
+        {emojiOpen ? (
+          <EmojiPicker
+            onSelect={(e) => insertEmoji(e)}
+            onClose={() => setEmojiOpen(false)}
+          />
+        ) : null}
+
         {/* Inputs file ocultos (uno general, otro con captura de cámara). */}
         <input
           ref={fileInputRef}
@@ -653,12 +660,16 @@ function ChatScreen({
             onSend={stopAndSendRecording}
           />
         ) : (
-          <div className="flex items-end gap-1.5 px-1.5 pt-1.5">
-            <div className="flex flex-1 items-end gap-1 rounded-3xl bg-white px-2 py-1 shadow-sm">
+          <div className="flex items-end gap-1.5 px-2 pt-1.5">
+            <div className="flex min-w-0 flex-1 items-end gap-1 rounded-3xl bg-white px-2 py-1 shadow-sm">
               <button
                 type="button"
-                aria-label="Emoji"
-                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[#54656F] active:bg-slate-100"
+                onClick={() => setEmojiOpen((o) => !o)}
+                aria-label={emojiOpen ? "Cerrar emojis" : "Abrir emojis"}
+                aria-expanded={emojiOpen}
+                className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full active:bg-slate-100 ${
+                  emojiOpen ? "text-[#0EA5E9]" : "text-[#54656F]"
+                }`}
               >
                 <Smile className="h-[22px] w-[22px]" />
               </button>
@@ -709,7 +720,7 @@ function ChatScreen({
               disabled={sending}
               aria-label={hasText ? "Enviar" : "Grabar audio"}
               title={hasText ? "Enviar" : "Grabar audio"}
-              className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full text-white shadow-sm transition-transform active:scale-95 disabled:opacity-60"
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-white shadow-sm transition-transform active:scale-95 disabled:opacity-60"
               style={{ background: WA.accent }}
             >
               {hasText ? (
@@ -722,6 +733,173 @@ function ChatScreen({
         )}
       </div>
     </section>
+  );
+}
+
+// ── Emoji picker (custom liviano, sin libs) ─────────────────────────────────
+
+const EMOJI_CATEGORIES: Array<{ key: string; label: string; icon: string; list: string[] }> = [
+  {
+    key: "smileys",
+    label: "Caras",
+    icon: "😀",
+    list: [
+      "😀","😃","😄","😁","😆","😅","🤣","😂","🙂","🙃",
+      "😉","😊","😇","🥰","😍","🤩","😘","😗","😋","😜",
+      "🤪","😎","🥳","😏","😒","😞","😔","😟","😕","🙁",
+      "☹️","😣","😖","😫","😩","😢","😭","😤","😠","😡",
+      "🤬","🤔","🤨","😐","😑","😶","🙄","😬","🤥","😪",
+      "😴","🤤","🤒","🤕","🤧","🥵","🥶","😵","🤯","🤠",
+      "🥺","🤗","🤭","🤫","🫡","🫥","🫠","😮","😯","😲",
+    ],
+  },
+  {
+    key: "gestures",
+    label: "Gestos",
+    icon: "👍",
+    list: [
+      "👍","👎","👌","🤌","🤏","✌️","🤞","🫰","🤟","🤘",
+      "🤙","🫵","👈","👉","👆","🖕","👇","☝️","👋","🤚",
+      "🖐️","✋","🖖","🫱","🫲","🫳","🫴","👏","🙌","👐",
+      "🤲","🤝","🙏","💪","🫵","👀","👁️","👅","👄","🦴",
+    ],
+  },
+  {
+    key: "hearts",
+    label: "Amor",
+    icon: "❤️",
+    list: [
+      "❤️","🧡","💛","💚","💙","💜","🖤","🤍","🤎","💔",
+      "❣️","💕","💞","💓","💗","💖","💘","💝","💟","♥️",
+      "💌","💋","🌹","🌷","💐","🥀","🌺","🌸","💍","💎",
+    ],
+  },
+  {
+    key: "animals",
+    label: "Animales",
+    icon: "🐶",
+    list: [
+      "🐶","🐱","🐭","🐹","🐰","🦊","🐻","🐼","🐨","🐯",
+      "🦁","🐮","🐷","🐸","🐵","🐔","🐧","🐦","🐤","🦆",
+      "🦅","🦉","🦇","🐺","🐗","🐴","🦄","🐝","🐛","🦋",
+      "🐌","🐞","🐢","🐍","🦎","🐙","🦑","🦀","🐠","🐟",
+      "🐬","🐳","🐋","🦈","🐊","🐅","🐆","🦓","🦍","🐘",
+    ],
+  },
+  {
+    key: "food",
+    label: "Comida",
+    icon: "🍔",
+    list: [
+      "🍎","🍐","🍊","🍋","🍌","🍉","🍇","🍓","🫐","🍒",
+      "🍑","🥭","🍍","🥥","🥝","🍅","🍆","🥑","🥦","🥬",
+      "🥒","🌶️","🌽","🥕","🧄","🧅","🥔","🍠","🥐","🥯",
+      "🍞","🥖","🧀","🥚","🍳","🥞","🥓","🥩","🍗","🍖",
+      "🌭","🍔","🍟","🍕","🥪","🌮","🌯","🥗","🍣","🍦",
+      "🍩","🎂","🍰","🍫","🍬","🍿","☕","🍵","🥤","🧋",
+      "🍺","🍻","🍷","🍸","🍹","🧉","🍾","🥂","🥃","🍶",
+    ],
+  },
+  {
+    key: "objects",
+    label: "Varios",
+    icon: "🎉",
+    list: [
+      "🎉","🎊","🎁","🎈","🎀","🎂","🥳","🪅","✨","⭐",
+      "🌟","💫","⚡","🔥","💯","💥","💢","💦","💤","💨",
+      "⚽","🏀","🏈","⚾","🎾","🏐","🏉","🥎","🏓","🏸",
+      "📱","💻","⌚","📷","📹","🎥","🎬","🎵","🎶","🎤",
+      "⏰","🔔","🔕","💡","🕯️","🪔","🔑","🔒","🔓","💰",
+      "💵","💳","🧾","📌","📍","📎","🖇️","📏","📐","✂️",
+      "✅","❌","⚠️","❗","❓","💯","🆗","🆕","🔝","🆒",
+    ],
+  },
+];
+
+function EmojiPicker({
+  onSelect,
+  onClose,
+}: {
+  onSelect: (emoji: string) => void;
+  onClose: () => void;
+}) {
+  const [tab, setTab] = useState(EMOJI_CATEGORIES[0].key);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // Cerrar con Escape o click afuera del picker.
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") onClose();
+    }
+    function onPointer(e: PointerEvent) {
+      const el = containerRef.current;
+      if (!el) return;
+      const target = e.target as Node | null;
+      if (target && !el.contains(target)) {
+        // Ignorar clicks en el propio botón Smile — su handler cierra/abre solo.
+        const btn = (target as Element).closest?.('button[aria-label*="emojis"]');
+        if (!btn) onClose();
+      }
+    }
+    document.addEventListener("keydown", onKey);
+    document.addEventListener("pointerdown", onPointer);
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.removeEventListener("pointerdown", onPointer);
+    };
+  }, [onClose]);
+
+  const current = EMOJI_CATEGORIES.find((c) => c.key === tab) ?? EMOJI_CATEGORIES[0];
+
+  return (
+    <div
+      ref={containerRef}
+      className="border-t border-slate-200 bg-white"
+      style={{ animation: "slideUp 140ms ease-out" }}
+    >
+      {/* Grid scroll */}
+      <div className="max-h-[240px] overflow-y-auto overscroll-y-contain px-2 py-2">
+        <div
+          className="grid gap-0.5"
+          style={{ gridTemplateColumns: "repeat(8, minmax(0, 1fr))" }}
+        >
+          {current.list.map((emoji, i) => (
+            <button
+              key={`${current.key}-${i}-${emoji}`}
+              type="button"
+              onClick={() => onSelect(emoji)}
+              className="flex h-9 w-full items-center justify-center rounded-md text-[22px] leading-none active:bg-slate-100"
+              aria-label={`Insertar ${emoji}`}
+            >
+              <span>{emoji}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+      {/* Tabs categorías */}
+      <div className="flex items-center justify-between border-t border-slate-100 bg-slate-50 px-1 py-1">
+        {EMOJI_CATEGORIES.map((c) => (
+          <button
+            key={c.key}
+            type="button"
+            onClick={() => setTab(c.key)}
+            aria-label={c.label}
+            aria-pressed={tab === c.key}
+            className={`flex h-9 flex-1 items-center justify-center rounded-md text-[18px] leading-none transition-colors ${
+              tab === c.key ? "bg-white shadow-sm" : "active:bg-white/60"
+            }`}
+          >
+            <span style={{ opacity: tab === c.key ? 1 : 0.7 }}>{c.icon}</span>
+          </button>
+        ))}
+      </div>
+      <style jsx global>{`
+        @keyframes slideUp {
+          from { transform: translateY(8px); opacity: 0; }
+          to { transform: translateY(0); opacity: 1; }
+        }
+      `}</style>
+    </div>
   );
 }
 
@@ -765,7 +943,7 @@ function RecordingBar({
         onClick={onSend}
         aria-label="Enviar audio"
         title="Enviar audio"
-        className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full text-white shadow-sm transition-transform active:scale-95"
+        className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-white shadow-sm transition-transform active:scale-95"
         style={{ background: WA.accent }}
       >
         <Send className="h-[20px] w-[20px] translate-x-[1px]" />
