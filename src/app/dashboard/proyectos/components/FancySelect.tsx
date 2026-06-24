@@ -28,6 +28,8 @@ export type FancySelectProps = {
   disabled?: boolean;
   /** Forces the popover to open upward. By default it auto-detects. */
   openDirection?: "auto" | "up" | "down";
+  /** Estilo inline aplicado al trigger (botón). Útil para teñir el borde por fila. */
+  triggerStyle?: React.CSSProperties;
 };
 
 const TRIGGER_BASE =
@@ -43,6 +45,7 @@ export function FancySelect({
   size = "md",
   disabled = false,
   openDirection = "auto",
+  triggerStyle,
 }: FancySelectProps) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -200,6 +203,7 @@ export function FancySelect({
         disabled={disabled}
         onClick={toggleMenu}
         onKeyDown={onKeyDown}
+        style={triggerStyle}
         className={`${TRIGGER_BASE} ${sizeClasses} ${
           open ? "border-[#4FAEB2] ring-2 ring-[#4FAEB2]/20" : ""
         }`}

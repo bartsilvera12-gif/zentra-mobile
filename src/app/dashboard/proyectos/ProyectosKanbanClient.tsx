@@ -229,35 +229,55 @@ function saasModuleCountLabel(p: ProyectoCard): string | null {
 }
 
 /**
- * Scroll horizontal del Kanban al pasar el cursor por los costados.
- * Replica el patrón usado en CRM Funnel: muestra una flecha guía y desplaza
- * con requestAnimationFrame mientras el cursor permanece en la franja.
- * Conserva overflow-y porque las columnas pueden superar el alto disponible.
+ * Scroll del Kanban al pasar el cursor por los bordes (horizontal y vertical).
+ * - Lado izquierdo / derecho → scrollLeft.
+ * - Borde superior / inferior → scrollTop (cuando hay columnas más altas que el viewport).
+ * Muestra una flecha guía en el costado activo. Si el cursor está cerca de una
+ * esquina ambos ejes se desplazan simultáneamente.
  */
 function KanbanScroller({ children, className = "" }: { children: ReactNode; className?: string }) {
   const ref = useRef<HTMLDivElement | null>(null);
-  const dirRef = useRef<-1 | 0 | 1>(0);
+  const dirXRef = useRef<-1 | 0 | 1>(0);
+  const dirYRef = useRef<-1 | 0 | 1>(0);
   const rafRef = useRef<number | null>(null);
-  const [hint, setHint] = useState<-1 | 0 | 1>(0);
+  const [hintX, setHintX] = useState<-1 | 0 | 1>(0);
+  const [hintY, setHintY] = useState<-1 | 0 | 1>(0);
 
   const loop = useCallback(() => {
     const el = ref.current;
-    if (el && dirRef.current !== 0) {
-      el.scrollLeft += dirRef.current * 16;
+    if (el && (dirXRef.current !== 0 || dirYRef.current !== 0)) {
+      if (dirXRef.current !== 0) el.scrollLeft += dirXRef.current * 16;
+      if (dirYRef.current !== 0) el.scrollTop += dirYRef.current * 14;
       rafRef.current = requestAnimationFrame(loop);
     } else {
       rafRef.current = null;
     }
   }, []);
 
-  const setDir = useCallback(
+  const ensureLoop = useCallback(() => {
+    if ((dirXRef.current !== 0 || dirYRef.current !== 0) && rafRef.current == null) {
+      rafRef.current = requestAnimationFrame(loop);
+    }
+  }, [loop]);
+
+  const setDirX = useCallback(
     (d: -1 | 0 | 1) => {
-      if (d === dirRef.current) return;
-      dirRef.current = d;
-      setHint(d);
-      if (d !== 0 && rafRef.current == null) rafRef.current = requestAnimationFrame(loop);
+      if (d === dirXRef.current) return;
+      dirXRef.current = d;
+      setHintX(d);
+      ensureLoop();
     },
-    [loop]
+    [ensureLoop]
+  );
+
+  const setDirY = useCallback(
+    (d: -1 | 0 | 1) => {
+      if (d === dirYRef.current) return;
+      dirYRef.current = d;
+      setHintY(d);
+      ensureLoop();
+    },
+    [ensureLoop]
   );
 
   const onMove = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -265,12 +285,24 @@ function KanbanScroller({ children, className = "" }: { children: ReactNode; cla
     if (!el) return;
     const r = el.getBoundingClientRect();
     const x = e.clientX - r.left;
-    const band = 72;
+    const y = e.clientY - r.top;
+    const bandX = 72;
+    const bandY = 56;
     const canL = el.scrollLeft > 2;
     const canR = el.scrollLeft < el.scrollWidth - el.clientWidth - 2;
-    if (x < band && canL) setDir(-1);
-    else if (x > r.width - band && canR) setDir(1);
-    else setDir(0);
+    const canU = el.scrollTop > 2;
+    const canD = el.scrollTop < el.scrollHeight - el.clientHeight - 2;
+    if (x < bandX && canL) setDirX(-1);
+    else if (x > r.width - bandX && canR) setDirX(1);
+    else setDirX(0);
+    if (y < bandY && canU) setDirY(-1);
+    else if (y > r.height - bandY && canD) setDirY(1);
+    else setDirY(0);
+  };
+
+  const stopAll = () => {
+    setDirX(0);
+    setDirY(0);
   };
 
   useEffect(
@@ -280,7 +312,7 @@ function KanbanScroller({ children, className = "" }: { children: ReactNode; cla
     []
   );
 
-  const arrow = (dir: "left" | "right") => (
+  const arrowH = (dir: "left" | "right") => (
     <span className="flex h-14 w-14 items-center justify-center rounded-full bg-white/75 text-[#3F8E91] shadow-lg ring-1 ring-[#4FAEB2]/30 backdrop-blur">
       <svg
         xmlns="http://www.w3.org/2000/svg"
@@ -298,29 +330,61 @@ function KanbanScroller({ children, className = "" }: { children: ReactNode; cla
     </span>
   );
 
+  const arrowV = (dir: "up" | "down") => (
+    <span className="flex h-12 w-12 items-center justify-center rounded-full bg-white/75 text-[#3F8E91] shadow-lg ring-1 ring-[#4FAEB2]/30 backdrop-blur">
+      <svg
+        xmlns="http://www.w3.org/2000/svg"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        className="h-6 w-6"
+        aria-hidden="true"
+      >
+        {dir === "up" ? <polyline points="18 15 12 9 6 15" /> : <polyline points="6 9 12 15 18 9" />}
+      </svg>
+    </span>
+  );
+
   return (
     <div className={`relative ${className}`}>
       <div
         ref={ref}
         onMouseMove={onMove}
-        onMouseLeave={() => setDir(0)}
+        onMouseLeave={stopAll}
         className="max-h-[calc(100vh-260px)] min-h-[520px] overflow-auto rounded-xl pb-4"
       >
         {children}
       </div>
       <div
         className={`pointer-events-none absolute inset-y-0 left-0 flex w-16 items-center justify-start pl-1 transition-opacity duration-150 ${
-          hint === -1 ? "opacity-100" : "opacity-0"
+          hintX === -1 ? "opacity-100" : "opacity-0"
         }`}
       >
-        {arrow("left")}
+        {arrowH("left")}
       </div>
       <div
         className={`pointer-events-none absolute inset-y-0 right-0 flex w-16 items-center justify-end pr-1 transition-opacity duration-150 ${
-          hint === 1 ? "opacity-100" : "opacity-0"
+          hintX === 1 ? "opacity-100" : "opacity-0"
         }`}
       >
-        {arrow("right")}
+        {arrowH("right")}
+      </div>
+      <div
+        className={`pointer-events-none absolute inset-x-0 top-0 flex h-14 items-start justify-center pt-1 transition-opacity duration-150 ${
+          hintY === -1 ? "opacity-100" : "opacity-0"
+        }`}
+      >
+        {arrowV("up")}
+      </div>
+      <div
+        className={`pointer-events-none absolute inset-x-0 bottom-0 flex h-14 items-end justify-center pb-1 transition-opacity duration-150 ${
+          hintY === 1 ? "opacity-100" : "opacity-0"
+        }`}
+      >
+        {arrowV("down")}
       </div>
     </div>
   );
@@ -367,10 +431,65 @@ const IconList = ({ className = "h-3.5 w-3.5" }: { className?: string }) => (
 
 type ListPageSize = 25 | 50 | 100 | "todos";
 
+const LIST_AVATAR_COLORS = [
+  "bg-[#4FAEB2] text-white",
+  "bg-violet-500 text-white",
+  "bg-amber-500 text-white",
+  "bg-emerald-600 text-white",
+  "bg-rose-500 text-white",
+  "bg-sky-600 text-white",
+  "bg-indigo-500 text-white",
+  "bg-fuchsia-500 text-white",
+];
+
+function listAvatarColor(name: string) {
+  let h = 0;
+  for (let i = 0; i < name.length; i++) h += name.charCodeAt(i);
+  return LIST_AVATAR_COLORS[h % LIST_AVATAR_COLORS.length];
+}
+
+function listInitials(name: string) {
+  if (!name) return "?";
+  const parts = name.trim().split(/\s+/);
+  if (parts.length >= 2) return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
+  return name.slice(0, 2).toUpperCase();
+}
+
+/** Avatar pequeño + nombre completo (con wrap a 2 líneas). Usado en columnas de responsables. */
+function ResponsableCell({ nombre }: { nombre?: string | null }) {
+  const value = (nombre ?? "").trim();
+  if (!value) {
+    return <span className="text-[11px] italic text-slate-300">Sin asignar</span>;
+  }
+  return (
+    <div className="flex min-w-0 items-center gap-2">
+      <span
+        className={`inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[10px] font-semibold ring-2 ring-white ${listAvatarColor(
+          value
+        )}`}
+        aria-hidden="true"
+      >
+        {listInitials(value)}
+      </span>
+      <span
+        className="min-w-0 break-words text-[12px] leading-tight text-slate-700"
+        title={value}
+      >
+        {value}
+      </span>
+    </div>
+  );
+}
+
 /**
  * Vista Lista (tabla) para Proyectos. Equivalente al ProspectoLista del CRM
  * Funnel: respeta los filtros del header (vienen ya aplicados desde la API)
  * y permite mover de estado con el mismo FancySelect que las cards.
+ *
+ * Diseño:
+ * - El cliente va como subtítulo del nombre del proyecto (libera una columna).
+ * - Responsables con avatar + nombre, sin truncar agresivo (wrap a 2 líneas).
+ * - El selector de estado se tiñe con el color de su estado: borde + halo suave.
  */
 function ProyectosLista({
   proyectos,
@@ -401,9 +520,10 @@ function ProyectosLista({
   const rows = pageSize === "todos" ? ordered : ordered.slice(0, pageSize);
 
   const estadoOptions = estados.map((e) => ({ value: e.id, label: e.nombre }));
+  const estadoById = new Map(estados.map((e) => [e.id, e]));
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-2">
+    <div className="flex min-h-0 flex-1 flex-col gap-3">
       <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-500">
         <span>
           Mostrando <strong className="text-slate-700">{rows.length}</strong> de {ordered.length}
@@ -425,103 +545,139 @@ function ProyectosLista({
           </select>
         </label>
       </div>
-      <div className="min-h-0 flex-1 overflow-auto rounded-2xl border border-slate-200 bg-white">
+      <div className="min-h-0 flex-1 overflow-auto rounded-2xl border border-slate-200 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
         <table className="w-full border-collapse text-sm">
+          <colgroup>
+            <col className="w-[26%]" />
+            <col className="w-[8%]" />
+            <col className="w-[8%]" />
+            <col className="w-[18%]" />
+            <col className="w-[14%]" />
+            <col className="w-[14%]" />
+            <col className="w-[12%]" />
+          </colgroup>
           <thead className="sticky top-0 z-10 bg-slate-50/95 backdrop-blur">
-            <tr className="text-left text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+            <tr className="text-left text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-500">
               <th className="px-4 py-3 font-semibold">Proyecto</th>
-              <th className="px-4 py-3 font-semibold">Cliente</th>
-              <th className="px-4 py-3 font-semibold">Tipo</th>
-              <th className="px-4 py-3 font-semibold">Prioridad</th>
-              <th className="px-4 py-3 font-semibold">Estado</th>
-              <th className="px-4 py-3 font-semibold">Comercial</th>
-              <th className="px-4 py-3 font-semibold">Técnico</th>
-              <th className="px-4 py-3 font-semibold">SLA</th>
-              <th className="px-4 py-3 font-semibold">Actividad</th>
+              <th className="px-3 py-3 font-semibold">Tipo</th>
+              <th className="px-3 py-3 font-semibold">Prioridad</th>
+              <th className="px-3 py-3 font-semibold">Estado</th>
+              <th className="px-3 py-3 font-semibold">Comercial</th>
+              <th className="px-3 py-3 font-semibold">Técnico</th>
+              <th className="px-3 py-3 font-semibold">Actividad / SLA</th>
             </tr>
           </thead>
           <tbody>
             {rows.length === 0 ? (
               <tr>
-                <td colSpan={9} className="px-4 py-12 text-center text-slate-400">
+                <td colSpan={7} className="px-4 py-12 text-center text-slate-400">
                   Sin proyectos
                 </td>
               </tr>
             ) : (
               rows.map((p) => {
                 const prio = prioridadByCodigo.get(p.prioridad);
-                const styles = getPriorityCardStyles(p.prioridad);
+                const prioStyles = getPriorityCardStyles(p.prioridad);
                 const cli =
                   (p.cliente?.empresa || "").trim() ||
                   (p.cliente?.nombre_contacto || "").trim() ||
-                  "—";
+                  "";
                 const slaVencido = p.sla_estado_actual?.vencido === true;
+                const estado = estadoById.get(p.estado_id);
+                const estadoColor = estado?.color || p.proyecto_estado?.color || "#94a3b8";
+                // Borde teñido + halo: el color del estado se nota pero sin saturar la fila.
+                const estadoTriggerStyle = {
+                  borderColor: estadoColor,
+                  borderWidth: "1.5px",
+                  boxShadow: `0 0 0 3px ${estadoColor}1f`,
+                } as React.CSSProperties;
                 return (
                   <tr
                     key={p.id}
                     onClick={() => onOpen(p.id)}
-                    className={`cursor-pointer border-t border-slate-100 transition-colors hover:bg-slate-50/70 ${
+                    className={`group cursor-pointer border-t border-slate-100 align-top transition-colors hover:bg-slate-50/70 ${
                       movingProjectId === p.id ? "bg-sky-50/40" : ""
                     }`}
                   >
-                    <td className="px-4 py-2.5">
-                      <div className="max-w-[18rem] truncate font-semibold text-slate-900">{p.titulo}</div>
-                      {p.bloqueado ? (
-                        <div className="mt-0.5 inline-flex items-center rounded-full border border-rose-200 bg-rose-50 px-1.5 py-0.5 text-[10px] font-medium text-rose-700">
-                          Bloqueado
+                    <td className="px-4 py-3.5">
+                      <div className="flex items-start gap-2">
+                        <span
+                          aria-hidden="true"
+                          className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${prioStyles.iconDotClass}`}
+                        />
+                        <div className="min-w-0">
+                          <div
+                            className="break-words text-[13.5px] font-semibold leading-snug text-slate-900 group-hover:text-[#3F8E91]"
+                            title={p.titulo}
+                          >
+                            {p.titulo}
+                          </div>
+                          <div
+                            className="mt-0.5 break-words text-[11.5px] leading-tight text-slate-500"
+                            title={cli || undefined}
+                          >
+                            {cli || "Sin cliente"}
+                          </div>
+                          {p.bloqueado ? (
+                            <span className="mt-1 inline-flex items-center rounded-full border border-rose-200 bg-rose-50 px-1.5 py-0.5 text-[10px] font-medium text-rose-700">
+                              Bloqueado
+                            </span>
+                          ) : null}
                         </div>
-                      ) : null}
+                      </div>
                     </td>
-                    <td className="max-w-[14rem] truncate px-4 py-2.5 text-slate-600">{cli}</td>
-                    <td className="px-4 py-2.5 text-slate-600">{p.proyecto_tipo?.nombre ?? "—"}</td>
-                    <td className="px-4 py-2.5">
+                    <td className="px-3 py-3.5 text-[12px] text-slate-600">
+                      {p.proyecto_tipo?.nombre ?? "—"}
+                    </td>
+                    <td className="px-3 py-3.5">
                       <span
-                        className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold ${styles.badgeClass}`}
+                        className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold ${prioStyles.badgeClass}`}
                       >
                         {prio?.nombre ?? prioridadFallbackLabel(p.prioridad)}
                       </span>
                     </td>
-                    <td className="px-4 py-2.5" onClick={(e) => e.stopPropagation()}>
-                      <div className="min-w-[10rem]">
-                        <FancySelect
-                          size="sm"
-                          ariaLabel="Mover a otro estado"
-                          value={p.estado_id}
-                          onChange={(v) => onMove(p.id, v)}
-                          options={[
-                            ...(!estadoActivoIds.has(p.estado_id)
-                              ? [
-                                  {
-                                    value: p.estado_id,
-                                    label: "Estado actual oculto / no usado",
-                                    disabled: true,
-                                  },
-                                ]
-                              : []),
-                            ...estadoOptions,
-                          ]}
-                        />
+                    <td className="px-3 py-3.5" onClick={(e) => e.stopPropagation()}>
+                      <FancySelect
+                        size="sm"
+                        ariaLabel="Mover a otro estado"
+                        value={p.estado_id}
+                        onChange={(v) => onMove(p.id, v)}
+                        triggerStyle={estadoTriggerStyle}
+                        options={[
+                          ...(!estadoActivoIds.has(p.estado_id)
+                            ? [
+                                {
+                                  value: p.estado_id,
+                                  label: "Estado actual oculto / no usado",
+                                  disabled: true,
+                                },
+                              ]
+                            : []),
+                          ...estadoOptions,
+                        ]}
+                      />
+                    </td>
+                    <td className="px-3 py-3.5">
+                      <ResponsableCell nombre={p.responsable_comercial?.nombre} />
+                    </td>
+                    <td className="px-3 py-3.5">
+                      <ResponsableCell nombre={p.responsable_tecnico?.nombre} />
+                    </td>
+                    <td className="px-3 py-3.5">
+                      <div className="text-[11px] tabular-nums text-slate-500">
+                        {fmtDateTime(p.last_activity_at)}
                       </div>
-                    </td>
-                    <td className="max-w-[10rem] truncate px-4 py-2.5 text-[12px] text-slate-600">
-                      {p.responsable_comercial?.nombre ?? "—"}
-                    </td>
-                    <td className="max-w-[10rem] truncate px-4 py-2.5 text-[12px] text-slate-600">
-                      {p.responsable_tecnico?.nombre ?? "—"}
-                    </td>
-                    <td className="px-4 py-2.5">
-                      <span
-                        className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium ${
-                          slaVencido
-                            ? "border-rose-200 bg-rose-50 text-rose-700"
-                            : "border-slate-200 bg-slate-50 text-slate-600"
-                        }`}
-                      >
-                        {slaEstadoLabel(p)}
-                      </span>
-                    </td>
-                    <td className="px-4 py-2.5 text-[11px] text-slate-500 tabular-nums">
-                      {fmtDateTime(p.last_activity_at)}
+                      <div className="mt-1">
+                        <span
+                          className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium ${
+                            slaVencido
+                              ? "border-rose-200 bg-rose-50 text-rose-700"
+                              : "border-slate-200 bg-slate-50 text-slate-600"
+                          }`}
+                        >
+                          {slaEstadoLabel(p)}
+                        </span>
+                      </div>
                     </td>
                   </tr>
                 );
@@ -806,6 +962,27 @@ export default function ProyectosKanbanClient({ dataSchema }: { dataSchema: stri
           <p className="text-sm text-slate-500">Kanban configurable por empresa — producción, clientes y SLA.</p>
         </div>
         <div className="flex shrink-0 items-center gap-2">
+          <Link
+            href="/dashboard/proyectos/reportes/entregados-por-tecnico"
+            className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 shadow-sm transition-colors hover:border-[#4FAEB2]/60 hover:text-[#4FAEB2]"
+            title="Reporte: proyectos entregados por técnico"
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="h-3.5 w-3.5"
+              aria-hidden="true"
+            >
+              <path d="M3 3v18h18" />
+              <path d="M7 14l4-4 4 4 5-6" />
+            </svg>
+            Reportes
+          </Link>
           {/* Toggle de vista: Kanban (cards) | Lista (tabla). Mismo patrón que CRM Funnel. */}
           <div className="flex items-center gap-0.5 rounded-xl border border-slate-200 bg-slate-100/80 p-0.5">
             <button
