@@ -1,32 +1,25 @@
-/* Service Worker — notificaciones de chats.
- *
- * Cubre dos casos:
- *  1) Foreground: el hook `useChatNotifications` llama `registration.showNotification`
- *     a través de este SW para que las notis sigan vivas aunque el tab se cierre
- *     mientras la noti está visible.
- *  2) Background / app cerrada: si el backend manda un Web Push (VAPID), este SW
- *     lo recibe y muestra la noti. El backend de push real (suscripción + envío)
- *     queda fuera del scope de este archivo; acá está la pieza del cliente lista.
- *
- * No hay caching offline — esto es solo notificaciones.
- */
+/* Service Worker — notificaciones de chats. */
+const SW_VERSION = "2026-06-25-2";
 
 self.addEventListener("install", (event) => {
-  // Activación inmediata sin esperar a que se cierren todos los tabs.
+  console.info("[sw]", SW_VERSION, "install");
   self.skipWaiting();
 });
 
 self.addEventListener("activate", (event) => {
+  console.info("[sw]", SW_VERSION, "activate");
   event.waitUntil(self.clients.claim());
 });
 
 self.addEventListener("push", (event) => {
+  console.info("[sw]", SW_VERSION, "push event recibido");
   let payload = {};
   try {
     payload = event.data ? event.data.json() : {};
-  } catch {
+  } catch (e) {
     payload = { title: "Nuevo mensaje", body: event.data ? event.data.text() : "" };
   }
+  console.info("[sw] payload:", payload);
   const title = payload.title || "Nuevo mensaje";
   const options = {
     body: payload.body || "",
@@ -40,21 +33,17 @@ self.addEventListener("push", (event) => {
           ? `/dashboard/conversaciones?id=${encodeURIComponent(payload.conversationId)}`
           : "/dashboard/conversaciones"),
     },
-    // silent:false explícito — el OS (Android/Chrome desktop) reproduce el
-    // sonido por defecto del canal de notificaciones del navegador o PWA.
-    // En iOS PWA 16.4+ idem. La web NO puede forzar un sonido custom: lo
-    // controla el sistema operativo / la app contenedora (Brave/Chrome/Safari).
     silent: false,
-    // Patrón de vibración: vib(120) – pausa(40) – vib(60) – pausa(40) – vib(60).
-    // Si el celular está en silencio igual vibra (a menos que también esté en
-    // "no molestar").
     vibrate: [120, 40, 60, 40, 60],
-    // Mantener la noti visible hasta que el usuario la toque (sino algunos
-    // Android la autodescartan en 4-5 seg).
     requireInteraction: false,
     renotify: true,
   };
-  event.waitUntil(self.registration.showNotification(title, options));
+  event.waitUntil(
+    self.registration
+      .showNotification(title, options)
+      .then(() => console.info("[sw] noti mostrada"))
+      .catch((err) => console.error("[sw] showNotification error:", err))
+  );
 });
 
 self.addEventListener("notificationclick", (event) => {
@@ -63,24 +52,28 @@ self.addEventListener("notificationclick", (event) => {
   event.waitUntil(
     (async () => {
       const allClients = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
-      // Reusar tab existente si alguno ya tiene la app abierta.
       for (const c of allClients) {
         try {
           const cu = new URL(c.url);
           if (cu.origin === self.location.origin) {
             await c.focus();
-            // Navegar el tab existente al chat correspondiente.
             if ("navigate" in c) {
-              try { await c.navigate(targetUrl); } catch { /* ignorar fallos */ }
+              try { await c.navigate(targetUrl); } catch { /* ignorar */ }
             }
             return;
           }
-        } catch {
-          /* url inválida, seguir */
-        }
+        } catch { /* ignorar */ }
       }
-      // Sin tab abierto: abrir uno nuevo.
       await self.clients.openWindow(targetUrl);
     })()
   );
+});
+
+// Si el cliente manda { type: "skipWaiting" }, el SW activa la nueva versión
+// inmediatamente — usado por ServiceWorkerRegister cuando detecta update.
+self.addEventListener("message", (event) => {
+  if (event.data && event.data.type === "skipWaiting") {
+    console.info("[sw] skipWaiting recibido del cliente");
+    self.skipWaiting();
+  }
 });
