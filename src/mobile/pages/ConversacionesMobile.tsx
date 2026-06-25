@@ -22,6 +22,7 @@ import {
   markMobileConversationRead,
   sendMobileMedia,
   sendMobileMessage,
+  triggerTestPush,
   useMobileInbox,
   useMobileMessages,
   type MobileChatConversation,
@@ -126,11 +127,34 @@ function InboxScreen() {
       return;
     }
     if (perm === "granted") {
+      // Re-sincronizar suscripción contra el backend y disparar push de
+      // prueba. Esto cubre el caso "ya acepté el permiso pero las notis no
+      // llegan" — el resultado del test te dice exactamente en qué falla.
       await ensurePushSubscription();
       setNotifPerm("granted");
+      showToast("ok", "Enviando notificación de prueba…");
+      const res = await triggerTestPush();
+      if (!res.ok) {
+        showToast("err", `Test push falló: ${res.error ?? "desconocido"}`);
+        return;
+      }
+      if ((res.found ?? 0) === 0) {
+        showToast(
+          "warn",
+          "No hay dispositivos suscriptos para tu empresa. Re-aceptá el permiso en este cel."
+        );
+        return;
+      }
+      if ((res.delivered ?? 0) === 0) {
+        showToast(
+          "warn",
+          `${res.found} dispositivo(s) suscripto(s) pero 0 entregado(s). Suscripción FCM expirada — tocá 🔔 de nuevo para crear una nueva.`
+        );
+        return;
+      }
       showToast(
         "ok",
-        "Notificaciones activas. Si no llegan estando cerrado, verificá VAPID en el servidor."
+        `Test enviado a ${res.delivered}/${res.found} dispositivo(s). Si la noti NO aparece, revisá permisos del navegador en Android.`
       );
       return;
     }

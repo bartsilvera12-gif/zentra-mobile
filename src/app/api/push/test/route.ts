@@ -5,6 +5,7 @@ import { isPushEnabled, sendPushFanout, type PushSubscriptionRecord } from "@/li
 
 /**
  * POST /api/push/test
+ * GET  /api/push/test
  *
  * Dispara un push de prueba a todas las suscripciones de la empresa actual.
  * Útil para destrabar el flujo sin esperar a que llegue un WhatsApp real: si
@@ -15,9 +16,21 @@ import { isPushEnabled, sendPushFanout, type PushSubscriptionRecord } from "@/li
  * Devuelve cuántas subs encontró, cuántas entregó OK y cuántas estaban
  * expiradas (borradas automáticamente).
  *
- * Body opcional: { body?: string } para personalizar el cuerpo del push.
+ * POST body opcional: { body?: string } para personalizar el cuerpo del push.
+ * GET ?body=... mismo efecto (útil desde mobile sin DevTools).
  */
+export async function GET(request: NextRequest) {
+  const u = new URL(request.url);
+  const text = u.searchParams.get("body") ?? undefined;
+  return doTest(request, text);
+}
+
 export async function POST(request: NextRequest) {
+  const body = (await request.json().catch(() => ({}))) as { body?: string };
+  return doTest(request, typeof body.body === "string" ? body.body : undefined);
+}
+
+async function doTest(request: NextRequest, textArg?: string) {
   const auth = await getAuthWithRol(request);
   if (!auth?.empresa_id) {
     return NextResponse.json({ ok: false, error: "No autenticado" }, { status: 401 });
@@ -34,8 +47,9 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const body = (await request.json().catch(() => ({}))) as { body?: string };
-  const text = typeof body.body === "string" && body.body.trim() ? body.body.trim() : "Esto es una prueba — si lees esto, el push background funciona.";
+  const text = textArg && textArg.trim()
+    ? textArg.trim().slice(0, 240)
+    : "Esto es una prueba — si lees esto, el push background funciona.";
 
   const supabase = getPushDbClient();
   const { data, error } = await supabase

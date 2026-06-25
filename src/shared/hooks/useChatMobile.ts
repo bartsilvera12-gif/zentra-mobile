@@ -118,6 +118,37 @@ export async function sendMobileMessage(opts: {
   }
 }
 
+/**
+ * Dispara un push de prueba a todos los dispositivos suscriptos de la empresa
+ * actual. Devuelve cuántas suscripciones encontró y entregó.
+ */
+export async function triggerTestPush(): Promise<{
+  ok: boolean;
+  found?: number;
+  delivered?: number;
+  expired?: number;
+  error?: string;
+}> {
+  try {
+    const res = await fetchWithSupabaseSession("/api/push/test", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    const j = (await res.json().catch(() => ({}))) as {
+      ok?: boolean;
+      found?: number;
+      delivered?: number;
+      expired?: number;
+      error?: string;
+    };
+    if (!res.ok || !j.ok) return { ok: false, error: j.error ?? `Error ${res.status}` };
+    return { ok: true, found: j.found, delivered: j.delivered, expired: j.expired };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Error de red" };
+  }
+}
+
 /** Marca la conversación como leída (unread_count = 0) en el backend. */
 export async function markMobileConversationRead(
   conversationId: string
